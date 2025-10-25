@@ -6,6 +6,7 @@ import Input from '../../components/ui/Input';
 import Button from '../../components/ui/Button';
 
 const Register: React.FC = () => {
+    const [displayName, setDisplayName] = useState('');
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
@@ -18,9 +19,12 @@ const Register: React.FC = () => {
         if (password !== confirmPassword) {
             return setError('Şifreler uyuşmuyor.');
         }
+        if (displayName.trim() === '') {
+            return setError('Görünen ad boş bırakılamaz.');
+        }
         setError('');
         try {
-            await registerWithEmail(email, password);
+            await registerWithEmail(email, password, displayName);
             navigate('/');
         } catch (err) {
             setError('Hesap oluşturulamadı. Lütfen tekrar deneyin.');
@@ -37,6 +41,7 @@ const Register: React.FC = () => {
                     {error && <p className="bg-red-500/20 text-red-400 text-sm text-center p-3 rounded-lg mb-6">{error}</p>}
                     
                     <form onSubmit={handleRegister} className="space-y-6">
+                        <Input id="displayName" label="Görünen Ad" type="text" value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="Adınız Soyadınız" required />
                         <Input id="email" label="E-posta" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="ornek@mail.com" required />
                         <Input id="password" label="Şifre" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" required />
                         <Input id="confirm-password" label="Şifreyi Onayla" type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} placeholder="••••••••" required />
