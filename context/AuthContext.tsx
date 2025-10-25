@@ -43,6 +43,10 @@ interface AuthProviderProps {
   children: ReactNode;
 }
 
+// Key for our mock user database in localStorage
+const MOCK_USER_DB_KEY = 'mockUserDatabase';
+
+
 export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
@@ -73,15 +77,39 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   };
 
   const loginWithEmail = async (email: string, password: string) => {
-    // await signInWithEmailAndPassword(auth, email, password);
     console.log('Logging in with email...');
-    setCurrentUser({ uid: 'email-user-456', email: email, displayName: 'Email User' });
+    // Retrieve our mock database from localStorage
+    const db = JSON.parse(localStorage.getItem(MOCK_USER_DB_KEY) || '{}');
+    const userData = db[email];
+
+    if (userData) {
+      // User found, log them in with the saved displayName
+      setCurrentUser({ 
+        uid: `email-user-${Math.random().toString(36).substring(7)}`, 
+        email: email, 
+        displayName: userData.displayName 
+      });
+    } else {
+      // User not found in our mock db, simulate an error
+      throw new Error("Kullanıcı bulunamadı veya şifre yanlış.");
+    }
   };
 
   const registerWithEmail = async (email: string, password: string, displayName: string) => {
-    // await createUserWithEmailAndPassword(auth, email, password);
     console.log('Registering with email...');
-    setCurrentUser({ uid: 'email-user-789', email: email, displayName: displayName });
+    // Retrieve our mock database
+    const db = JSON.parse(localStorage.getItem(MOCK_USER_DB_KEY) || '{}');
+    
+    // Add new user to the mock database
+    db[email] = { displayName };
+    localStorage.setItem(MOCK_USER_DB_KEY, JSON.stringify(db));
+    
+    // Set the current user upon successful registration
+    setCurrentUser({ 
+      uid: `email-user-${Math.random().toString(36).substring(7)}`, 
+      email: email, 
+      displayName: displayName 
+    });
   };
 
   const logout = async () => {
