@@ -28,24 +28,11 @@ const ACCEPTED_FILE_TYPES = [
     'text/plain' // .txt
 ];
 
-// Kural yapısı için type tanımlamaları
-type ActionType = 'SIMPLE' | 'AI';
-type Rule = {
-  id: number;
-  sourceColumn: string;
-  targetColumn: string;
-  actionType: ActionType;
-  prompt: string;
-};
-
 const StatementConverter: React.FC = () => {
     const [uploadedFile, setUploadedFile] = useState<File | null>(null);
     const [previewContent, setPreviewContent] = useState<ReactNode | null>(null);
     const [isDragging, setIsDragging] = useState(false);
-    const [rules, setRules] = useState<Rule[]>([
-        { id: 1, sourceColumn: 'A', targetColumn: 'Tarih', actionType: 'SIMPLE', prompt: '' },
-        { id: 2, sourceColumn: 'D', targetColumn: 'Müşteri Adı', actionType: 'AI', prompt: 'Açıklama alanından firma veya kişi adını çıkar.' },
-    ]);
+    const [userPrompt, setUserPrompt] = useState<string>('');
     const [isLoading, setIsLoading] = useState(false);
     const [conversionResult, setConversionResult] = useState<string | null>(null);
     const [parsedResult, setParsedResult] = useState<string[][] | null>(null);
@@ -170,25 +157,14 @@ const StatementConverter: React.FC = () => {
         setConversionResult(null);
     };
 
-    // --- Rule Management ---
-    const addRule = () => {
-        const newRule: Rule = { id: Date.now(), sourceColumn: '', targetColumn: '', actionType: 'SIMPLE', prompt: '' };
-        setRules([...rules, newRule]);
-    };
-    const removeRule = (id: number) => setRules(rules.filter(rule => rule.id !== id));
-    const updateRule = (id: number, updatedField: Partial<Rule>) => {
-        setRules(rules.map(rule => rule.id === id ? { ...rule, ...updatedField } : rule));
-    };
-
     // --- API Call & Conversion ---
     const handleConvert = async () => {
         if (!uploadedFile) {
             setError("Lütfen önce bir dosya yükleyin.");
             return;
         }
-        const validRules = rules.filter(r => r.sourceColumn.trim() && r.targetColumn.trim());
-        if (validRules.length === 0) {
-            setError("Lütfen en az bir geçerli kural tanımlayın.");
+        if (userPrompt.trim().length === 0) {
+            setError("Lütfen ne yapmak istediğinizi açıklayan bir komut girin.");
             return;
         }
 
@@ -198,7 +174,7 @@ const StatementConverter: React.FC = () => {
         
         const formData = new FormData();
         formData.append('file', uploadedFile);
-        formData.append('rules', JSON.stringify(validRules));
+        formData.append('prompt', userPrompt);
 
         try {
             const response = await fetch('/api/convert', {
@@ -241,7 +217,7 @@ const StatementConverter: React.FC = () => {
     return (
         <div>
             <h1 className="text-3xl md:text-4xl font-bold text-white mb-2">Banka Ekstresi Dönüştürücü</h1>
-            <p className="text-slate-400 text-lg mb-8">Dosyanızı yükleyin ve dönüşüm kurallarını belirleyerek işlemi başlatın.</p>
+            <p className="text-slate-400 text-lg mb-8">Dosyanızı yükleyin ve yapay zekaya ne yapması gerektiğini söyleyin.</p>
 
             <div className="space-y-8">
                 {/* --- Step 1: File Upload --- */}
@@ -280,36 +256,16 @@ const StatementConverter: React.FC = () => {
                     </Card>
                 )}
 
-
-                {/* --- Step 2: Define Rules --- */}
+                {/* --- Step 2: Define AI Prompt --- */}
                 <Card>
-                    <h2 className="text-xl font-bold text-white mb-4">2. Dönüşüm Kurallarını Tanımla</h2>
-                    <div className="space-y-4">
-                        {rules.map((rule, index) => (
-                            <div key={rule.id} className="bg-slate-900/50 p-4 rounded-lg border border-slate-700">
-                                <div className="flex justify-between items-center mb-4">
-                                    <h3 className="font-bold text-slate-300">Kural {index + 1}</h3>
-                                    <button onClick={() => removeRule(rule.id)} className="text-slate-500 hover:text-red-400 font-bold text-2xl leading-none px-2 transition-colors" aria-label="Kuralı kaldır">&times;</button>
-                                </div>
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    <input type="text" placeholder="Kaynak Sütun (örn: A)" value={rule.sourceColumn} onChange={(e) => updateRule(rule.id, { sourceColumn: e.target.value })} className="bg-slate-700 border border-slate-600 rounded-md px-3 py-2 text-white placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-sky-500" />
-                                    <input type="text" placeholder="Hedef Sütun (örn: Müşteri Adı)" value={rule.targetColumn} onChange={(e) => updateRule(rule.id, { targetColumn: e.target.value })} className="bg-slate-700 border border-slate-600 rounded-md px-3 py-2 text-white placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-sky-500" />
-                                </div>
-                                <div className="mt-4">
-                                    <div className="flex items-center space-x-2 rounded-lg bg-slate-700 p-1">
-                                        <button onClick={() => updateRule(rule.id, { actionType: 'SIMPLE' })} className={`flex-1 text-sm py-2 rounded-md transition-colors ${rule.actionType === 'SIMPLE' ? 'bg-sky-500 text-white font-semibold' : 'text-slate-300 hover:bg-slate-600'}`}>Basit Taşıma</button>
-                                        <button onClick={() => updateRule(rule.id, { actionType: 'AI' })} className={`flex-1 text-sm py-2 rounded-md transition-colors ${rule.actionType === 'AI' ? 'bg-sky-500 text-white font-semibold' : 'text-slate-300 hover:bg-slate-600'}`}>Yapay Zeka ile İşle</button>
-                                    </div>
-                                </div>
-                                {rule.actionType === 'AI' && (
-                                    <div className="mt-3">
-                                        <textarea placeholder='Yapay zeka için komutunuzu girin. Örn: "Açıklama içerisindeki firma veya kişi isimlerini çıkar."' value={rule.prompt} onChange={(e) => updateRule(rule.id, { prompt: e.target.value })} className="w-full h-24 bg-slate-700 border border-slate-600 rounded-md px-3 py-2 text-white placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-sky-500 text-sm" />
-                                    </div>
-                                )}
-                            </div>
-                        ))}
-                        <button onClick={addRule} className="w-full text-sm text-sky-400 border border-sky-400/50 rounded-md py-2 hover:bg-sky-400/10 transition-colors">+ Yeni Kural Ekle</button>
-                    </div>
+                    <h2 className="text-xl font-bold text-white mb-4">2. Yapılacak İşlemi Tanımla</h2>
+                    <p className="text-slate-400 mb-4">Yapay zekanın dosyayla ne yapmasını istediğinizi basit cümlelerle açıklayın.</p>
+                    <textarea 
+                        placeholder='Örn: "Tarih, açıklama ve tutar sütunlarını al. Açıklamalardaki firma isimlerini temizle ve yeni bir Firma sütunu oluştur."' 
+                        value={userPrompt} 
+                        onChange={(e) => setUserPrompt(e.target.value)} 
+                        className="w-full h-32 bg-slate-700 border border-slate-600 rounded-md px-3 py-2 text-white placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-sky-500 text-sm" 
+                    />
                 </Card>
 
                 {/* --- Step 3: Convert --- */}

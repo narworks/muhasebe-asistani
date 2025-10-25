@@ -27,11 +27,11 @@ app.post('/api/convert', upload.single('file'), async (req, res) => {
         if (!req.file) {
             return res.status(400).json({ error: 'Dosya yüklenmedi.' });
         }
-        if (!req.body.rules) {
-             return res.status(400).json({ error: 'Dönüşüm kuralları eksik.' });
+        if (!req.body.prompt) {
+             return res.status(400).json({ error: 'Dönüşüm komutu eksik.' });
         }
 
-        const rules = JSON.parse(req.body.rules);
+        const userPrompt = req.body.prompt;
         const fileBuffer = req.file.buffer;
         let fileContent = '';
 
@@ -51,27 +51,27 @@ app.post('/api/convert', upload.single('file'), async (req, res) => {
         }
         
         // 2. Gemini için "akıllı prompt" oluştur
-        const rulesString = rules.map(rule => 
-            `- Kaynak Sütun "${rule.sourceColumn}" verisini, Hedef Sütun "${rule.targetColumn}" olarak ata. İşlem: ${rule.actionType === 'AI' ? `Yapay Zeka ile işle (Komut: ${rule.prompt})` : 'Basit Taşıma'}`
-        ).join('\n');
-
         const prompt = `
-            Sen bir veri dönüştürme uzmanısın. Sana verilen bir metin içeriğini, belirtilen kurallara göre işleyip sonucu CSV formatında döndürmelisin.
-            
-            YALNIZCA ve YALNIZCA CSV formatında bir çıktı üret. Başka hiçbir açıklama, selamlama veya ek metin ekleme. Sonucun ilk satırı başlık (header) satırı olmalıdır ve hedef sütun adlarını içermelidir.
-            
-            İşlenecek Veri (ilk 8000 karakter):
+            Sen bir veri dönüştürme uzmanı yapay zekasın. Sana verilen bir dosya içeriğini ve kullanıcı isteğini analiz ederek, istenen dönüşümü gerçekleştirmeli ve sonucu CSV formatında sunmalısın.
+
+            ÖNEMLİ KURALLAR:
+            1.  Çıktın SADECE ve SADECE geçerli bir CSV formatında olmalıdır.
+            2.  CSV çıktısı dışında KESİNLİKLE hiçbir açıklama, selamlama, not veya ek metin ekleme. ("İşte istediğiniz CSV:" gibi ifadeler kullanma.)
+            3.  Sonucun ilk satırı, kullanıcı isteğine uygun olarak oluşturduğun başlık (header) satırı olmalıdır.
+
+            İşlenecek Ham Dosya İçeriği (ilk 8000 karakter):
             ---
             ${fileContent.substring(0, 8000)} 
             ---
             
-            Uygulanacak Kurallar:
+            Kullanıcının Yapılmasını İstediği Dönüşüm:
             ---
-            ${rulesString}
+            ${userPrompt}
             ---
             
             İstenen CSV Çıktısı:
         `;
+
 
         // 3. Gemini API'sini çağır
         const response = await ai.models.generateContent({
