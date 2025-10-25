@@ -32,7 +32,6 @@ const TrashIcon = () => (
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
     </svg>
 );
-// FIX: Add DownloadIcon for the download button.
 const DownloadIcon = () => (
     <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
@@ -86,7 +85,6 @@ const StatementConverter: React.FC = () => {
     }, []);
 
     useEffect(() => {
-        // FIX: Implement file preview generation logic.
         if (!uploadedFile) { 
             setPreviewContent(null); 
             return; 
@@ -173,10 +171,11 @@ const StatementConverter: React.FC = () => {
             } finally {
                 setIsSelectingKey(false);
             }
+        } else {
+            setError("API anahtarı seçim penceresi açılamadı. Bu özelliğin çalışması için uygulamanın AI Studio ortamında olması gerekmektedir.");
         }
     };
 
-    // FIX: Implement file change handler to validate and set the uploaded file.
     const handleFileChange = (files: FileList | null) => {
         if (!files || files.length === 0) {
             return;
@@ -252,7 +251,6 @@ const StatementConverter: React.FC = () => {
         }
     };
     
-    // FIX: Implement download handler to save the result as a CSV file.
     const handleDownload = () => {
         if (!conversionResult) return;
         const blob = new Blob([conversionResult], { type: 'text/csv;charset=utf-8;' });
@@ -327,7 +325,6 @@ const StatementConverter: React.FC = () => {
                         onDragOver={handleDragOver} onDragLeave={handleDragLeave} onDrop={handleDrop}
                         className={`border-2 border-dashed border-slate-600 rounded-lg p-10 text-center transition-colors duration-300 ${isDragging ? 'bg-slate-700 border-sky-500' : 'bg-slate-800/50'}`}
                     >
-                         {/* FIX: Implement the file upload UI. */}
                          {uploadedFile ? (
                             <div className="text-center">
                                 <FileIcon />
@@ -355,7 +352,6 @@ const StatementConverter: React.FC = () => {
                 {previewContent && (
                     <Card>
                         <h2 className="text-xl font-bold text-white mb-4">Dosya Önizlemesi</h2>
-                        {/* FIX: Display the generated preview content. */}
                         {previewContent}
                     </Card>
                 )}
@@ -412,7 +408,6 @@ const StatementConverter: React.FC = () => {
                     </button>
                 </Card>
 
-                {/* FIX: Implement result display to fix missing children prop error. */}
                 {parsedResult && parsedResult.length > 0 && (
                      <Card>
                         <div className="flex justify-between items-center mb-4">
