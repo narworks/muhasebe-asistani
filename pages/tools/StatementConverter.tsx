@@ -1,9 +1,9 @@
 import React, { useState, useRef, DragEvent, useEffect, ReactNode } from 'react';
 import Card from '../../components/ui/Card';
+import ApiKeyModal from '../../components/ApiKeyModal';
 
 // Make sheetjs library available globally from the script tag
 declare const XLSX: any;
-declare const window: any; // For window.aistudio
 
 // --- ICONS ---
 const UploadIcon = () => (
@@ -38,7 +38,6 @@ const DownloadIcon = () => (
     </svg>
 );
 
-
 const ACCEPTED_FILE_TYPES = [ 'application/pdf', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'text/plain' ];
 const PREDEFINED_TEMPLATES = [
     { title: "Basit Tarih, Açıklama, Tutar", prompt: "Dosyadaki tarih, işlem açıklaması ve tutar sütunlarını bularak CSV formatına dönüştür." },
@@ -47,6 +46,7 @@ const PREDEFINED_TEMPLATES = [
 ];
 const USER_TEMPLATES_KEY = 'userStatementTemplates';
 const STATS_KEY = 'toolUsageStats';
+const API_KEY_STORAGE_KEY = 'geminiApiKey';
 
 interface UserTemplate { id: number; title: string; prompt: string; }
 
@@ -60,22 +60,19 @@ const StatementConverter: React.FC = () => {
     const [conversionResult, setConversionResult] = useState<string | null>(null);
     const [parsedResult, setParsedResult] = useState<string[][] | null>(null);
     const [error, setError] = useState<string | null>(null);
-    const [hasApiKey, setHasApiKey] = useState(false);
-    const [isSelectingKey, setIsSelectingKey] = useState(false);
+    const [apiKey, setApiKey] = useState<string | null>(null);
+    const [isApiKeyModalOpen, setIsApiKeyModalOpen] = useState(false);
     const [userTemplates, setUserTemplates] = useState<UserTemplate[]>([]);
 
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     // --- Effects ---
     useEffect(() => {
-        // Check for API Key on component mount
-        const checkApiKey = async () => {
-            if (window.aistudio && typeof window.aistudio.hasSelectedApiKey === 'function') {
-                const keyStatus = await window.aistudio.hasSelectedApiKey();
-                setHasApiKey(keyStatus);
-            }
-        };
-        checkApiKey();
+        // Check for API Key in localStorage on component mount
+        const savedApiKey = localStorage.getItem(API_KEY_STORAGE_KEY);
+        if (savedApiKey) {
+            setApiKey(savedApiKey);
+        }
 
         // Load user templates from localStorage
         const savedTemplates = localStorage.getItem(USER_TEMPLATES_KEY);
@@ -157,23 +154,10 @@ const StatementConverter: React.FC = () => {
     }, [conversionResult]);
 
     // --- Handlers ---
-    const handleApiKeySelect = async () => {
-        if (window.aistudio && typeof window.aistudio.openSelectKey === 'function') {
-            setIsSelectingKey(true);
-            try {
-                await window.aistudio.openSelectKey();
-                // After the dialog closes, re-verify if a key was actually selected.
-                const keyStatus = await window.aistudio.hasSelectedApiKey();
-                setHasApiKey(keyStatus);
-            } catch (err) {
-                console.error("API key selection error:", err);
-                setError("API anahtarı seçimi sırasında bir hata oluştu.");
-            } finally {
-                setIsSelectingKey(false);
-            }
-        } else {
-            setError("API anahtarı seçim penceresi açılamadı. Bu özelliğin çalışması için uygulamanın AI Studio ortamında olması gerekmektedir.");
-        }
+    const handleApiKeySave = (newApiKey: string) => {
+        localStorage.setItem(API_KEY_STORAGE_KEY, newApiKey);
+        setApiKey(newApiKey);
+        setIsApiKeyModalOpen(false);
     };
 
     const handleFileChange = (files: FileList | null) => {
@@ -200,7 +184,7 @@ const StatementConverter: React.FC = () => {
     const handleRemoveFile = () => { setUploadedFile(null); setConversionResult(null); setParsedResult(null); setError(null); };
 
     const handleConvert = async () => {
-        if (!hasApiKey) { setError("Lütfen devam etmek için Gemini API anahtarınızı seçin."); return; }
+        if (!apiKey) { setError("Lütfen devam etmek için Gemini API anahtarınızı ayarlayın."); return; }
         if (!uploadedFile) { setError("Lütfen önce bir dosya yükleyin."); return; }
         if (userPrompt.trim().length === 0) { setError("Lütfen ne yapmak istediğinizi açıklayan bir komut girin."); return; }
 
@@ -212,25 +196,13 @@ const StatementConverter: React.FC = () => {
         const formData = new FormData();
         formData.append('file', uploadedFile);
         formData.append('prompt', userPrompt);
+        formData.append('apiKey', apiKey); // Send the API key with the request
 
         try {
             const response = await fetch('/api/convert', { method: 'POST', body: formData });
             
             if (!response.ok) {
                 const resultText = await response.text();
-                 if (response.status === 401) { // Unauthorized: API Key missing on server
-                    setHasApiKey(false); // Reset API key status to re-prompt the user
-                    try {
-                       const errorJson = JSON.parse(resultText);
-                       throw new Error(errorJson.error || "Sunucuda API anahtarı bulunamadı. Lütfen tekrar seçin.");
-                    } catch {
-                       throw new Error("Sunucuda API anahtarı bulunamadı. Lütfen tekrar seçin.");
-                    }
-                }
-                if (response.status === 404 && resultText.includes("Requested entity was not found")) {
-                    setHasApiKey(false); // Reset API key status on this specific error
-                    throw new Error("API Anahtarı geçersiz veya bulunamadı. Lütfen tekrar seçin.");
-                }
                 try {
                     const errorJson = JSON.parse(resultText);
                     throw new Error(errorJson.error || `HTTP error! status: ${response.status}`);
@@ -286,34 +258,24 @@ const StatementConverter: React.FC = () => {
     // --- Render ---
     return (
         <div>
+            {isApiKeyModalOpen && <ApiKeyModal onClose={() => setIsApiKeyModalOpen(false)} onSave={handleApiKeySave} />}
             <h1 className="text-3xl md:text-4xl font-bold text-white mb-2">Banka Ekstresi Dönüştürücü</h1>
             <p className="text-slate-400 text-lg mb-8">Dosyanızı yükleyin ve yapay zekaya ne yapması gerektiğini söyleyin.</p>
 
             <div className="space-y-8">
                 
-                {!hasApiKey && (
+                {!apiKey && (
                      <Card className="border-l-4 border-amber-500">
-                        <h2 className="text-xl font-bold text-amber-400 mb-2">API Anahtarı Gerekli</h2>
+                        <h2 className="text-xl font-bold text-amber-400 mb-2">Kurulum Gerekli</h2>
                         <p className="text-slate-300 mb-4">
-                            Bu aracı kullanmak için Gemini API anahtarınızı seçmeniz gerekmektedir. Seçim işlemi güvenli bir pencerede gerçekleşir ve anahtarınız bizimle paylaşılmaz.
-                            <a href="https://ai.google.dev/gemini-api/docs/billing" target="_blank" rel="noopener noreferrer" className="text-sky-400 hover:underline ml-2">Faturalandırma hakkında daha fazla bilgi alın.</a>
+                           Bu aracı kullanmak için kendi Gemini API anahtarınızı ayarlamanız gerekmektedir. Bu işlem ücretsizdir ve sadece bir defa yapmanız yeterlidir.
                         </p>
                         <button 
-                            onClick={handleApiKeySelect} 
-                            disabled={isSelectingKey}
-                            className="flex items-center justify-center bg-amber-500 text-white font-bold py-2 px-4 rounded-lg hover:bg-amber-600 transition-colors disabled:bg-amber-700 disabled:cursor-wait"
+                            onClick={() => setIsApiKeyModalOpen(true)} 
+                            className="flex items-center justify-center bg-amber-500 text-white font-bold py-2 px-4 rounded-lg hover:bg-amber-600 transition-colors"
                         >
-                            {isSelectingKey ? (
-                                <>
-                                    <SpinnerIcon />
-                                    <span>Pencere Açılıyor...</span>
-                                </>
-                            ) : (
-                                <>
-                                    <KeyIcon />
-                                    <span>Gemini API Anahtarını Seç</span>
-                                </>
-                            )}
+                            <KeyIcon />
+                            <span>API Anahtarımı Ayarla</span>
                         </button>
                     </Card>
                 )}
@@ -403,7 +365,7 @@ const StatementConverter: React.FC = () => {
 
                 <Card>
                     <h2 className="text-xl font-bold text-white mb-4">3. Dönüştür ve İndir</h2>
-                    <button onClick={handleConvert} className="w-full md:w-auto flex items-center justify-center bg-sky-500 text-white font-bold py-3 px-8 rounded-lg hover:bg-sky-600 transition-colors disabled:bg-slate-600 disabled:cursor-not-allowed" disabled={!uploadedFile || isLoading || !hasApiKey}>
+                    <button onClick={handleConvert} className="w-full md:w-auto flex items-center justify-center bg-sky-500 text-white font-bold py-3 px-8 rounded-lg hover:bg-sky-600 transition-colors disabled:bg-slate-600 disabled:cursor-not-allowed" disabled={!uploadedFile || isLoading || !apiKey}>
                         {isLoading ? (<><SpinnerIcon /> Dönüştürülüyor...</>) : ('Dönüştür')}
                     </button>
                 </Card>

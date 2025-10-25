@@ -16,17 +16,14 @@ const upload = multer({ storage: multer.memoryStorage() });
 
 // --- API Endpoint ---
 app.post('/api/convert', upload.single('file'), async (req, res) => {
-    // CRITICAL FIX: Initialize Gemini AI on-demand for each request.
-    // This prevents the server from crashing on startup if the API key isn't immediately available.
-    // The API_KEY is injected into the environment by Vercel/AI Studio only after the user selects it.
-    if (!process.env.API_KEY) {
-        console.error("API_KEY environment variable not set at the time of request.");
-        // Use status 401 to indicate an authentication/authorization issue.
-        return res.status(401).json({ error: 'Sunucuda API anahtarı bulunamadı. Lütfen tekrar seçmeyi deneyin.' });
-    }
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    
     try {
+        const userApiKey = req.body.apiKey;
+        if (!userApiKey) {
+            return res.status(401).json({ error: 'Gemini API anahtarı istekte bulunamadı.' });
+        }
+
+        const ai = new GoogleGenAI({ apiKey: userApiKey });
+    
         if (!req.file) {
             return res.status(400).json({ error: 'Dosya yüklenmedi.' });
         }
@@ -89,6 +86,10 @@ app.post('/api/convert', upload.single('file'), async (req, res) => {
 
     } catch (error) {
         console.error('API Hatası:', error);
+        // Provide a more specific error if it's an API key issue
+        if (error.message && (error.message.includes('API key not valid') || error.message.includes('API_KEY_INVALID'))) {
+             return res.status(401).json({ error: 'Geçersiz Gemini API anahtarı. Lütfen kontrol edip tekrar deneyin.' });
+        }
         res.status(500).json({ error: 'Dönüştürme sırasında sunucuda bir hata oluştu.' });
     }
 });
