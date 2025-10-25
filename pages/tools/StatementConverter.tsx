@@ -13,7 +13,7 @@ const UploadIcon = () => (
 );
 const FileIcon = () => (
     <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 text-sky-500 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2-2z" />
     </svg>
 );
 const SpinnerIcon = () => (
@@ -62,6 +62,7 @@ const StatementConverter: React.FC = () => {
     const [parsedResult, setParsedResult] = useState<string[][] | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [hasApiKey, setHasApiKey] = useState(false);
+    const [isSelectingKey, setIsSelectingKey] = useState(false);
     const [userTemplates, setUserTemplates] = useState<UserTemplate[]>([]);
 
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -160,9 +161,18 @@ const StatementConverter: React.FC = () => {
     // --- Handlers ---
     const handleApiKeySelect = async () => {
         if (window.aistudio && typeof window.aistudio.openSelectKey === 'function') {
-            await window.aistudio.openSelectKey();
-            // Assume success and update state to unblock UI immediately
-            setHasApiKey(true);
+            setIsSelectingKey(true);
+            try {
+                await window.aistudio.openSelectKey();
+                // After the dialog closes, re-verify if a key was actually selected.
+                const keyStatus = await window.aistudio.hasSelectedApiKey();
+                setHasApiKey(keyStatus);
+            } catch (err) {
+                console.error("API key selection error:", err);
+                setError("API anahtarı seçimi sırasında bir hata oluştu.");
+            } finally {
+                setIsSelectingKey(false);
+            }
         }
     };
 
@@ -280,8 +290,22 @@ const StatementConverter: React.FC = () => {
                             Bu aracı kullanmak için Gemini API anahtarınızı seçmeniz gerekmektedir. Seçim işlemi güvenli bir pencerede gerçekleşir ve anahtarınız bizimle paylaşılmaz.
                             <a href="https://ai.google.dev/gemini-api/docs/billing" target="_blank" rel="noopener noreferrer" className="text-sky-400 hover:underline ml-2">Faturalandırma hakkında daha fazla bilgi alın.</a>
                         </p>
-                        <button onClick={handleApiKeySelect} className="flex items-center justify-center bg-amber-500 text-white font-bold py-2 px-4 rounded-lg hover:bg-amber-600 transition-colors">
-                            <KeyIcon /> Gemini API Anahtarını Seç
+                        <button 
+                            onClick={handleApiKeySelect} 
+                            disabled={isSelectingKey}
+                            className="flex items-center justify-center bg-amber-500 text-white font-bold py-2 px-4 rounded-lg hover:bg-amber-600 transition-colors disabled:bg-amber-700 disabled:cursor-wait"
+                        >
+                            {isSelectingKey ? (
+                                <>
+                                    <SpinnerIcon />
+                                    <span>Pencere Açılıyor...</span>
+                                </>
+                            ) : (
+                                <>
+                                    <KeyIcon />
+                                    <span>Gemini API Anahtarını Seç</span>
+                                </>
+                            )}
                         </button>
                     </Card>
                 )}
