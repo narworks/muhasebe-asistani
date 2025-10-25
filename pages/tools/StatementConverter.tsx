@@ -181,41 +181,46 @@ const StatementConverter: React.FC = () => {
     };
 
     // --- API Call & Conversion ---
-    const callGeminiAPI = (file: File, definedRules: Rule[]): Promise<string> => {
-        console.log("Simulating Gemini API call with:", {
-            fileName: file.name,
-            fileSize: file.size,
-            rules: definedRules,
-        });
-
-        return new Promise((resolve) => {
-            setTimeout(() => {
-                const header = definedRules.map(r => r.targetColumn).join(',');
-                const rows = [
-                    `2023-10-26,"ABC LTD STI",150.75`,
-                    `2023-10-25,"XYZ A.S.",-250.00`,
-                    `2023-10-24,"John Doe",5000.00`,
-                ];
-                const resultCSV = `${header}\n${rows.join('\n')}`;
-                resolve(resultCSV);
-            }, 2000);
-        });
-    };
-
     const handleConvert = async () => {
-        if (!uploadedFile) return setError("Lütfen önce bir dosya yükleyin.");
+        if (!uploadedFile) {
+            setError("Lütfen önce bir dosya yükleyin.");
+            return;
+        }
         const validRules = rules.filter(r => r.sourceColumn.trim() && r.targetColumn.trim());
-        if (validRules.length === 0) return setError("Lütfen en az bir geçerli kural tanımlayın.");
+        if (validRules.length === 0) {
+            setError("Lütfen en az bir geçerli kural tanımlayın.");
+            return;
+        }
 
         setIsLoading(true);
         setConversionResult(null);
         setError(null);
+        
+        const formData = new FormData();
+        formData.append('file', uploadedFile);
+        formData.append('rules', JSON.stringify(validRules));
 
         try {
-            const result = await callGeminiAPI(uploadedFile, validRules);
-            setConversionResult(result);
-        } catch (err) {
-            setError("Dönüştürme sırasında bir hata oluştu.");
+            const response = await fetch('/api/convert', {
+                method: 'POST',
+                body: formData,
+            });
+
+            const resultText = await response.text();
+
+            if (!response.ok) {
+                // Try to parse error from backend
+                try {
+                    const errorJson = JSON.parse(resultText);
+                    throw new Error(errorJson.error || `HTTP error! status: ${response.status}`);
+                } catch {
+                     throw new Error(`HTTP error! status: ${response.status}`);
+                }
+            }
+            
+            setConversionResult(resultText);
+        } catch (err: any) {
+            setError(err.message || "Dönüştürme sırasında bir hata oluştu.");
         } finally {
             setIsLoading(false);
         }
