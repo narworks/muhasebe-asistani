@@ -1,5 +1,5 @@
 
-import React, 'react';
+import React from 'react';
 import Card from '../../components/ui/Card';
 
 const STATS_KEY = 'toolUsageStats';
