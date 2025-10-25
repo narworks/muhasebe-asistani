@@ -216,19 +216,29 @@ const StatementConverter: React.FC = () => {
 
         try {
             const response = await fetch('/api/convert', { method: 'POST', body: formData });
-            const resultText = await response.text();
-
+            
             if (!response.ok) {
-                 if (response.status === 404 && resultText.includes("Requested entity was not found")) {
+                const resultText = await response.text();
+                 if (response.status === 401) { // Unauthorized: API Key missing on server
+                    setHasApiKey(false); // Reset API key status to re-prompt the user
+                    try {
+                       const errorJson = JSON.parse(resultText);
+                       throw new Error(errorJson.error || "Sunucuda API anahtarı bulunamadı. Lütfen tekrar seçin.");
+                    } catch {
+                       throw new Error("Sunucuda API anahtarı bulunamadı. Lütfen tekrar seçin.");
+                    }
+                }
+                if (response.status === 404 && resultText.includes("Requested entity was not found")) {
                     setHasApiKey(false); // Reset API key status on this specific error
                     throw new Error("API Anahtarı geçersiz veya bulunamadı. Lütfen tekrar seçin.");
                 }
                 try {
                     const errorJson = JSON.parse(resultText);
                     throw new Error(errorJson.error || `HTTP error! status: ${response.status}`);
-                } catch { throw new Error(`HTTP error! status: ${response.status}`); }
+                } catch { throw new Error(resultText || `HTTP error! status: ${response.status}`); }
             }
             
+            const resultText = await response.text();
             setConversionResult(resultText);
             // Increment stats on success
             const stats = JSON.parse(localStorage.getItem(STATS_KEY) || '{}');

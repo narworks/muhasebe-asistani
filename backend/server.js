@@ -14,15 +14,18 @@ app.use(cors());
 app.use(express.json());
 const upload = multer({ storage: multer.memoryStorage() });
 
-// --- Gemini AI Setup ---
-// API anahtarının .env dosyasından yüklendiğinden emin ol
-if (!process.env.API_KEY) {
-    throw new Error("API_KEY environment variable not set.");
-}
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-
 // --- API Endpoint ---
 app.post('/api/convert', upload.single('file'), async (req, res) => {
+    // CRITICAL FIX: Initialize Gemini AI on-demand for each request.
+    // This prevents the server from crashing on startup if the API key isn't immediately available.
+    // The API_KEY is injected into the environment by Vercel/AI Studio only after the user selects it.
+    if (!process.env.API_KEY) {
+        console.error("API_KEY environment variable not set at the time of request.");
+        // Use status 401 to indicate an authentication/authorization issue.
+        return res.status(401).json({ error: 'Sunucuda API anahtarı bulunamadı. Lütfen tekrar seçmeyi deneyin.' });
+    }
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    
     try {
         if (!req.file) {
             return res.status(400).json({ error: 'Dosya yüklenmedi.' });
@@ -35,7 +38,7 @@ app.post('/api/convert', upload.single('file'), async (req, res) => {
         const fileBuffer = req.file.buffer;
         let fileContent = '';
 
-        // 1. Dosya içeriğini MIME türüne göre ayrıştır
+        // 1. Parse file content based on MIME type
         if (req.file.mimetype === 'application/pdf') {
             const data = await pdf(fileBuffer);
             fileContent = data.text;
@@ -50,7 +53,7 @@ app.post('/api/convert', upload.single('file'), async (req, res) => {
              return res.status(400).json({ error: 'Desteklenmeyen dosya formatı.' });
         }
         
-        // 2. Gemini için "akıllı prompt" oluştur
+        // 2. Create a smart prompt for Gemini
         const prompt = `
             Sen bir veri dönüştürme uzmanı yapay zekasın. Sana verilen bir dosya içeriğini ve kullanıcı isteğini analiz ederek, istenen dönüşümü gerçekleştirmeli ve sonucu CSV formatında sunmalısın.
 
@@ -73,14 +76,14 @@ app.post('/api/convert', upload.single('file'), async (req, res) => {
         `;
 
 
-        // 3. Gemini API'sini çağır
+        // 3. Call the Gemini API
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
             contents: [{ parts: [{ text: prompt }] }],
         });
 
         const resultText = response.text;
-        // Sonucu düz metin (CSV) olarak gönder
+        // Send the result as plain text (CSV)
         res.setHeader('Content-Type', 'text/plain');
         res.status(200).send(resultText);
 
@@ -90,6 +93,6 @@ app.post('/api/convert', upload.single('file'), async (req, res) => {
     }
 });
 
-// Vercel'in sunucuyu yönetmesi için bu satırı dışa aktarıyoruz.
-// Yerel geliştirme için app.listen() kullanılır.
+// For Vercel to manage the server, we export the app.
+// For local development, app.listen() would be used.
 module.exports = app;
