@@ -43,8 +43,9 @@ interface AuthProviderProps {
   children: ReactNode;
 }
 
-// Key for our mock user database in localStorage
+// Keys for our mock user database and session in localStorage
 const MOCK_USER_DB_KEY = 'mockUserDatabase';
+const CURRENT_USER_KEY = 'currentUser';
 
 
 export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
@@ -53,42 +54,54 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   // const auth = getAuth(firebaseApp);
 
+  // Restore session from localStorage on initial load
   useEffect(() => {
-    // Gerçek Firebase onAuthStateChanged listener
-    // const unsubscribe = onAuthStateChanged(auth, user => {
-    //   setCurrentUser(user);
-    //   setLoading(false);
-    // });
-    // return unsubscribe;
-
-    // Placeholder: 1 saniye sonra sahte bir kullanıcı ile giriş yapılmış gibi davran
-    setTimeout(() => {
-        // Test için başlangıçta kullanıcı olmasın.
-        // setCurrentUser({ uid: '123', email: 'test@example.com', displayName: 'Test User' });
+    try {
+      const savedUser = localStorage.getItem(CURRENT_USER_KEY);
+      if (savedUser) {
+        setCurrentUser(JSON.parse(savedUser));
+      }
+    } catch (error) {
+        console.error("Failed to parse user from localStorage", error);
+        localStorage.removeItem(CURRENT_USER_KEY);
+    } finally {
         setLoading(false);
-    }, 1000);
+    }
   }, []);
+
+  const setUserAndPersist = (user: User | null) => {
+    setCurrentUser(user);
+    if (user) {
+        localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(user));
+    } else {
+        localStorage.removeItem(CURRENT_USER_KEY);
+    }
+  };
+
 
   const loginWithGoogle = async () => {
     // const provider = new GoogleAuthProvider();
     // await signInWithPopup(auth, provider);
     console.log('Logging in with Google...');
-    setCurrentUser({ uid: 'google-user-123', email: 'google@example.com', displayName: 'Google User' });
+    const user = { uid: 'google-user-123', email: 'google@example.com', displayName: 'Google User' };
+    setUserAndPersist(user);
   };
 
   const loginWithEmail = async (email: string, password: string) => {
     console.log('Logging in with email...');
     // Retrieve our mock database from localStorage
     const db = JSON.parse(localStorage.getItem(MOCK_USER_DB_KEY) || '{}');
-    const userData = db[email];
+    const normalizedEmail = email.toLowerCase();
+    const userData = db[normalizedEmail];
 
     if (userData) {
       // User found, log them in with the saved displayName
-      setCurrentUser({ 
+      const user = { 
         uid: `email-user-${Math.random().toString(36).substring(7)}`, 
         email: email, 
         displayName: userData.displayName 
-      });
+      };
+      setUserAndPersist(user);
     } else {
       // User not found in our mock db, simulate an error
       throw new Error("Kullanıcı bulunamadı veya şifre yanlış.");
@@ -99,23 +112,25 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     console.log('Registering with email...');
     // Retrieve our mock database
     const db = JSON.parse(localStorage.getItem(MOCK_USER_DB_KEY) || '{}');
+    const normalizedEmail = email.toLowerCase();
     
     // Add new user to the mock database
-    db[email] = { displayName };
+    db[normalizedEmail] = { displayName };
     localStorage.setItem(MOCK_USER_DB_KEY, JSON.stringify(db));
     
     // Set the current user upon successful registration
-    setCurrentUser({ 
+    const newUser = { 
       uid: `email-user-${Math.random().toString(36).substring(7)}`, 
       email: email, 
       displayName: displayName 
-    });
+    };
+    setUserAndPersist(newUser);
   };
 
   const logout = async () => {
     // await signOut(auth);
     console.log('Logging out...');
-    setCurrentUser(null);
+    setUserAndPersist(null);
   };
 
   const value = {
