@@ -1,6 +1,6 @@
 import React, { useState, useRef, DragEvent, useEffect, ReactNode } from 'react';
+import { useAuth } from '../../context/AuthContext';
 import Card from '../../components/ui/Card';
-import ApiKeyModal from '../../components/ApiKeyModal';
 
 // Make sheetjs library available globally from the script tag
 declare const XLSX: any;
@@ -28,7 +28,7 @@ const KeyIcon = () => (
     </svg>
 );
 const TrashIcon = () => (
-     <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
     </svg>
 );
@@ -38,7 +38,7 @@ const DownloadIcon = () => (
     </svg>
 );
 
-const ACCEPTED_FILE_TYPES = [ 'application/pdf', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'text/plain' ];
+const ACCEPTED_FILE_TYPES = ['application/pdf', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'text/plain'];
 const PREDEFINED_TEMPLATES = [
     { title: "Basit Tarih, Açıklama, Tutar", prompt: "Dosyadaki tarih, işlem açıklaması ve tutar sütunlarını bularak CSV formatına dönüştür." },
     { title: "Borç/Alacak Ayrı Sütun", prompt: "Tarih, Açıklama, Borç ve Alacak sütunları oluştur. Gelen para alacak, giden para borç sütununa yazılsın." },
@@ -46,7 +46,6 @@ const PREDEFINED_TEMPLATES = [
 ];
 const USER_TEMPLATES_KEY = 'userStatementTemplates';
 const STATS_KEY = 'toolUsageStats';
-const API_KEY_STORAGE_KEY = 'geminiApiKey';
 
 interface UserTemplate { id: number; title: string; prompt: string; }
 
@@ -60,20 +59,15 @@ const StatementConverter: React.FC = () => {
     const [conversionResult, setConversionResult] = useState<string | null>(null);
     const [parsedResult, setParsedResult] = useState<string[][] | null>(null);
     const [error, setError] = useState<string | null>(null);
-    const [apiKey, setApiKey] = useState<string | null>(null);
-    const [isApiKeyModalOpen, setIsApiKeyModalOpen] = useState(false);
+    const [credits, setCredits] = useState<number | null>(null);
     const [userTemplates, setUserTemplates] = useState<UserTemplate[]>([]);
+
+    const { currentUser } = useAuth();
 
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     // --- Effects ---
     useEffect(() => {
-        // Check for API Key in localStorage on component mount
-        const savedApiKey = localStorage.getItem(API_KEY_STORAGE_KEY);
-        if (savedApiKey) {
-            setApiKey(savedApiKey);
-        }
-
         // Load user templates from localStorage
         const savedTemplates = localStorage.getItem(USER_TEMPLATES_KEY);
         if (savedTemplates) {
@@ -82,11 +76,26 @@ const StatementConverter: React.FC = () => {
     }, []);
 
     useEffect(() => {
-        if (!uploadedFile) { 
-            setPreviewContent(null); 
-            return; 
+        const fetchCredits = async () => {
+            if (currentUser?.uid) {
+                try {
+                    const res = await fetch(`http://localhost:3001/api/credits/${currentUser.uid}`);
+                    const data = await res.json();
+                    setCredits(data.balance);
+                } catch (err) {
+                    console.error("Kredi bilgisi alınamadı", err);
+                }
+            }
+        };
+        fetchCredits();
+    }, [currentUser]);
+
+    useEffect(() => {
+        if (!uploadedFile) {
+            setPreviewContent(null);
+            return;
         }
-        
+
         const reader = new FileReader();
 
         const generatePreview = (file: File) => {
@@ -97,7 +106,7 @@ const StatementConverter: React.FC = () => {
                     const sheetName = workbook.SheetNames[0];
                     const worksheet = workbook.Sheets[sheetName];
                     const json: string[][] = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
-                    
+
                     const previewTable = (
                         <div className="overflow-x-auto max-h-60 bg-slate-900/50 rounded-lg">
                             <table className="w-full text-xs text-left text-slate-400">
@@ -129,16 +138,16 @@ const StatementConverter: React.FC = () => {
                 };
                 reader.readAsText(file);
             } else {
-                 setPreviewContent(
+                setPreviewContent(
                     <p className="text-slate-400">Bu dosya türü için önizleme desteklenmiyor.</p>
-                 )
+                )
             }
         };
 
         generatePreview(uploadedFile);
     }, [uploadedFile]);
 
-     useEffect(() => {
+    useEffect(() => {
         if (conversionResult) {
             try {
                 const rows = conversionResult.trim().split('\n');
@@ -154,21 +163,16 @@ const StatementConverter: React.FC = () => {
     }, [conversionResult]);
 
     // --- Handlers ---
-    const handleApiKeySave = (newApiKey: string) => {
-        localStorage.setItem(API_KEY_STORAGE_KEY, newApiKey);
-        setApiKey(newApiKey);
-        setIsApiKeyModalOpen(false);
-    };
 
     const handleFileChange = (files: FileList | null) => {
         if (!files || files.length === 0) {
             return;
         }
         const file = files[0];
-        
+
         if (!ACCEPTED_FILE_TYPES.includes(file.type) && !file.name.endsWith('.txt') && !file.name.endsWith('.xlsx')) {
-             setError(`Desteklenmeyen dosya türü. Lütfen PDF, Excel (.xlsx) veya metin (.txt) dosyası yükleyin.`);
-             return;
+            setError(`Desteklenmeyen dosya türü. Lütfen PDF, Excel (.xlsx) veya metin (.txt) dosyası yükleyin.`);
+            return;
         }
 
         setError(null);
@@ -184,7 +188,8 @@ const StatementConverter: React.FC = () => {
     const handleRemoveFile = () => { setUploadedFile(null); setConversionResult(null); setParsedResult(null); setError(null); };
 
     const handleConvert = async () => {
-        if (!apiKey) { setError("Lütfen devam etmek için Gemini API anahtarınızı ayarlayın."); return; }
+        if (!currentUser) { setError("İşlem yapmak için giriş yapmalısınız."); return; }
+        if (credits !== null && credits < 1) { setError("Yetersiz kredi. Lütfen kredi yükleyin."); return; }
         if (!uploadedFile) { setError("Lütfen önce bir dosya yükleyin."); return; }
         if (userPrompt.trim().length === 0) { setError("Lütfen ne yapmak istediğinizi açıklayan bir komut girin."); return; }
 
@@ -192,15 +197,15 @@ const StatementConverter: React.FC = () => {
         setConversionResult(null);
         setParsedResult(null);
         setError(null);
-        
+
         const formData = new FormData();
         formData.append('file', uploadedFile);
         formData.append('prompt', userPrompt);
-        formData.append('apiKey', apiKey); // Send the API key with the request
+        formData.append('userId', currentUser.uid);
 
         try {
             const response = await fetch('/api/convert', { method: 'POST', body: formData });
-            
+
             if (!response.ok) {
                 const resultText = await response.text();
                 try {
@@ -208,9 +213,17 @@ const StatementConverter: React.FC = () => {
                     throw new Error(errorJson.error || `HTTP error! status: ${response.status}`);
                 } catch { throw new Error(resultText || `HTTP error! status: ${response.status}`); }
             }
-            
+
             const resultText = await response.text();
             setConversionResult(resultText);
+
+            // Refresh credits
+            if (currentUser?.uid) {
+                const res = await fetch(`http://localhost:3001/api/credits/${currentUser.uid}`);
+                const data = await res.json();
+                setCredits(data.balance);
+            }
+
             // Increment stats on success
             const stats = JSON.parse(localStorage.getItem(STATS_KEY) || '{}');
             stats.statementConverter = (stats.statementConverter || 0) + 1;
@@ -222,12 +235,12 @@ const StatementConverter: React.FC = () => {
             setIsLoading(false);
         }
     };
-    
+
     const handleDownload = () => {
         if (!conversionResult) return;
         const blob = new Blob([conversionResult], { type: 'text/csv;charset=utf-8;' });
         const link = document.createElement("a");
-        if (link.download !== undefined) { 
+        if (link.download !== undefined) {
             const url = URL.createObjectURL(blob);
             link.setAttribute("href", url);
             const originalFileName = uploadedFile?.name.split('.').slice(0, -1).join('.') || 'donusum';
@@ -248,7 +261,7 @@ const StatementConverter: React.FC = () => {
             localStorage.setItem(USER_TEMPLATES_KEY, JSON.stringify(updatedTemplates));
         }
     };
-    
+
     const handleDeleteTemplate = (id: number) => {
         const updatedTemplates = userTemplates.filter(t => t.id !== id);
         setUserTemplates(updatedTemplates);
@@ -258,36 +271,34 @@ const StatementConverter: React.FC = () => {
     // --- Render ---
     return (
         <div>
-            {isApiKeyModalOpen && <ApiKeyModal onClose={() => setIsApiKeyModalOpen(false)} onSave={handleApiKeySave} />}
-            <h1 className="text-3xl md:text-4xl font-bold text-white mb-2">Banka Ekstresi Dönüştürücü</h1>
-            <p className="text-slate-400 text-lg mb-8">Dosyanızı yükleyin ve yapay zekaya ne yapması gerektiğini söyleyin.</p>
+            <div className="flex justify-between items-center mb-8">
+                <div>
+                    <h1 className="text-3xl md:text-4xl font-bold text-white mb-2">Banka Ekstresi Dönüştürücü</h1>
+                    <p className="text-slate-400 text-lg">Dosyanızı yükleyin ve yapay zekaya ne yapması gerektiğini söyleyin.</p>
+                </div>
+                <div className="bg-slate-800 p-4 rounded-lg border border-slate-700 flex items-center space-x-4">
+                    <div className="text-right">
+                        <p className="text-xs text-slate-400">Kalan Kredi</p>
+                        <p className={`text-2xl font-bold ${credits !== null && credits > 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                            {credits !== null ? credits : '-'}
+                        </p>
+                    </div>
+                    <button className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold py-2 px-3 rounded transition-colors">
+                        Kredi Yükle
+                    </button>
+                </div>
+            </div>
 
             <div className="space-y-8">
-                
-                {!apiKey && (
-                     <Card className="border-l-4 border-amber-500">
-                        <h2 className="text-xl font-bold text-amber-400 mb-2">Kurulum Gerekli</h2>
-                        <p className="text-slate-300 mb-4">
-                           Bu aracı kullanmak için kendi Gemini API anahtarınızı ayarlamanız gerekmektedir. Bu işlem ücretsizdir ve sadece bir defa yapmanız yeterlidir.
-                        </p>
-                        <button 
-                            onClick={() => setIsApiKeyModalOpen(true)} 
-                            className="flex items-center justify-center bg-amber-500 text-white font-bold py-2 px-4 rounded-lg hover:bg-amber-600 transition-colors"
-                        >
-                            <KeyIcon />
-                            <span>API Anahtarımı Ayarla</span>
-                        </button>
-                    </Card>
-                )}
 
                 <Card>
                     <h2 className="text-xl font-bold text-white mb-4">1. Kaynak Dosyayı Yükle</h2>
                     {error && <div className="bg-red-500/20 text-red-400 p-3 rounded-lg mb-4 text-sm">{error}</div>}
-                    <div 
+                    <div
                         onDragOver={handleDragOver} onDragLeave={handleDragLeave} onDrop={handleDrop}
                         className={`border-2 border-dashed border-slate-600 rounded-lg p-10 text-center transition-colors duration-300 ${isDragging ? 'bg-slate-700 border-sky-500' : 'bg-slate-800/50'}`}
                     >
-                         {uploadedFile ? (
+                        {uploadedFile ? (
                             <div className="text-center">
                                 <FileIcon />
                                 <p className="mt-2 font-semibold text-white">{uploadedFile.name}</p>
@@ -321,7 +332,7 @@ const StatementConverter: React.FC = () => {
                 <Card>
                     <h2 className="text-xl font-bold text-white mb-4">2. Yapılacak İşlemi Tanımla</h2>
                     <p className="text-slate-400 mb-4">Yapay zekanın dosyayla ne yapmasını istediğinizi basit cümlelerle açıklayın veya bir şablon seçin.</p>
-                    
+
                     <div className="mb-4">
                         <h3 className="text-sm font-semibold text-slate-300 mb-2">Hazır Şablonlar</h3>
                         <div className="flex flex-wrap gap-2">
@@ -332,17 +343,17 @@ const StatementConverter: React.FC = () => {
                             ))}
                         </div>
                     </div>
-                     {userTemplates.length > 0 && (
+                    {userTemplates.length > 0 && (
                         <div className="mb-4 pt-3 border-t border-slate-700">
-                             <h3 className="text-sm font-semibold text-slate-300 mb-2">Kaydettiğim Şablonlar</h3>
-                             <div className="flex flex-wrap gap-2">
+                            <h3 className="text-sm font-semibold text-slate-300 mb-2">Kaydettiğim Şablonlar</h3>
+                            <div className="flex flex-wrap gap-2">
                                 {userTemplates.map(template => (
                                     <div key={template.id} className="flex items-center bg-slate-700 rounded-full">
                                         <button onClick={() => setUserPrompt(template.prompt)} className="hover:bg-sky-500 text-xs text-slate-200 font-semibold py-1 px-3 rounded-l-full transition-colors">
                                             {template.title}
                                         </button>
                                         <button onClick={() => handleDeleteTemplate(template.id)} className="px-2 text-slate-400 hover:text-red-400 hover:bg-slate-600 rounded-r-full transition-colors">
-                                            <TrashIcon/>
+                                            <TrashIcon />
                                         </button>
                                     </div>
                                 ))}
@@ -350,14 +361,14 @@ const StatementConverter: React.FC = () => {
                         </div>
                     )}
 
-                    <textarea 
-                        placeholder='Örn: "Tarih, açıklama ve tutar sütunlarını al..."' 
-                        value={userPrompt} 
-                        onChange={(e) => setUserPrompt(e.target.value)} 
-                        className="w-full h-32 bg-slate-700 border border-slate-600 rounded-md px-3 py-2 text-white placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-sky-500 text-sm" 
+                    <textarea
+                        placeholder='Örn: "Tarih, açıklama ve tutar sütunlarını al..."'
+                        value={userPrompt}
+                        onChange={(e) => setUserPrompt(e.target.value)}
+                        className="w-full h-32 bg-slate-700 border border-slate-600 rounded-md px-3 py-2 text-white placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-sky-500 text-sm"
                     />
                     <div className="mt-2 flex justify-end">
-                         <button onClick={handleSaveTemplate} disabled={!userPrompt.trim()} className="text-xs bg-emerald-500/20 text-emerald-300 font-semibold py-1 px-3 rounded-md hover:bg-emerald-500/40 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                        <button onClick={handleSaveTemplate} disabled={!userPrompt.trim()} className="text-xs bg-emerald-500/20 text-emerald-300 font-semibold py-1 px-3 rounded-md hover:bg-emerald-500/40 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
                             Şablon Olarak Kaydet
                         </button>
                     </div>
@@ -365,13 +376,13 @@ const StatementConverter: React.FC = () => {
 
                 <Card>
                     <h2 className="text-xl font-bold text-white mb-4">3. Dönüştür ve İndir</h2>
-                    <button onClick={handleConvert} className="w-full md:w-auto flex items-center justify-center bg-sky-500 text-white font-bold py-3 px-8 rounded-lg hover:bg-sky-600 transition-colors disabled:bg-slate-600 disabled:cursor-not-allowed" disabled={!uploadedFile || isLoading || !apiKey}>
+                    <button onClick={handleConvert} className="w-full md:w-auto flex items-center justify-center bg-sky-500 text-white font-bold py-3 px-8 rounded-lg hover:bg-sky-600 transition-colors disabled:bg-slate-600 disabled:cursor-not-allowed" disabled={!uploadedFile || isLoading || (credits !== null && credits < 1)}>
                         {isLoading ? (<><SpinnerIcon /> Dönüştürülüyor...</>) : ('Dönüştür')}
                     </button>
                 </Card>
 
                 {parsedResult && parsedResult.length > 0 && (
-                     <Card>
+                    <Card>
                         <div className="flex justify-between items-center mb-4">
                             <h2 className="text-xl font-bold text-white">Dönüşüm Sonucu</h2>
                             <button onClick={handleDownload} className="flex items-center bg-emerald-500 text-white font-semibold py-2 px-4 rounded-lg hover:bg-emerald-600 transition-colors text-sm">
@@ -403,7 +414,7 @@ const StatementConverter: React.FC = () => {
                                 </tbody>
                             </table>
                         </div>
-                     </Card>
+                    </Card>
                 )}
             </div>
         </div>
