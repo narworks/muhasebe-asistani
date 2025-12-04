@@ -276,17 +276,6 @@ const StatementConverter: React.FC = () => {
                     <h1 className="text-3xl md:text-4xl font-bold text-white mb-2">Banka Ekstresi Dönüştürücü</h1>
                     <p className="text-slate-400 text-lg">Dosyanızı yükleyin ve yapay zekaya ne yapması gerektiğini söyleyin.</p>
                 </div>
-                <div className="bg-slate-800 p-4 rounded-lg border border-slate-700 flex items-center space-x-4">
-                    <div className="text-right">
-                        <p className="text-xs text-slate-400">Kalan Kredi</p>
-                        <p className={`text-2xl font-bold ${credits !== null && credits > 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                            {credits !== null ? credits : '-'}
-                        </p>
-                    </div>
-                    <button className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold py-2 px-3 rounded transition-colors">
-                        Kredi Yükle
-                    </button>
-                </div>
             </div>
 
             <div className="space-y-8">

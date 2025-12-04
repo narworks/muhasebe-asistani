@@ -20,7 +20,13 @@ Proje, temel MVP (Minimum Viable Product) aşamasını tamamlamış ve genişlem
 ### 3. Arayüz İyileştirmeleri
 *   **Dashboard:** Yeni araç kartları ve "Yakında" (Mock) araçlar eklendi.
 *   **Sidebar:** Menü yapısı güncellendi, yeni ikonlar eklendi.
-*   **İstatistikler:** Kullanım ve kredi istatistikleri sayfası yenilendi.
+*   **İstatistikler:** Kullanım ve kredi istatistikleri sayfası yenilendi, detaylı grafikler eklendi.
+*   **Kredi UI:** Header'a tıklanabilir kredi rozeti ve detaylı abonelik popup'ı (modal) eklendi.
+
+### 4. Yönetici Paneli (Admin Dashboard)
+*   **Erişim:** `/admin` rotası üzerinden erişilebilir.
+*   **Özellikler:** Kullanıcı listeleme, bakiye görüntüleme ve manuel kredi ekleme/düzenleme.
+*   **İstatistikler:** Sistem geneli toplam kullanıcı ve kredi istatistikleri.
 
 ## 🚀 Planlanan Özellikler (Yakında)
 *   **Fiş/Fatura Okuyucu (OCR):** Görüntüden veri ayıklama.

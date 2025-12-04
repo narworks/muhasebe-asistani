@@ -173,6 +173,73 @@ app.post('/api/gib/check', async (req, res) => {
     }
 });
 
+// --- Admin Endpoints ---
+
+// Get all users and credits
+app.get('/api/admin/users', (req, res) => {
+    const credits = getCredits();
+    // Convert object to array: [{ userId: '...', credits: 10, email: '...' }]
+    const userList = Object.entries(credits).map(([userId, data]) => {
+        if (typeof data === 'object') {
+            return { userId, balance: data.balance, email: data.email };
+        }
+        return { userId, balance: data, email: 'N/A' };
+    });
+    res.json(userList);
+});
+
+// Update user credits
+app.post('/api/admin/credits', (req, res) => {
+    const { userId, amount, action } = req.body; // action: 'add' or 'set'
+    if (!userId || amount === undefined) {
+        return res.status(400).json({ error: 'Eksik parametreler.' });
+    }
+
+    const credits = getCredits();
+    let currentBalance = 0;
+
+    if (typeof credits[userId] === 'object') {
+        currentBalance = credits[userId].balance;
+    } else {
+        currentBalance = credits[userId] || 0;
+    }
+
+    let newBalance = currentBalance;
+    if (action === 'set') {
+        newBalance = parseInt(amount);
+    } else {
+        newBalance += parseInt(amount);
+    }
+
+    // Save back with structure preservation
+    if (typeof credits[userId] === 'object') {
+        credits[userId].balance = newBalance;
+    } else {
+        credits[userId] = newBalance;
+    }
+
+    fs.writeFileSync(CREDITS_FILE, JSON.stringify(credits, null, 2));
+    res.json({ success: true, newBalance });
+});
+
+// Get stats
+app.get('/api/admin/stats', (req, res) => {
+    const credits = getCredits();
+    let totalUsers = 0;
+    let totalCredits = 0;
+
+    Object.values(credits).forEach(val => {
+        totalUsers++;
+        if (typeof val === 'object') {
+            totalCredits += val.balance;
+        } else {
+            totalCredits += val;
+        }
+    });
+
+    res.json({ totalUsers, totalCredits });
+});
+
 // Start server if running directly
 if (require.main === module) {
     app.listen(port, () => {
