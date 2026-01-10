@@ -12,9 +12,12 @@ const Navbar: React.FC = () => {
         const fetchCredits = async () => {
             if (currentUser?.uid) {
                 try {
-                    const response = await fetch(`http://localhost:3001/api/credits/${currentUser.uid}`);
-                    const data = await response.json();
-                    setCredits(data.balance);
+                    try {
+                        const data = await window.electronAPI.getCredits(currentUser.uid);
+                        setCredits(data.balance);
+                    } catch (error) {
+                        console.error("Error fetching credits:", error);
+                    }
                 } catch (error) {
                     console.error("Error fetching credits:", error);
                 }

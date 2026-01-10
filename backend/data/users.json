@@ -1,0 +1,11 @@
+[
+  {
+    "email": "demo@test.com",
+    "password": "123456",
+    "plan": "freelance",
+    "credits": 1000,
+    "subscriptionStatus": "active",
+    "expiresAt": "2025-12-01T00:00:00Z",
+    "billingUrl": "https://billing.muhasebeasistani.com"
+  }
+]

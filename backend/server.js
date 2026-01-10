@@ -7,8 +7,14 @@ const pdf = require('pdf-parse');
 const xlsx = require('xlsx');
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 
 const CREDITS_FILE = path.join(__dirname, 'data', 'credits.json');
+const USERS_FILE = path.join(__dirname, 'data', 'users.json');
+const BILLING_URL = process.env.BILLING_URL || 'https://billing.muhasebeasistani.com';
+const LEGACY_API_ENABLED = process.env.ENABLE_LEGACY_API === 'true';
+
+const tokens = new Map();
 
 // Helper to get credits
 const getCredits = () => {
@@ -30,6 +36,35 @@ const updateCredits = (userId, amount) => {
     return credits[userId];
 };
 
+const getUsers = () => {
+    try {
+        if (!fs.existsSync(USERS_FILE)) return [];
+        const data = fs.readFileSync(USERS_FILE, 'utf8');
+        return JSON.parse(data);
+    } catch (error) {
+        console.error('Error reading users:', error);
+        return [];
+    }
+};
+
+const saveUsers = (users) => {
+    fs.writeFileSync(USERS_FILE, JSON.stringify(users, null, 2));
+};
+
+const hashPassword = (password) => crypto.createHash('sha256').update(password).digest('hex');
+
+const findUserByEmail = (email) => {
+    const users = getUsers();
+    return users.find((user) => user.email === email) || null;
+};
+
+const verifyPassword = (user, password) => {
+    if (user.passwordHash) {
+        return user.passwordHash === hashPassword(password);
+    }
+    return user.password === password;
+};
+
 const app = express();
 const port = 3001;
 
@@ -38,7 +73,62 @@ app.use(cors());
 app.use(express.json());
 const upload = multer({ storage: multer.memoryStorage() });
 
-// --- API Endpoint ---
+// --- License Endpoints (Web Only) ---
+app.post('/login', (req, res) => {
+    const { email, password, deviceId, appVersion } = req.body;
+    if (!email || !password) {
+        return res.status(400).json({ error: 'Eksik giriş bilgileri.' });
+    }
+
+    const user = findUserByEmail(email);
+    if (!user || !verifyPassword(user, password)) {
+        return res.status(401).json({ error: 'Geçersiz kullanıcı adı veya şifre.' });
+    }
+
+    const token = crypto.randomUUID();
+    tokens.set(token, { email, deviceId, issuedAt: Date.now() });
+
+    res.json({
+        token,
+        subscriptionStatus: user.subscriptionStatus || 'inactive',
+        plan: user.plan || 'freelance',
+        credits: user.credits ?? 0,
+        expiresAt: user.expiresAt || null,
+        billingUrl: user.billingUrl || BILLING_URL
+    });
+});
+
+app.post('/license/check', (req, res) => {
+    const authHeader = req.headers.authorization || '';
+    const token = authHeader.replace('Bearer ', '').trim();
+    if (!tokens.has(token)) {
+        return res.status(401).json({ error: 'Geçersiz oturum.' });
+    }
+
+    const session = tokens.get(token);
+    const user = findUserByEmail(session.email);
+    if (!user) {
+        return res.status(404).json({ error: 'Kullanıcı bulunamadı.' });
+    }
+
+    const pendingUsage = Number(req.body.pendingUsage || 0);
+    if (pendingUsage > 0) {
+        user.credits = Math.max(0, (user.credits || 0) - pendingUsage);
+        const users = getUsers().map((item) => (item.email === user.email ? user : item));
+        saveUsers(users);
+    }
+
+    res.json({
+        subscriptionStatus: user.subscriptionStatus || 'inactive',
+        credits: user.credits ?? 0,
+        expiresAt: user.expiresAt || null,
+        nextCheckAt: new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString(),
+        billingUrl: user.billingUrl || BILLING_URL
+    });
+});
+
+// --- Legacy API Endpoint ---
+if (LEGACY_API_ENABLED) {
 app.post('/api/convert', upload.single('file'), async (req, res) => {
     try {
         const userId = req.body.userId;
@@ -239,6 +329,7 @@ app.get('/api/admin/stats', (req, res) => {
 
     res.json({ totalUsers, totalCredits });
 });
+}
 
 // Start server if running directly
 if (require.main === module) {

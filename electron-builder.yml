@@ -1,0 +1,32 @@
+appId: com.narworks.muhasebeasistani
+productName: "Muhasebe Asistanı"
+directories:
+  output: release
+  buildResources: build
+files:
+  - filter: ["**/*", "!src/*", "!vite.config.*", "!index.html"] # Basic filtering
+  - from: dist
+    to: dist
+    filter: ["**/*"]
+  - from: main
+    to: main
+    filter: ["**/*"]
+  - package.json
+  # node_modules are automatically included by electron-builder (production deps only)
+
+# Native module handling (important for better-sqlite3)
+asarUnpack:
+  - "**/*.node"
+
+mac:
+  target: dmg
+  hardenedRuntime: true
+  entitlements: build/entitlements.mac.plist # If needed later for signing
+  entitlementsInherit: build/entitlements.mac.plist
+
+win:
+  target: nsis
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true

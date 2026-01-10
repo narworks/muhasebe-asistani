@@ -11,6 +11,14 @@ interface CreditModalProps {
 const CreditModal: React.FC<CreditModalProps> = ({ isOpen, onClose, currentCredits, currentUserEmail }) => {
     if (!isOpen) return null;
 
+    const openBilling = async (packageId?: string) => {
+        try {
+            await window.electronAPI.openBillingPortal(packageId);
+        } catch (error) {
+            console.error('Billing portal could not be opened', error);
+        }
+    };
+
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
             <div className="bg-slate-900 border border-slate-700 rounded-xl shadow-2xl w-full max-w-md relative overflow-hidden">
@@ -49,7 +57,10 @@ const CreditModal: React.FC<CreditModalProps> = ({ isOpen, onClose, currentCredi
                     <div>
                         <h3 className="text-sm font-bold text-white mb-3 uppercase tracking-wider">Kredi Yükle / Paket Yükselt</h3>
                         <div className="space-y-3">
-                            <button className="w-full flex justify-between items-center bg-slate-800 hover:bg-slate-700 border border-slate-600 hover:border-sky-500 p-3 rounded-lg transition-all group">
+                            <button
+                                className="w-full flex justify-between items-center bg-slate-800 hover:bg-slate-700 border border-slate-600 hover:border-sky-500 p-3 rounded-lg transition-all group"
+                                onClick={() => openBilling('topup-100')}
+                            >
                                 <div className="text-left">
                                     <p className="text-white font-bold group-hover:text-sky-400 transition-colors">100 Kredi Ekle</p>
                                     <p className="text-xs text-slate-400">Tek seferlik alım</p>
@@ -57,7 +68,10 @@ const CreditModal: React.FC<CreditModalProps> = ({ isOpen, onClose, currentCredi
                                 <span className="bg-slate-700 text-white text-sm font-bold px-3 py-1 rounded group-hover:bg-sky-500 transition-colors">150 TL</span>
                             </button>
 
-                            <button className="w-full flex justify-between items-center bg-slate-800 hover:bg-slate-700 border border-slate-600 hover:border-sky-500 p-3 rounded-lg transition-all group">
+                            <button
+                                className="w-full flex justify-between items-center bg-slate-800 hover:bg-slate-700 border border-slate-600 hover:border-sky-500 p-3 rounded-lg transition-all group"
+                                onClick={() => openBilling('plan-professional')}
+                            >
                                 <div className="text-left">
                                     <p className="text-white font-bold group-hover:text-sky-400 transition-colors">Profesyonel Paket'e Geç</p>
                                     <p className="text-xs text-slate-400">Aylık 500 Kredi</p>

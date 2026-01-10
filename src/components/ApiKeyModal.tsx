@@ -58,7 +58,7 @@ const ApiKeyModal: React.FC<ApiKeyModalProps> = ({ onClose, onSave }) => {
           <div>
             <h3 className="text-lg font-semibold text-sky-400 mb-2">Adım 3: Anahtarı Buraya Yapıştırın</h3>
             <p className="text-slate-300 mb-4">
-              Kopyaladığınız API anahtarını aşağıdaki alana yapıştırın. Bu anahtar sadece sizin tarayıcınızda saklanacaktır.
+              Kopyaladığınız API anahtarını aşağıdaki alana yapıştırın. Bu anahtar sadece sizin bilgisayarınızda güvenli şekilde saklanacaktır.
             </p>
             {error && <p className="text-red-400 text-sm mb-2">{error}</p>}
             <Input 

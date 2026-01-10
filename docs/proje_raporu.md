@@ -3,44 +3,46 @@
 **Son Güncelleme:** 05.12.2025
 
 ## 📋 Proje Durumu
-Proje, temel MVP (Minimum Viable Product) aşamasını tamamlamış ve genişleme evresine geçmiştir. Kredi sistemi entegre edilmiş, E-Tebligat özelliği eklenmiş ve gelecek özellikler için altyapı hazırlanmıştır.
+Proje büyük bir mimari değişikliğe uğrayarak **Cloud SaaS** modelinden **Hibrit Electron.js Masaüstü** uygulamasına evrilmiştir. Bu değişiklik, veri güvenliği (Zero-Knowledge) ve yerel çalışma performansı için yapılmıştır.
 
 ## ✅ Tamamlanan Özellikler
 
-### 1. Kredi Sistemi
-*   **Altyapı:** Kullanıcı bazlı kredi takibi (`credits.json`).
-*   **Entegrasyon:** Ekstre Dönüştürücü aracı artık kredi düşerek çalışıyor.
-*   **UI:** Kullanıcı bakiyesi arayüzde görüntüleniyor.
+### 1. Mimari Dönüşüm (Electron.js)
+*   **Masaüstü Uygulaması:** Web tabanlı yapı Electron ile masaüstüne taşındı.
+*   **Yerel Veritabanı:** `better-sqlite3` ile veriler kullanıcının cihazında saklanıyor.
+*   **Güvenlik:** `safeStorage` (Electron API) ile Mükellef şifreleri yerel olarak şifreleniyor.
+*   **SaaS Lisanslama:** Bulut ile sadece lisans kontrolü için haberleşiliyor.
 
-### 2. E-Tebligat Kontrol
-*   **Otomasyon:** GİB E-Tebligat sistemine otomatik giriş ve sorgulama.
-*   **Yapay Zeka:** Captcha çözümü için Google Gemini Vision entegrasyonu.
-*   **UI:** Sorgulama sonuçları tablo halinde listeleniyor.
+### 2. Kredi Sistemi
+*   **Altyapı:** Kullanıcı bazlı kredi takibi yerel ve bulut senkronizasyonu ile çalışıyor.
+*   **Entegrasyon:** Ekstre Dönüştürücü aracı kredi kontrolü ile çalışıyor.
 
-### 3. Arayüz İyileştirmeleri
-*   **Dashboard:** Yeni araç kartları ve "Yakında" (Mock) araçlar eklendi.
-*   **Sidebar:** Menü yapısı güncellendi, yeni ikonlar eklendi.
-*   **İstatistikler:** Kullanım ve kredi istatistikleri sayfası yenilendi, detaylı grafikler eklendi.
-*   **Kredi UI:** Header'a tıklanabilir kredi rozeti ve detaylı abonelik popup'ı (modal) eklendi.
+### 3. E-Tebligat Otomasyonu
+*   **Yerel Bot:** GİB sorgulamaları artık sunucuda değil, kullanıcının bilgisayarında (yerel IP) çalışıyor.
+*   **Görsel Arayüz:** Otomatik tarama loglarını gösteren yeni arayüz eklendi.
+*   **Yapay Zeka:** Captcha çözümü Gemini API ile devam ediyor.
 
-### 4. Yönetici Paneli (Admin Dashboard)
-*   **Erişim:** `/admin` rotası üzerinden erişilebilir.
-*   **Özellikler:** Kullanıcı listeleme, bakiye görüntüleme ve manuel kredi ekleme/düzenleme.
-*   **İstatistikler:** Sistem geneli toplam kullanıcı ve kredi istatistikleri.
+### 4. Ekstre Dönüştürücü
+*   **IPC Entegrasyonu:** React arayüzü, dosya işleme için Electron Main Process ile güvenli iletişim kuruyor.
+*   **AI Desteği:** Banka ekstreleri Gemini ile analiz edilip CSV'ye dönüştürülüyor.
+
+### 5. Arayüz İyileştirmeleri
+*   **Login Yönlendirmesi:** Kayıt işlemleri web sitesine yönlendiriliyor.
+*   **Yönetici Paneli:** Masaüstü versiyonunda devre dışı bırakıldı (Web'den yönetilecek).
 
 ## 🚀 Planlanan Özellikler (Yakında)
 *   **Fiş/Fatura Okuyucu (OCR):** Görüntüden veri ayıklama.
 *   **SGK Borç Sorgulama:** İşveren borç takibi.
 *   **Vergi Asistanı:** Hesaplama ve mevzuat botu.
-*   **Ödeme Sistemi:** Iyzico/PayTR entegrasyonu ile kredi satın alma.
+*   **Otomatik Güncelleme:** `electron-updater` ile uzaktan güncelleme.
 
 ## 💰 İş Modeli
 *   **Abonelik:** Aylık yenilenen paketler (Freelance, Büro, Kurumsal).
-*   **Fiyatlandırma:** 299 TL'den başlayan fiyatlar.
-*   **Detaylar:** `docs/is_modeli_raporu.md` dosyasında mevcuttur.
+*   **Veri Gizliliği:** "Veri Sende, Lisans Bulutta" prensibi.
 
 ## 🛠️ Teknik Notlar
-*   **Backend:** Node.js, Express
-*   **Frontend:** React, Tailwind CSS
-*   **AI:** Google Gemini 2.0 Flash
-*   **Veritabanı:** Şu an JSON tabanlı, ileride PostgreSQL'e geçilecek.
+*   **Framework:** Electron.js + React + Vite
+*   **Backend:** Node.js (Electron Main Process)
+*   **Veritabanı:** SQLite (Yerel), JSON (SaaS Mock)
+*   **AI:** Google Gemini 1.5 Flash
+*   **Bot:** Puppeteer / Axios
