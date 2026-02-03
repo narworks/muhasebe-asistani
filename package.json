@@ -1,7 +1,7 @@
 {
   "name": "muhasebeci-arac-kutusu",
   "private": true,
-  "version": "0.0.0",
+  "version": "0.1.0-alpha",
   "main": "main/main.js",
   "author": "NarWorks",
   "description": "Mali Müşavir Otomasyonu",

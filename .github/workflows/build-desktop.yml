@@ -12,6 +12,8 @@ jobs:
   build:
     name: Build ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
+    permissions:
+      contents: write
 
     strategy:
       matrix:
@@ -40,14 +42,14 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: windows-installer
-          path: dist/*.exe
+          path: release/*.exe
 
       - name: Upload macOS artifacts
         if: matrix.os == 'macos-latest'
         uses: actions/upload-artifact@v4
         with:
           name: macos-installer
-          path: dist/*.dmg
+          path: release/*.dmg
 
       - name: Upload Linux artifacts
         if: matrix.os == 'ubuntu-latest'
@@ -55,14 +57,16 @@ jobs:
         with:
           name: linux-installer
           path: |
-            dist/*.AppImage
-            dist/*.deb
+            release/*.AppImage
+            release/*.deb
 
   release:
     name: Create Release
     needs: build
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
 
     steps:
       - name: Checkout code
