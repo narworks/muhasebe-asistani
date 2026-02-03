@@ -3,7 +3,10 @@
   "private": true,
   "version": "0.1.0-alpha",
   "main": "main/main.js",
-  "author": "NarWorks",
+  "author": {
+    "name": "NarWorks",
+    "email": "info@narworks.com"
+  },
   "description": "Mali Müşavir Otomasyonu",
   "scripts": {
     "dev": "vite",
