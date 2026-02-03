@@ -1,6 +1,7 @@
 const { app, BrowserWindow, ipcMain } = require('electron');
 const path = require('path');
 require('dotenv').config();
+const supabase = require('./supabase');
 const licenseManager = require('./license');
 const database = require('./database');
 const gibScraper = require('./automation/gibScraper');
@@ -14,20 +15,17 @@ if (require('electron-squirrel-startup')) {
 let mainWindow;
 
 const createWindow = () => {
-    // Create the browser window.
     mainWindow = new BrowserWindow({
         width: 1280,
         height: 900,
         webPreferences: {
             preload: path.join(__dirname, 'preload.js'),
-            nodeIntegration: false, // Security best practice
-            contextIsolation: true, // Security best practice
-            sandbox: false // Required for some complex node usages if needed, but try true if possible. Using false for safeStorage/sqlite interactions usually fine in main, but preload has limited access.
-            // logic is in main, so safely exposed via preload.
+            nodeIntegration: false,
+            contextIsolation: true,
+            sandbox: false
         },
     });
 
-    // Load the app
     const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
 
     if (isDev) {
@@ -39,7 +37,15 @@ const createWindow = () => {
 };
 
 app.whenReady().then(() => {
-    // Initialize DB
+    // Supabase'i başlat
+    try {
+        supabase.init();
+    } catch (error) {
+        console.error('Supabase initialization failed:', error.message);
+        app.quit();
+        return;
+    }
+
     database.init();
     licenseManager.init();
     licenseManager.checkLicense();
@@ -62,32 +68,39 @@ app.on('window-all-closed', () => {
 
 // --- IPC HANDLERS ---
 
-// Example: License Check
-ipcMain.handle('check-subscription', async (event, credentials) => {
+// Auth & Subscription
+ipcMain.handle('login', async (event, credentials) => {
     return await licenseManager.login(credentials);
+});
+
+ipcMain.handle('logout', async () => {
+    return await licenseManager.logout();
 });
 
 ipcMain.handle('check-license', async () => {
     return await licenseManager.checkLicense();
 });
 
-// Example: Start Scan
+ipcMain.handle('get-subscription-status', async () => {
+    return licenseManager.getSubscriptionStatus();
+});
+
+ipcMain.handle('get-user-info', async () => {
+    return licenseManager.getUserInfo();
+});
+
+// Start Scan
 ipcMain.on('start-scan', async (event) => {
-    // 1. Check License Status from memory
     if (!licenseManager.hasActiveSubscription()) {
         event.reply('scan-error', 'Üyelik aktif değil! Lütfen giriş yapınız.');
         return;
     }
 
-    const apiKey = licenseManager.getApiKey();
+    const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
-        event.reply('scan-error', 'API anahtarı bulunamadı. Lütfen API anahtarınızı girin.');
+        event.reply('scan-error', 'Sistem yapılandırma hatası. Lütfen destek ile iletişime geçin.');
         return;
     }
-
-    // 2. Run Scraper
-    // Note: In a real app we might want to get specific clients from DB here or pass them in.
-    // For now assuming we pull from DB inside scraper or pass generic signal.
 
     try {
         await gibScraper.run((status) => {
@@ -127,42 +140,22 @@ ipcMain.handle('get-tebligatlar', () => {
     return database.getTebligatlar();
 });
 
+// Statement Converter
 ipcMain.handle('convert-statement', async (event, { fileBuffer, mimeType, prompt }) => {
     if (!licenseManager.hasActiveSubscription()) {
-        throw new Error('Üyelik aktif değil. Lütfen internete bağlanıp lisansı doğrulayın.');
+        throw new Error('Aktif aboneliğiniz bulunmamaktadır. Lütfen abone olun.');
     }
 
-    if (licenseManager.getCredits() < 1) {
-        throw new Error('Yetersiz kredi. Lütfen kredi satın alın.');
-    }
-
-    const apiKey = licenseManager.getApiKey();
+    const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
-        throw new Error('API anahtarı bulunamadı. Lütfen API anahtarınızı girin.');
+        throw new Error('Sistem yapılandırma hatası. Lütfen destek ile iletişime geçin.');
     }
 
     const result = await statementConverter.convert(Buffer.from(fileBuffer), mimeType, prompt, apiKey);
-    licenseManager.consumeCredits(1);
     return result;
 });
 
-ipcMain.handle('get-credits', async (event, userId) => {
-    return { balance: licenseManager.getCredits() };
-});
-
-ipcMain.handle('get-api-key-status', () => {
-    return { hasKey: licenseManager.hasApiKey() };
-});
-
-ipcMain.handle('save-api-key', (event, apiKey) => {
-    try {
-        licenseManager.setApiKey(apiKey);
-        return { success: true };
-    } catch (error) {
-        return { success: false, message: error.message };
-    }
-});
-
+// Billing Portal
 ipcMain.handle('open-billing-portal', async (event, packageId) => {
     const billingUrl = licenseManager.getBillingUrl();
     const url = packageId ? `${billingUrl}?package=${encodeURIComponent(packageId)}` : billingUrl;

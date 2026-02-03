@@ -90,37 +90,6 @@ const Sidebar: React.FC = () => {
                         <span>İstatistikler</span>
                     </NavLink>
 
-                    {/* --- MOCK TOOLS (COMING SOON) --- */}
-                    <div className="pt-4 pb-2">
-                        <p className="px-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Yakında</p>
-                    </div>
-
-                    <div className="opacity-50 cursor-not-allowed">
-                        <div className={`${navLinkClasses} text-slate-400 hover:bg-transparent`}>
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                            </svg>
-                            <span>Fiş Okuyucu</span>
-                        </div>
-                        <div className={`${navLinkClasses} text-slate-400 hover:bg-transparent`}>
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-                            </svg>
-                            <span>SGK Sorgulama</span>
-                        </div>
-                        <div className={`${navLinkClasses} text-slate-400 hover:bg-transparent`}>
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
-                            </svg>
-                            <span>Vergi Asistanı</span>
-                        </div>
-                        <div className={`${navLinkClasses} text-slate-400 hover:bg-transparent`}>
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                            </svg>
-                            <span>Döviz Kuru</span>
-                        </div>
-                    </div>
                 </nav>
             </div>
 

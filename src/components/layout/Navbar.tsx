@@ -1,58 +1,56 @@
 
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import CreditModal from '../CreditModal';
+import SubscriptionModal from '../SubscriptionModal';
 
 const Navbar: React.FC = () => {
     const { currentUser } = useAuth();
-    const [credits, setCredits] = useState<number | null>(null);
+    const [subscription, setSubscription] = useState<{ isActive: boolean; plan: string | null; status: string } | null>(null);
     const [isModalOpen, setIsModalOpen] = useState(false);
 
     useEffect(() => {
-        const fetchCredits = async () => {
+        const fetchStatus = async () => {
             if (currentUser?.uid) {
                 try {
-                    try {
-                        const data = await window.electronAPI.getCredits(currentUser.uid);
-                        setCredits(data.balance);
-                    } catch (error) {
-                        console.error("Error fetching credits:", error);
-                    }
+                    const data = await window.electronAPI.getSubscriptionStatus();
+                    setSubscription(data);
                 } catch (error) {
-                    console.error("Error fetching credits:", error);
+                    console.error("Error fetching subscription status:", error);
                 }
             }
         };
 
-        fetchCredits();
-
-        // Optional: Set up an interval to refresh credits periodically
-        const intervalId = setInterval(fetchCredits, 5000); // Refresh every 5 seconds
+        fetchStatus();
+        const intervalId = setInterval(fetchStatus, 30000);
         return () => clearInterval(intervalId);
-
     }, [currentUser]);
 
     return (
         <>
             <header className="h-16 bg-slate-900 flex items-center justify-end px-6 border-b border-slate-700 space-x-4">
-                {credits !== null && (
+                {subscription && (
                     <button
                         onClick={() => setIsModalOpen(true)}
-                        className="flex items-center space-x-2 bg-slate-800 hover:bg-slate-700 px-3 py-1.5 rounded-full border border-slate-700 hover:border-sky-500 transition-all cursor-pointer group"
+                        className={`flex items-center space-x-2 px-3 py-1.5 rounded-full border transition-all cursor-pointer group ${
+                            subscription.isActive
+                                ? 'bg-emerald-500/10 border-emerald-500/30 hover:border-emerald-400'
+                                : 'bg-red-500/10 border-red-500/30 hover:border-red-400'
+                        }`}
                     >
-                        <span className="text-xs text-slate-400 group-hover:text-white transition-colors uppercase font-bold tracking-wider">Kredi:</span>
-                        <span className="text-emerald-400 font-bold font-mono">{credits}</span>
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-slate-500 group-hover:text-sky-400 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-                        </svg>
+                        <div className={`w-2 h-2 rounded-full ${subscription.isActive ? 'bg-emerald-400' : 'bg-red-400'}`}></div>
+                        <span className={`text-xs font-bold uppercase tracking-wider ${
+                            subscription.isActive ? 'text-emerald-400' : 'text-red-400'
+                        }`}>
+                            {subscription.isActive ? 'Aktif Abonelik' : 'Abonelik Pasif'}
+                        </span>
                     </button>
                 )}
             </header>
 
-            <CreditModal
+            <SubscriptionModal
                 isOpen={isModalOpen}
                 onClose={() => setIsModalOpen(false)}
-                currentCredits={credits || 0}
+                subscription={subscription}
                 currentUserEmail={currentUser?.email || ''}
             />
         </>

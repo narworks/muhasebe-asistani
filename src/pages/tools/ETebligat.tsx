@@ -1,11 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
-import ApiKeyModal from '../../components/ApiKeyModal';
 
 const ETebligat: React.FC = () => {
     const [scanning, setScanning] = useState(false);
     const [logs, setLogs] = useState<{ message: string; type: 'info' | 'error' | 'success' | 'process'; timestamp: string }[]>([]);
     const logsEndRef = useRef<HTMLDivElement>(null);
-    const [showApiKeyModal, setShowApiKeyModal] = useState(false);
     const [tebligatlar, setTebligatlar] = useState<any[]>([]);
     const [loadingTebligatlar, setLoadingTebligatlar] = useState(false);
     const [clients, setClients] = useState<any[]>([]);
@@ -71,20 +69,6 @@ const ETebligat: React.FC = () => {
     }, []);
 
     useEffect(() => {
-        const checkApiKey = async () => {
-            try {
-                const result = await window.electronAPI.getApiKeyStatus();
-                if (!result.hasKey) {
-                    setShowApiKeyModal(true);
-                }
-            } catch (err) {
-                console.error("API key kontrolü yapılamadı", err);
-            }
-        };
-        checkApiKey();
-    }, []);
-
-    useEffect(() => {
         fetchTebligatlar();
     }, []);
 
@@ -106,14 +90,13 @@ const ETebligat: React.FC = () => {
 
     const handleStartScan = async () => {
         try {
-            const result = await window.electronAPI.getApiKeyStatus();
-            if (!result.hasKey) {
-                setShowApiKeyModal(true);
-                addLog('API anahtarı bulunamadı. Lütfen API anahtarınızı girin.', 'error');
+            const sub = await window.electronAPI.getSubscriptionStatus();
+            if (!sub.isActive) {
+                addLog('Aktif aboneliğiniz bulunmamaktadır. Lütfen abone olun.', 'error');
                 return;
             }
         } catch (err) {
-            addLog('API anahtarı doğrulanamadı.', 'error');
+            addLog('Abonelik durumu doğrulanamadı.', 'error');
             return;
         }
 
@@ -121,16 +104,6 @@ const ETebligat: React.FC = () => {
         setLogs([]);
         addLog('Tarama başlatılıyor...', 'info');
         window.electronAPI.startScan();
-    };
-
-    const handleSaveApiKey = async (apiKey: string) => {
-        const result = await window.electronAPI.saveApiKey(apiKey);
-        if (result.success) {
-            setShowApiKeyModal(false);
-            addLog('API anahtarı kaydedildi.', 'success');
-        } else {
-            addLog(result.message || 'API anahtarı kaydedilemedi.', 'error');
-        }
     };
 
     const handleClientChange = (field: string, value: string) => {
@@ -262,12 +235,6 @@ const ETebligat: React.FC = () => {
 
     return (
         <div className="p-6 h-full flex flex-col">
-            {showApiKeyModal && (
-                <ApiKeyModal
-                    onClose={() => setShowApiKeyModal(false)}
-                    onSave={handleSaveApiKey}
-                />
-            )}
             {selectedTebligat && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
                     <div className="bg-white rounded-lg shadow-xl w-full max-w-lg p-6">

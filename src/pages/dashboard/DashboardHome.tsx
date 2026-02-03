@@ -20,7 +20,7 @@ const DashboardHome: React.FC = () => {
             </h1>
             <p className="text-slate-400 text-lg mb-10">Araç kutunuzdaki araçlar aşağıda listelenmiştir.</p>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                 {/* Tool Card 1: Statement Converter */}
                 <Link to="/tools/statement-converter" className="group">
                     <Card className="h-full flex flex-col justify-between border-2 border-transparent hover:border-sky-500 transition-colors duration-300">
@@ -47,59 +47,6 @@ const DashboardHome: React.FC = () => {
                     </Card>
                 </Link>
 
-                {/* --- MOCK TOOLS (COMING SOON) --- */}
-
-                {/* Mock Tool 1: Invoice OCR */}
-                <div className="cursor-not-allowed opacity-60 grayscale hover:grayscale-0 transition-all duration-300">
-                    <Card className="h-full flex flex-col justify-between border border-slate-700">
-                        <div>
-                            <div className="flex justify-between items-center mb-2">
-                                <h2 className="text-xl font-bold text-slate-300">Fiş/Fatura Okuyucu</h2>
-                                <span className="bg-yellow-500/20 text-yellow-400 text-[10px] font-bold px-2 py-1 rounded-full border border-yellow-500/30">YAKINDA</span>
-                            </div>
-                            <p className="text-slate-500 text-sm">Fiş ve faturalarınızın fotoğrafını çekin, yapay zeka verileri Excel'e aktarsın.</p>
-                        </div>
-                    </Card>
-                </div>
-
-                {/* Mock Tool 2: SGK Inquiry */}
-                <div className="cursor-not-allowed opacity-60 grayscale hover:grayscale-0 transition-all duration-300">
-                    <Card className="h-full flex flex-col justify-between border border-slate-700">
-                        <div>
-                            <div className="flex justify-between items-center mb-2">
-                                <h2 className="text-xl font-bold text-slate-300">SGK Borç Sorgulama</h2>
-                                <span className="bg-yellow-500/20 text-yellow-400 text-[10px] font-bold px-2 py-1 rounded-full border border-yellow-500/30">YAKINDA</span>
-                            </div>
-                            <p className="text-slate-500 text-sm">İşveren SGK borçlarını otomatik sorgulayın ve takibini yapın.</p>
-                        </div>
-                    </Card>
-                </div>
-
-                {/* Mock Tool 3: Tax Calculator */}
-                <div className="cursor-not-allowed opacity-60 grayscale hover:grayscale-0 transition-all duration-300">
-                    <Card className="h-full flex flex-col justify-between border border-slate-700">
-                        <div>
-                            <div className="flex justify-between items-center mb-2">
-                                <h2 className="text-xl font-bold text-slate-300">Vergi Asistanı</h2>
-                                <span className="bg-yellow-500/20 text-yellow-400 text-[10px] font-bold px-2 py-1 rounded-full border border-yellow-500/30">YAKINDA</span>
-                            </div>
-                            <p className="text-slate-500 text-sm">KDV, Gelir Vergisi hesaplamaları ve vergi mevzuatı hakkında sorular sorun.</p>
-                        </div>
-                    </Card>
-                </div>
-
-                {/* Mock Tool 4: Forex Rates */}
-                <div className="cursor-not-allowed opacity-60 grayscale hover:grayscale-0 transition-all duration-300">
-                    <Card className="h-full flex flex-col justify-between border border-slate-700">
-                        <div>
-                            <div className="flex justify-between items-center mb-2">
-                                <h2 className="text-xl font-bold text-slate-300">TCMB Döviz Kuru</h2>
-                                <span className="bg-yellow-500/20 text-yellow-400 text-[10px] font-bold px-2 py-1 rounded-full border border-yellow-500/30">YAKINDA</span>
-                            </div>
-                            <p className="text-slate-500 text-sm">Geçmiş tarihli döviz kurlarını TCMB'den otomatik çekin ve raporlayın.</p>
-                        </div>
-                    </Card>
-                </div>
             </div>
         </div>
     );

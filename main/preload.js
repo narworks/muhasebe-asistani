@@ -1,12 +1,12 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('electronAPI', {
-    // Navigation / Shell
-    // ...
-
     // License & Auth
-    checkSubscription: (credentials) => ipcRenderer.invoke('check-subscription', credentials),
+    login: (credentials) => ipcRenderer.invoke('login', credentials),
+    logout: () => ipcRenderer.invoke('logout'),
     checkLicense: () => ipcRenderer.invoke('check-license'),
+    getSubscriptionStatus: () => ipcRenderer.invoke('get-subscription-status'),
+    getUserInfo: () => ipcRenderer.invoke('get-user-info'),
     openBillingPortal: (packageId) => ipcRenderer.invoke('open-billing-portal', packageId),
 
     // Database Operations
@@ -19,11 +19,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
     // Statement Converter
     convertStatement: (data) => ipcRenderer.invoke('convert-statement', data),
-    getCredits: (userId) => ipcRenderer.invoke('get-credits', userId),
-
-    // API Key
-    getApiKeyStatus: () => ipcRenderer.invoke('get-api-key-status'),
-    saveApiKey: (apiKey) => ipcRenderer.invoke('save-api-key', apiKey),
 
     // Automation
     startScan: () => ipcRenderer.send('start-scan'),

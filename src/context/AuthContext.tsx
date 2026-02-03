@@ -1,6 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 
-// Placeholder User type
 type User = {
   uid: string;
   email: string | null;
@@ -10,9 +9,7 @@ type User = {
 interface AuthContextType {
   currentUser: User | null;
   loading: boolean;
-  loginWithGoogle: () => Promise<void>;
   loginWithEmail: (email: string, password: string) => Promise<void>;
-  registerWithEmail: (email: string, password: string, displayName: string) => Promise<void>;
   logout: () => Promise<void>;
 }
 
@@ -37,18 +34,40 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    try {
-      const savedUser = localStorage.getItem(CURRENT_USER_KEY);
-      if (savedUser) {
-        setCurrentUser(JSON.parse(savedUser));
-        // Optional: Re-verify token with electronAPI on load?
+    const loadUser = async () => {
+      try {
+        // localStorage'dan kullanıcı bilgisini yükle
+        const savedUser = localStorage.getItem(CURRENT_USER_KEY);
+        if (savedUser) {
+          const user = JSON.parse(savedUser);
+
+          // Electron API ile token geçerliliğini kontrol et
+          if (window.electronAPI) {
+            const userInfo = await window.electronAPI.getUserInfo();
+
+            if (userInfo.userId && userInfo.email) {
+              // Token geçerli, kullanıcıyı set et
+              setCurrentUser(user);
+            } else {
+              // Token geçersiz, kullanıcıyı temizle
+              localStorage.removeItem(CURRENT_USER_KEY);
+              setCurrentUser(null);
+            }
+          } else {
+            // Electron API yoksa (geliştirme modunda olabilir), kullanıcıyı yükle
+            setCurrentUser(user);
+          }
+        }
+      } catch (error) {
+        console.error("Failed to load user:", error);
+        localStorage.removeItem(CURRENT_USER_KEY);
+        setCurrentUser(null);
+      } finally {
+        setLoading(false);
       }
-    } catch (error) {
-      console.error("Failed to parse user from localStorage", error);
-      localStorage.removeItem(CURRENT_USER_KEY);
-    } finally {
-      setLoading(false);
-    }
+    };
+
+    loadUser();
   }, []);
 
   const setUserAndPersist = (user: User | null) => {
@@ -60,24 +79,17 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
   };
 
-  const loginWithGoogle = async () => {
-    // Disabled in Electron for now or redirect
-    alert("Google ile giriş bu sürümde desteklenmemektedir. Lütfen e-posta ile giriş yapın.");
-  };
-
   const loginWithEmail = async (email: string, password: string) => {
-    console.log('Logging in with email via Electron IPC...');
-
     if (!window.electronAPI) {
-      console.error("Electron API unavailable");
       throw new Error("Masaüstü uygulaması bağlamı bulunamadı.");
     }
 
-    const result = await window.electronAPI.checkSubscription({ email, password });
+    // Supabase login via Electron IPC
+    const result = await window.electronAPI.login({ email, password });
 
     if (result.success) {
-      const user = {
-        uid: email,
+      const user: User = {
+        uid: email, // Supabase userId yerine email kullanıyoruz (frontend'de önemli değil)
         email: email,
         displayName: email.split('@')[0]
       };
@@ -87,21 +99,22 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
   };
 
-  const registerWithEmail = async (email: string, password: string, displayName: string) => {
-    throw new Error("Kayıt işlemi web sitesi üzerinden yapılmalıdır.");
-  };
-
   const logout = async () => {
-    console.log('Logging out...');
+    if (window.electronAPI) {
+      try {
+        await window.electronAPI.logout();
+      } catch (error) {
+        console.warn('Logout IPC failed:', error);
+      }
+    }
+
     setUserAndPersist(null);
   };
 
   const value = {
     currentUser,
     loading,
-    loginWithGoogle,
     loginWithEmail,
-    registerWithEmail,
     logout,
   };
 

@@ -10,16 +10,13 @@ const defaultSettings = {
   license: {
     subscriptionStatus: 'inactive',
     plan: null,
-    credits: 0,
     expiresAt: null,
     lastCheckAt: null,
     billingUrl: null,
-    pendingUsage: 0,
     email: null
   },
   encrypted: {
-    token: null,
-    apiKey: null
+    token: null
   }
 };
 

@@ -1,7 +1,6 @@
 import React, { useState, useRef, DragEvent, useEffect, ReactNode } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import Card from '../../components/ui/Card';
-import ApiKeyModal from '../../components/ApiKeyModal';
 
 // --- ICONS ---
 // (Icons omitted for brevity - same as before)
@@ -58,9 +57,7 @@ const StatementConverter: React.FC = () => {
     const [conversionResult, setConversionResult] = useState<string | null>(null);
     const [parsedResult, setParsedResult] = useState<string[][] | null>(null);
     const [error, setError] = useState<string | null>(null);
-    const [credits, setCredits] = useState<number | null>(null);
     const [userTemplates, setUserTemplates] = useState<UserTemplate[]>([]);
-    const [showApiKeyModal, setShowApiKeyModal] = useState(false);
 
     const { currentUser } = useAuth();
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -72,35 +69,6 @@ const StatementConverter: React.FC = () => {
             setUserTemplates(JSON.parse(savedTemplates));
         }
     }, []);
-
-    useEffect(() => {
-        const checkApiKey = async () => {
-            try {
-                const result = await window.electronAPI.getApiKeyStatus();
-                if (!result.hasKey) {
-                    setShowApiKeyModal(true);
-                }
-            } catch (err) {
-                console.error("API key kontrolü yapılamadı", err);
-            }
-        };
-        checkApiKey();
-    }, []);
-
-    useEffect(() => {
-        const fetchCredits = async () => {
-            if (currentUser?.uid) {
-                try {
-                    // Use Electron IPC
-                    const data = await window.electronAPI.getCredits(currentUser.uid);
-                    setCredits(data.balance);
-                } catch (err) {
-                    console.error("Kredi bilgisi alınamadı", err);
-                }
-            }
-        };
-        fetchCredits();
-    }, [currentUser]);
 
     useEffect(() => {
         if (!uploadedFile) {
@@ -193,7 +161,6 @@ const StatementConverter: React.FC = () => {
 
     const handleConvert = async () => {
         if (!currentUser) { setError("İşlem yapmak için giriş yapmalısınız."); return; }
-        if (credits !== null && credits < 1) { setError("Yetersiz kredi. Lütfen kredi yükleyin."); return; }
         if (!uploadedFile) { setError("Lütfen önce bir dosya yükleyin."); return; }
         if (userPrompt.trim().length === 0) { setError("Lütfen ne yapmak istediğinizi açıklayan bir komut girin."); return; }
 
@@ -215,18 +182,9 @@ const StatementConverter: React.FC = () => {
 
             setConversionResult(resultText);
 
-            // Credits are handled in backend/main process implicitly or we refresh
-            if (currentUser?.uid) {
-                const data = await window.electronAPI.getCredits(currentUser.uid);
-                setCredits(data.balance);
-            }
-
         } catch (err: any) {
             const message = err.message || "Dönüştürme sırasında bir hata oluştu.";
             setError(message);
-            if (message.toLowerCase().includes('api anahtarı')) {
-                setShowApiKeyModal(true);
-            }
         } finally {
             setIsLoading(false);
         }
@@ -264,23 +222,8 @@ const StatementConverter: React.FC = () => {
         localStorage.setItem(USER_TEMPLATES_KEY, JSON.stringify(updatedTemplates));
     };
 
-    const handleSaveApiKey = async (apiKey: string) => {
-        const result = await window.electronAPI.saveApiKey(apiKey);
-        if (result.success) {
-            setShowApiKeyModal(false);
-        } else {
-            setError(result.message || 'API anahtarı kaydedilemedi.');
-        }
-    };
-
     return (
         <div>
-            {showApiKeyModal && (
-                <ApiKeyModal
-                    onClose={() => setShowApiKeyModal(false)}
-                    onSave={handleSaveApiKey}
-                />
-            )}
             <div className="flex justify-between items-center mb-8">
                 <div>
                     <h1 className="text-3xl md:text-4xl font-bold text-white mb-2">Banka Ekstresi Dönüştürücü</h1>
@@ -375,7 +318,7 @@ const StatementConverter: React.FC = () => {
 
                 <Card>
                     <h2 className="text-xl font-bold text-white mb-4">3. Dönüştür ve İndir</h2>
-                    <button onClick={handleConvert} className="w-full md:w-auto flex items-center justify-center bg-sky-500 text-white font-bold py-3 px-8 rounded-lg hover:bg-sky-600 transition-colors disabled:bg-slate-600 disabled:cursor-not-allowed" disabled={!uploadedFile || isLoading || (credits !== null && credits < 1)}>
+                    <button onClick={handleConvert} className="w-full md:w-auto flex items-center justify-center bg-sky-500 text-white font-bold py-3 px-8 rounded-lg hover:bg-sky-600 transition-colors disabled:bg-slate-600 disabled:cursor-not-allowed" disabled={!uploadedFile || isLoading}>
                         {isLoading ? (<><SpinnerIcon /> Dönüştürülüyor...</>) : ('Dönüştür')}
                     </button>
                 </Card>

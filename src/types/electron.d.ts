@@ -1,7 +1,10 @@
 export interface IElectronAPI {
     // License & Auth
-    checkSubscription: (credentials: { email: string; password: string }) => Promise<{ success: boolean; subscriptionStatus?: string; plan?: string; credits?: number; billingUrl?: string; message?: string }>;
-    checkLicense: () => Promise<{ success: boolean; subscriptionStatus?: string; credits?: number; message?: string }>;
+    login: (credentials: { email: string; password: string }) => Promise<{ success: boolean; subscriptionStatus?: string; plan?: string; expiresAt?: string; message?: string }>;
+    logout: () => Promise<{ success: boolean }>;
+    checkLicense: () => Promise<{ success: boolean; subscriptionStatus?: string; message?: string }>;
+    getSubscriptionStatus: () => Promise<{ isActive: boolean; plan: string | null; expiresAt: string | null; status: string }>;
+    getUserInfo: () => Promise<{ userId: string | null; email: string | null }>;
     openBillingPortal: (packageId?: string) => Promise<{ success: boolean }>;
 
     // Database Operations
@@ -19,13 +22,8 @@ export interface IElectronAPI {
     onScanComplete: (callback: (result: any) => void) => void;
     removeScanListeners: () => void;
 
-    // Statement Converter (Ported)
-    convertStatement: (formData: any) => Promise<string>; // Returns CSV string or error
-
-    // Misc
-    getCredits: (userId: string) => Promise<{ balance: number }>;
-    getApiKeyStatus: () => Promise<{ hasKey: boolean }>;
-    saveApiKey: (apiKey: string) => Promise<{ success: boolean; message?: string }>;
+    // Statement Converter
+    convertStatement: (formData: any) => Promise<string>;
 }
 
 declare global {

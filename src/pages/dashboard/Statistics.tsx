@@ -106,7 +106,7 @@ const Statistics: React.FC = () => {
                                     <p className="text-xs text-slate-500">Bugün, 14:30</p>
                                 </div>
                             </div>
-                            <span className="text-xs font-bold text-emerald-400">-1 Kredi</span>
+                            <span className="text-xs font-bold text-emerald-400">Başarılı</span>
                         </div>
                         <div className="flex items-center justify-between p-3 bg-slate-800/50 rounded-lg border border-slate-700/50">
                             <div className="flex items-center space-x-3">
@@ -116,7 +116,7 @@ const Statistics: React.FC = () => {
                                     <p className="text-xs text-slate-500">Dün, 09:15</p>
                                 </div>
                             </div>
-                            <span className="text-xs font-bold text-emerald-400">Ücretsiz</span>
+                            <span className="text-xs font-bold text-emerald-400">Başarılı</span>
                         </div>
                         <div className="text-center pt-2">
                             <button className="text-xs text-sky-400 hover:text-sky-300 transition-colors">Tüm geçmişi görüntüle</button>
