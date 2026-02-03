@@ -4,14 +4,12 @@ directories:
   output: release
   buildResources: build
 files:
-  - filter: ["**/*", "!src/*", "!vite.config.*", "!index.html"] # Basic filtering
-  - from: dist
-    to: dist
-    filter: ["**/*"]
-  - from: main
-    to: main
-    filter: ["**/*"]
-  - package.json
+  - "dist/**/*"
+  - "main/**/*"
+  - "package.json"
+  - "!src/**/*"
+  - "!vite.config.*"
+  - "!index.html"
   # node_modules are automatically included by electron-builder (production deps only)
 
 # Native module handling (important for better-sqlite3)
