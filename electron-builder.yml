@@ -1,5 +1,6 @@
 appId: com.narworks.muhasebeasistani
 productName: "Muhasebe Asistanı"
+icon: build/icon.png
 directories:
   output: release
   buildResources: build
