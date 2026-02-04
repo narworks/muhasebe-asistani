@@ -22,7 +22,16 @@ const defaultState = {
     subscriptionStatus: 'inactive',
     plan: null,
     expiresAt: null,
-    lastCheckAt: null
+    lastCheckAt: null,
+    credits: {
+        monthlyRemaining: 0,
+        monthlyLimit: 5000,
+        monthlyUsed: 0,
+        purchasedRemaining: 0,
+        totalRemaining: 0,
+        resetAt: null,
+        lastSyncAt: null
+    }
 };
 
 /**
@@ -136,6 +145,9 @@ const login = async ({ email, password }) => {
             await supabase.updateDeviceInfo(user.id, deviceId, appVersion);
         }
 
+        // Kredi bakiyesini senkronize et
+        await syncCredits();
+
         persistState();
 
         return {
@@ -179,6 +191,9 @@ const checkLicense = async () => {
         }
 
         setStateFromSubscription(subscription);
+
+        // Kredi bakiyesini senkronize et
+        await syncCredits();
 
         return {
             success: true,
@@ -289,6 +304,160 @@ const getUserInfo = () => {
 };
 
 /**
+ * Supabase'den kredi bakiyesini çeker ve lokal cache'e yazar
+ */
+const syncCredits = async () => {
+    ensureLoaded();
+
+    if (!state.userId) {
+        return { success: false, message: 'Oturum bulunamadı.' };
+    }
+
+    try {
+        const { credits, error } = await supabase.getCredits(state.userId);
+
+        if (error) {
+            console.warn('Credit sync failed:', error.message);
+            return { success: false, message: error.message };
+        }
+
+        state.credits = {
+            monthlyRemaining: credits.monthly_remaining,
+            monthlyLimit: credits.monthly_limit,
+            monthlyUsed: credits.monthly_used,
+            purchasedRemaining: credits.purchased_remaining,
+            totalRemaining: credits.total_remaining,
+            resetAt: credits.reset_at,
+            lastSyncAt: new Date().toISOString()
+        };
+
+        persistState();
+        return { success: true };
+    } catch (error) {
+        console.error('Credit sync error:', error.message);
+        return { success: false, message: error.message };
+    }
+};
+
+/**
+ * Kredi düşer. Online: Supabase RPC, Offline: lokal düşme
+ * @param {number} amount - Düşülecek kredi
+ * @param {string} operationType - 'e_tebligat_scan' | 'statement_convert'
+ * @returns {Promise<{success, error?, credits?}>}
+ */
+const deductCredits = async (amount, operationType) => {
+    ensureLoaded();
+
+    if (!state.userId) {
+        return { success: false, error: 'no_session' };
+    }
+
+    try {
+        const deviceId = settings.getDeviceId();
+        const { result, error } = await supabase.deductCredits(state.userId, amount, operationType, deviceId);
+
+        if (error) {
+            // Offline fallback: lokal cache'den düş
+            console.warn('Supabase deduct failed, using offline fallback:', error.message);
+            return deductCreditsOffline(amount);
+        }
+
+        if (!result.success) {
+            return { success: false, error: result.error, totalRemaining: result.total_remaining };
+        }
+
+        // Lokal state'i güncelle
+        state.credits.monthlyRemaining = result.monthly_remaining;
+        state.credits.purchasedRemaining = result.purchased_remaining;
+        state.credits.totalRemaining = result.total_remaining;
+        state.credits.lastSyncAt = new Date().toISOString();
+        persistState();
+
+        return { success: true, credits: state.credits };
+    } catch (error) {
+        console.warn('Deduct credits error, offline fallback:', error.message);
+        return deductCreditsOffline(amount);
+    }
+};
+
+/**
+ * Offline kredi düşme (lokal cache'den)
+ */
+const deductCreditsOffline = (amount) => {
+    if (state.credits.totalRemaining < amount) {
+        return { success: false, error: 'insufficient_credits', totalRemaining: state.credits.totalRemaining };
+    }
+
+    // Önce aylık krediden düş
+    const monthlyDeduct = Math.min(amount, state.credits.monthlyRemaining);
+    const purchasedDeduct = amount - monthlyDeduct;
+
+    state.credits.monthlyRemaining -= monthlyDeduct;
+    state.credits.monthlyUsed += monthlyDeduct;
+    state.credits.purchasedRemaining -= purchasedDeduct;
+    state.credits.totalRemaining -= amount;
+    persistState();
+
+    return { success: true, credits: state.credits };
+};
+
+/**
+ * Başarısız işlem sonrası kredi iadesi
+ * @param {number} amount - İade edilecek kredi
+ * @param {string} operationType - İşlem tipi
+ */
+const refundCredits = async (amount, operationType) => {
+    ensureLoaded();
+
+    if (!state.userId) return { success: false };
+
+    try {
+        const { result, error } = await supabase.refundCredits(state.userId, amount, operationType);
+
+        if (error) {
+            // Offline: lokal iade
+            state.credits.purchasedRemaining += amount;
+            state.credits.totalRemaining += amount;
+            persistState();
+            return { success: true };
+        }
+
+        if (result.success) {
+            state.credits.monthlyRemaining = result.monthly_remaining;
+            state.credits.purchasedRemaining = result.purchased_remaining;
+            state.credits.totalRemaining = result.total_remaining;
+            state.credits.lastSyncAt = new Date().toISOString();
+            persistState();
+        }
+
+        return { success: true };
+    } catch (error) {
+        // Offline fallback
+        state.credits.purchasedRemaining += amount;
+        state.credits.totalRemaining += amount;
+        persistState();
+        return { success: true };
+    }
+};
+
+/**
+ * Lokal cache'deki kredi bakiyesini döndürür
+ */
+const getCredits = () => {
+    ensureLoaded();
+    return { ...state.credits };
+};
+
+/**
+ * Yeterli kredi var mı kontrol eder
+ * @param {number} amount - Gereken kredi miktarı
+ */
+const hasEnoughCredits = (amount) => {
+    ensureLoaded();
+    return state.credits.totalRemaining >= amount;
+};
+
+/**
  * Çıkış yapar (state'i temizler)
  */
 const logout = async () => {
@@ -325,5 +494,10 @@ module.exports = {
     getGraceRemainingMs,
     getSubscriptionStatus,
     getBillingUrl,
-    getUserInfo
+    getUserInfo,
+    syncCredits,
+    deductCredits,
+    refundCredits,
+    getCredits,
+    hasEnoughCredits
 };

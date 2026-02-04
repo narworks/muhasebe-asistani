@@ -58,11 +58,18 @@ const StatementConverter: React.FC = () => {
     const [parsedResult, setParsedResult] = useState<string[][] | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [userTemplates, setUserTemplates] = useState<UserTemplate[]>([]);
+    const [creditBalance, setCreditBalance] = useState<{ totalRemaining: number } | null>(null);
 
     const { currentUser } = useAuth();
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     // --- Effects ---
+    useEffect(() => {
+        window.electronAPI.getCredits().then(setCreditBalance).catch(() => {});
+        window.electronAPI.onCreditsUpdated((credits) => setCreditBalance(credits));
+        return () => { window.electronAPI.removeCreditsListeners(); };
+    }, []);
+
     useEffect(() => {
         const savedTemplates = localStorage.getItem(USER_TEMPLATES_KEY);
         if (savedTemplates) {
@@ -318,9 +325,33 @@ const StatementConverter: React.FC = () => {
 
                 <Card>
                     <h2 className="text-xl font-bold text-white mb-4">3. Dönüştür ve İndir</h2>
-                    <button onClick={handleConvert} className="w-full md:w-auto flex items-center justify-center bg-sky-500 text-white font-bold py-3 px-8 rounded-lg hover:bg-sky-600 transition-colors disabled:bg-slate-600 disabled:cursor-not-allowed" disabled={!uploadedFile || isLoading}>
-                        {isLoading ? (<><SpinnerIcon /> Dönüştürülüyor...</>) : ('Dönüştür')}
-                    </button>
+                    <div className="flex items-center space-x-4">
+                        <button
+                            onClick={handleConvert}
+                            className="w-full md:w-auto flex items-center justify-center bg-sky-500 text-white font-bold py-3 px-8 rounded-lg hover:bg-sky-600 transition-colors disabled:bg-slate-600 disabled:cursor-not-allowed"
+                            disabled={!uploadedFile || isLoading || (creditBalance !== null && creditBalance.totalRemaining < 5)}
+                        >
+                            {isLoading ? (<><SpinnerIcon /> Dönüştürülüyor...</>) : ('Dönüştür')}
+                        </button>
+                        {creditBalance !== null && (
+                            <span className={`text-sm ${creditBalance.totalRemaining < 5 ? 'text-red-400' : 'text-slate-400'}`}>
+                                Bu işlem 5 kredi kullanır. Kalan: {creditBalance.totalRemaining.toLocaleString('tr-TR')} kredi
+                            </span>
+                        )}
+                    </div>
+                    {creditBalance !== null && creditBalance.totalRemaining < 5 && (
+                        <div className="mt-3 p-3 bg-red-500/10 border border-red-500/30 rounded-lg">
+                            <p className="text-sm text-red-400">
+                                Yetersiz kredi. Bu işlem için en az 5 kredi gerekiyor.
+                                <button
+                                    onClick={() => window.electronAPI.purchaseCredits()}
+                                    className="ml-2 text-sky-400 hover:text-sky-300 font-semibold underline"
+                                >
+                                    Kredi Satın Al
+                                </button>
+                            </p>
+                        </div>
+                    )}
                 </Card>
 
                 {parsedResult && parsedResult.length > 0 && (

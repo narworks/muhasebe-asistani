@@ -49,22 +49,48 @@ serve(async (req) => {
     // Event tipine göre işlem yap
     switch (payload.iyziEventType) {
       case 'SUBSCRIPTION_ORDER_SUCCESS': {
+        // Yıllık mı aylık mı? pricingPlanReferenceCode'dan belirle
+        const isAnnual = payload.pricingPlanReferenceCode?.includes('annual') ?? false
+        const periodDays = isAnnual ? 365 : 30
+        const periodMs = periodDays * 24 * 60 * 60 * 1000
+
         // Ödeme başarılı - subscription'ı güncelle
-        const { error } = await supabaseAdmin
+        const { data: subData, error } = await supabaseAdmin
           .from('subscriptions')
           .update({
             status: 'active',
-            expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(), // 30 gün sonra
+            expires_at: new Date(Date.now() + periodMs).toISOString(),
             updated_at: new Date().toISOString(),
           })
           .eq('iyzico_subscription_reference_code', payload.subscriptionReferenceCode)
+          .select('user_id')
+          .single()
 
         if (error) {
           console.error('Failed to update subscription after payment success:', error)
           throw error
         }
 
-        console.log(`Subscription ${payload.subscriptionReferenceCode} renewed successfully`)
+        // Aylık kredileri sıfırla (yeni dönem başlangıcı)
+        // Yıllık planlarda da her ödeme anında kredi sıfırlanır (aylık 5.000 kredi hakkı devam eder)
+        if (subData?.user_id) {
+          const { error: creditError } = await supabaseAdmin
+            .from('credit_balances')
+            .update({
+              monthly_credits_used: 0,
+              credits_reset_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+            })
+            .eq('user_id', subData.user_id)
+
+          if (creditError) {
+            console.error('Failed to reset monthly credits:', creditError)
+            // Non-critical: don't throw, subscription is already updated
+          } else {
+            console.log(`Monthly credits reset for user ${subData.user_id}`)
+          }
+        }
+
+        console.log(`Subscription ${payload.subscriptionReferenceCode} renewed successfully (${isAnnual ? 'annual' : 'monthly'}, expires in ${periodDays} days)`)
         break
       }
 

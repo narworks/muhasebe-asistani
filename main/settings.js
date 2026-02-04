@@ -17,6 +17,21 @@ const defaultSettings = {
   },
   encrypted: {
     token: null
+  },
+  scan: {
+    delayMin: 15,
+    delayMax: 45,
+    batchSize: 20,
+    batchPauseMin: 120,
+    batchPauseMax: 300,
+    maxCaptchaRetries: 3,
+    lastScanAt: null
+  },
+  schedule: {
+    enabled: false,
+    time: '08:00',
+    lastScheduledScanAt: null,
+    nextScheduledScanAt: null
   }
 };
 
@@ -44,6 +59,14 @@ const readSettings = () => {
       encrypted: {
         ...defaultSettings.encrypted,
         ...(parsed.encrypted || {})
+      },
+      scan: {
+        ...defaultSettings.scan,
+        ...(parsed.scan || {})
+      },
+      schedule: {
+        ...defaultSettings.schedule,
+        ...(parsed.schedule || {})
       }
     };
   } catch (error) {
@@ -73,6 +96,14 @@ const updateSettings = (patch) => {
     encrypted: {
       ...current.encrypted,
       ...(patch.encrypted || {})
+    },
+    scan: {
+      ...current.scan,
+      ...(patch.scan || {})
+    },
+    schedule: {
+      ...current.schedule,
+      ...(patch.schedule || {})
     }
   };
   writeSettings(updated);

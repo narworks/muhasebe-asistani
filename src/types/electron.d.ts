@@ -17,10 +17,56 @@ export interface IElectronAPI {
 
     // Automation
     startScan: () => void;
+    resumeScan: () => void;
+    cancelScan: () => void;
+    getScanState: () => Promise<{
+        canResume: boolean;
+        processedCount: number;
+        total: number;
+        errors: number;
+        successes: number;
+        wasCancelled: boolean;
+    }>;
     onScanUpdate: (callback: (status: any) => void) => void;
     onScanError: (callback: (error: any) => void) => void;
     onScanComplete: (callback: (result: any) => void) => void;
     removeScanListeners: () => void;
+
+    // Credits
+    getCredits: () => Promise<{
+        monthlyRemaining: number;
+        monthlyLimit: number;
+        monthlyUsed: number;
+        purchasedRemaining: number;
+        totalRemaining: number;
+        resetAt: string | null;
+        lastSyncAt: string | null;
+    }>;
+    syncCredits: () => Promise<{ success: boolean; message?: string }>;
+    purchaseCredits: () => Promise<{ success: boolean }>;
+    onCreditsUpdated: (callback: (credits: {
+        monthlyRemaining: number;
+        monthlyLimit: number;
+        monthlyUsed: number;
+        purchasedRemaining: number;
+        totalRemaining: number;
+        resetAt: string | null;
+        lastSyncAt: string | null;
+    }) => void) => void;
+    removeCreditsListeners: () => void;
+
+    // Scan Settings
+    getScanSettings: () => Promise<any>;
+    saveScanSettings: (settings: any) => Promise<{ success: boolean }>;
+
+    // Schedule
+    getScheduleStatus: () => Promise<{
+        enabled: boolean;
+        time: string;
+        lastScheduledScanAt: string | null;
+        nextScheduledScanAt: string | null;
+    }>;
+    setSchedule: (config: { enabled: boolean; time: string }) => Promise<{ success: boolean }>;
 
     // Statement Converter
     convertStatement: (formData: any) => Promise<string>;

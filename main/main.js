@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain } = require('electron');
+const { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage } = require('electron');
 const path = require('path');
 require('dotenv').config({
     path: path.join(__dirname, '../.env')
@@ -8,6 +8,8 @@ const licenseManager = require('./license');
 const database = require('./database');
 const gibScraper = require('./automation/gibScraper');
 const statementConverter = require('./automation/statementConverter');
+const settings = require('./settings');
+const scheduler = require('./scheduler');
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (require('electron-squirrel-startup')) {
@@ -15,6 +17,8 @@ if (require('electron-squirrel-startup')) {
 }
 
 let mainWindow;
+let tray = null;
+let isQuitting = false;
 
 const createWindow = () => {
     mainWindow = new BrowserWindow({
@@ -36,6 +40,58 @@ const createWindow = () => {
     } else {
         mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
     }
+
+    // Minimize to tray instead of closing
+    mainWindow.on('close', (event) => {
+        if (!isQuitting) {
+            event.preventDefault();
+            mainWindow.hide();
+        }
+    });
+};
+
+// Helper: run scan with status updates
+const runScanWithUpdates = async () => {
+    if (!licenseManager.hasActiveSubscription()) {
+        console.log('[Scheduler] Skipping scan - no active subscription');
+        return;
+    }
+
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+        console.log('[Scheduler] Skipping scan - no API key');
+        return;
+    }
+
+    const scanConfig = settings.readSettings().scan || {};
+
+    // Kredi düşme callback'i (zamanlı tarama için)
+    const deductCredit = async () => {
+        const result = await licenseManager.deductCredits(1, 'e_tebligat_scan');
+        if (result.success && mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('credits-updated', licenseManager.getCredits());
+        }
+        return result;
+    };
+
+    try {
+        await gibScraper.run((status) => {
+            if (mainWindow && !mainWindow.isDestroyed()) {
+                mainWindow.webContents.send('scan-update', status);
+            }
+        }, apiKey, scanConfig, {}, deductCredit);
+
+        settings.updateSettings({ scan: { lastScanAt: new Date().toISOString() } });
+
+        if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('scan-complete', 'Tarama tamamlandı.');
+        }
+    } catch (error) {
+        console.error('Scan error:', error);
+        if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('scan-error', 'Tarama hatası: ' + error.message);
+        }
+    }
 };
 
 app.whenReady().then(() => {
@@ -52,19 +108,41 @@ app.whenReady().then(() => {
     licenseManager.init();
     licenseManager.checkLicense();
 
+    // Initialize scheduler
+    scheduler.init(() => runScanWithUpdates());
+
     createWindow();
+
+    // System tray
+    const trayIcon = nativeImage.createFromDataURL(
+        'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAABHNCSVQICAgIfAhkiAAAAAlwSFlzAAAAbwAAAG8B8aLcQwAAABl0RVh0U29mdHdhcmUAd3d3Lmlua3NjYXBlLm9yZ5vuPBoAAABjSURBVDiNY/j//z8DCjAxMDAwMDIy/mdgYGBgAmH8gImBgYGBiRCfkYGBgQlfIBMxBjAxMjL+JxTNROvCxMjI+B9fNBMDmBgYGBhIjUamhw8fUu4FYgNqJSNKk9F/Ag4BAOqQFBETnp7LAAAAAElFTkSuQmCC'
+    );
+    tray = new Tray(trayIcon);
+    const trayMenu = Menu.buildFromTemplate([
+        { label: 'Aç', click: () => { mainWindow.show(); mainWindow.focus(); } },
+        { type: 'separator' },
+        { label: 'Çıkış', click: () => { isQuitting = true; app.quit(); } }
+    ]);
+    tray.setToolTip('Muhasebe Asistanı');
+    tray.setContextMenu(trayMenu);
+    tray.on('double-click', () => { mainWindow.show(); mainWindow.focus(); });
 
     app.on('activate', () => {
         if (BrowserWindow.getAllWindows().length === 0) {
             createWindow();
+        } else {
+            mainWindow.show();
+            mainWindow.focus();
         }
     });
 });
 
+app.on('before-quit', () => {
+    isQuitting = true;
+});
+
 app.on('window-all-closed', () => {
-    if (process.platform !== 'darwin') {
-        app.quit();
-    }
+    // Don't quit - stay in tray for scheduled scans
 });
 
 
@@ -91,7 +169,7 @@ ipcMain.handle('get-user-info', async () => {
     return licenseManager.getUserInfo();
 });
 
-// Start Scan
+// Start Scan (fresh)
 ipcMain.on('start-scan', async (event) => {
     if (!licenseManager.hasActiveSubscription()) {
         event.reply('scan-error', 'Üyelik aktif değil! Lütfen giriş yapınız.');
@@ -104,17 +182,140 @@ ipcMain.on('start-scan', async (event) => {
         return;
     }
 
+    const scanConfig = settings.readSettings().scan || {};
+
+    // Kredi düşme callback'i oluştur
+    const deductCredit = async () => {
+        const result = await licenseManager.deductCredits(1, 'e_tebligat_scan');
+        if (result.success && mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('credits-updated', licenseManager.getCredits());
+        }
+        return result;
+    };
+
     try {
         await gibScraper.run((status) => {
             if (!mainWindow.isDestroyed()) {
                 mainWindow.webContents.send('scan-update', status);
             }
-        }, apiKey);
+        }, apiKey, scanConfig, {}, deductCredit);
+
+        settings.updateSettings({ scan: { lastScanAt: new Date().toISOString() } });
         event.reply('scan-complete', 'Taramalar tamamlandı.');
     } catch (error) {
         console.error("Scan error:", error);
         event.reply('scan-error', 'Tarama sırasında hata oluştu: ' + error.message);
     }
+});
+
+// Resume Scan (continue from where stopped)
+ipcMain.on('resume-scan', async (event) => {
+    if (!licenseManager.hasActiveSubscription()) {
+        event.reply('scan-error', 'Üyelik aktif değil! Lütfen giriş yapınız.');
+        return;
+    }
+
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+        event.reply('scan-error', 'Sistem yapılandırma hatası. Lütfen destek ile iletişime geçin.');
+        return;
+    }
+
+    const scanConfig = settings.readSettings().scan || {};
+
+    // Kredi düşme callback'i
+    const deductCredit = async () => {
+        const result = await licenseManager.deductCredits(1, 'e_tebligat_scan');
+        if (result.success && mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('credits-updated', licenseManager.getCredits());
+        }
+        return result;
+    };
+
+    try {
+        await gibScraper.run((status) => {
+            if (!mainWindow.isDestroyed()) {
+                mainWindow.webContents.send('scan-update', status);
+            }
+        }, apiKey, scanConfig, { resume: true }, deductCredit);
+
+        settings.updateSettings({ scan: { lastScanAt: new Date().toISOString() } });
+        event.reply('scan-complete', 'Taramalar tamamlandı.');
+    } catch (error) {
+        console.error("Resume scan error:", error);
+        event.reply('scan-error', 'Tarama sırasında hata oluştu: ' + error.message);
+    }
+});
+
+// Cancel Scan
+ipcMain.on('cancel-scan', (event) => {
+    gibScraper.cancelScan();
+    event.reply('scan-update', { message: 'Tarama durdurma isteği gönderildi...', type: 'info' });
+});
+
+// Scan State (for resume)
+ipcMain.handle('get-scan-state', () => {
+    return gibScraper.getScanState();
+});
+
+// Scan Settings
+ipcMain.handle('get-scan-settings', () => {
+    return settings.readSettings().scan || {};
+});
+
+ipcMain.handle('save-scan-settings', (event, scanSettings) => {
+    settings.updateSettings({ scan: scanSettings });
+    return { success: true };
+});
+
+// Schedule Management
+ipcMain.handle('get-schedule-status', () => {
+    return scheduler.getStatus();
+});
+
+ipcMain.handle('set-schedule', (event, { enabled, time }) => {
+    if (enabled && time) {
+        const success = scheduler.startSchedule(time);
+        return { success };
+    } else {
+        scheduler.stopSchedule();
+        return { success: true };
+    }
+});
+
+// Credits
+ipcMain.handle('get-credits', () => {
+    return licenseManager.getCredits();
+});
+
+ipcMain.handle('sync-credits', async () => {
+    return await licenseManager.syncCredits();
+});
+
+ipcMain.handle('purchase-credits', async () => {
+    const billingUrl = licenseManager.getBillingUrl();
+    const url = `${billingUrl}?package=credit-1000`;
+
+    const billingWindow = new BrowserWindow({
+        width: 900,
+        height: 800,
+        parent: mainWindow,
+        modal: true,
+        webPreferences: {
+            nodeIntegration: false,
+            contextIsolation: true
+        }
+    });
+
+    billingWindow.loadURL(url);
+    billingWindow.on('closed', async () => {
+        await licenseManager.syncCredits();
+        if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('credits-updated', licenseManager.getCredits());
+        }
+    });
+
+    return { success: true };
 });
 
 // Database IPCs
@@ -153,8 +354,32 @@ ipcMain.handle('convert-statement', async (event, { fileBuffer, mimeType, prompt
         throw new Error('Sistem yapılandırma hatası. Lütfen destek ile iletişime geçin.');
     }
 
-    const result = await statementConverter.convert(Buffer.from(fileBuffer), mimeType, prompt, apiKey);
-    return result;
+    // Kredi kontrolü ve düşme (5 kredi)
+    const creditResult = await licenseManager.deductCredits(5, 'statement_convert');
+    if (!creditResult.success) {
+        if (creditResult.error === 'insufficient_credits') {
+            throw new Error(`Yetersiz kredi. Bu işlem 5 kredi gerektirir. Kalan krediniz: ${creditResult.totalRemaining || 0}`);
+        }
+        throw new Error('Kredi kontrolü başarısız.');
+    }
+
+    try {
+        const result = await statementConverter.convert(Buffer.from(fileBuffer), mimeType, prompt, apiKey);
+
+        // Kredi güncelleme bildirimini gönder
+        if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('credits-updated', licenseManager.getCredits());
+        }
+
+        return result;
+    } catch (error) {
+        // Başarısız dönüştürmede kredi iadesi
+        await licenseManager.refundCredits(5, 'statement_convert');
+        if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('credits-updated', licenseManager.getCredits());
+        }
+        throw error;
+    }
 });
 
 // Billing Portal

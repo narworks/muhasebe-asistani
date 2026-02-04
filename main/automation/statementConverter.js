@@ -1,4 +1,4 @@
-const { GoogleGenAI } = require('@google/genai');
+const { GoogleGenerativeAI } = require('@google/generative-ai');
 const pdf = require('pdf-parse');
 const xlsx = require('xlsx');
 
@@ -9,7 +9,8 @@ async function convert(fileBuffer, mimeType, prompt, apiKey) {
         throw new Error('API anahtarı bulunamadı.');
     }
 
-    const ai = new GoogleGenAI({ apiKey });
+    const genAI = new GoogleGenerativeAI(apiKey);
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
 
     let fileContent = '';
 
@@ -39,23 +40,20 @@ async function convert(fileBuffer, mimeType, prompt, apiKey) {
 
       İşlenecek Ham Dosya İçeriği (ilk 8000 karakter):
       ---
-      ${fileContent.substring(0, 8000)} 
+      ${fileContent.substring(0, 8000)}
       ---
-      
+
       Kullanıcının Yapılmasını İstediği Dönüşüm:
       ---
       ${prompt}
       ---
-      
+
       İstenen CSV Çıktısı:
   `;
 
-
     // 3. Call the Gemini API
-    const response = await ai.models.generateContent({
-        model: 'gemini-2.0-flash-exp', // Using a fast model
-        contents: [{ parts: [{ text: systemPrompt }] }],
-    });
+    const result = await model.generateContent(systemPrompt);
+    const response = await result.response;
 
     return response.text();
 }

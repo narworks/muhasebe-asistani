@@ -229,6 +229,76 @@ const logUsage = async ({ userId, subscriptionId, operationType, tokensUsed, cos
 };
 
 /**
+ * Kullanıcının kredi bakiyesini getirir
+ * @param {string} userId - Kullanıcı UUID
+ * @returns {Promise<{credits, error}>}
+ */
+const getCredits = async (userId) => {
+    const client = getClient();
+
+    const { data, error } = await client.rpc('get_credit_balance', {
+        p_user_id: userId
+    });
+
+    if (error) {
+        console.error('Failed to get credits:', error.message);
+        return { credits: null, error };
+    }
+
+    return { credits: data, error: null };
+};
+
+/**
+ * Kullanıcının kredisinden düşer (atomik)
+ * @param {string} userId - Kullanıcı UUID
+ * @param {number} amount - Düşülecek kredi miktarı
+ * @param {string} operationType - İşlem tipi ('e_tebligat_scan' | 'statement_convert')
+ * @param {string} [deviceId] - Cihaz ID
+ * @returns {Promise<{result, error}>}
+ */
+const deductCredits = async (userId, amount, operationType, deviceId) => {
+    const client = getClient();
+
+    const { data, error } = await client.rpc('deduct_credits', {
+        p_user_id: userId,
+        p_amount: amount,
+        p_operation_type: operationType,
+        p_device_id: deviceId || null
+    });
+
+    if (error) {
+        console.error('Failed to deduct credits:', error.message);
+        return { result: null, error };
+    }
+
+    return { result: data, error: null };
+};
+
+/**
+ * Başarısız işlem sonrası kredi iadesi yapar
+ * @param {string} userId - Kullanıcı UUID
+ * @param {number} amount - İade edilecek kredi miktarı
+ * @param {string} operationType - İşlem tipi
+ * @returns {Promise<{result, error}>}
+ */
+const refundCredits = async (userId, amount, operationType) => {
+    const client = getClient();
+
+    const { data, error } = await client.rpc('refund_credits', {
+        p_user_id: userId,
+        p_amount: amount,
+        p_operation_type: operationType
+    });
+
+    if (error) {
+        console.error('Failed to refund credits:', error.message);
+        return { result: null, error };
+    }
+
+    return { result: data, error: null };
+};
+
+/**
  * Çıkış yapar (session'ı temizler)
  * @returns {Promise<{error}>}
  */
@@ -253,5 +323,8 @@ module.exports = {
     updateSubscription,
     updateDeviceInfo,
     logUsage,
+    getCredits,
+    deductCredits,
+    refundCredits,
     signOut
 };

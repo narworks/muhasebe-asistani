@@ -22,14 +22,34 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
     // Automation
     startScan: () => ipcRenderer.send('start-scan'),
+    resumeScan: () => ipcRenderer.send('resume-scan'),
+    cancelScan: () => ipcRenderer.send('cancel-scan'),
+    getScanState: () => ipcRenderer.invoke('get-scan-state'),
     onScanUpdate: (callback) => ipcRenderer.on('scan-update', (_event, value) => callback(value)),
     onScanError: (callback) => ipcRenderer.on('scan-error', (_event, value) => callback(value)),
     onScanComplete: (callback) => ipcRenderer.on('scan-complete', (_event, value) => callback(value)),
+
+    // Scan Settings
+    getScanSettings: () => ipcRenderer.invoke('get-scan-settings'),
+    saveScanSettings: (settings) => ipcRenderer.invoke('save-scan-settings', settings),
+
+    // Schedule
+    getScheduleStatus: () => ipcRenderer.invoke('get-schedule-status'),
+    setSchedule: (config) => ipcRenderer.invoke('set-schedule', config),
+
+    // Credits
+    getCredits: () => ipcRenderer.invoke('get-credits'),
+    syncCredits: () => ipcRenderer.invoke('sync-credits'),
+    purchaseCredits: () => ipcRenderer.invoke('purchase-credits'),
+    onCreditsUpdated: (callback) => ipcRenderer.on('credits-updated', (_event, value) => callback(value)),
 
     // Cleanup listeners
     removeScanListeners: () => {
         ipcRenderer.removeAllListeners('scan-update');
         ipcRenderer.removeAllListeners('scan-error');
         ipcRenderer.removeAllListeners('scan-complete');
+    },
+    removeCreditsListeners: () => {
+        ipcRenderer.removeAllListeners('credits-updated');
     }
 });

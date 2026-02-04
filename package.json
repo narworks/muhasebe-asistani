@@ -18,7 +18,7 @@
     "start": "concurrently -k \"cross-env BROWSER=none npm run dev\" \"wait-on tcp:5173 && npm run electron:dev\""
   },
   "dependencies": {
-    "@google/genai": "^1.31.0",
+    "@google/generative-ai": "^0.24.1",
     "@supabase/supabase-js": "^2.93.3",
     "axios": "^1.13.2",
     "better-sqlite3": "^12.5.0",
@@ -26,6 +26,7 @@
     "electron-squirrel-startup": "^1.0.1",
     "iyzipay": "^2.0.64",
     "keytar": "^7.9.0",
+    "node-cron": "^4.2.1",
     "pdf-parse": "^2.4.5",
     "puppeteer": "^24.32.0",
     "react": "^18.0.0",
