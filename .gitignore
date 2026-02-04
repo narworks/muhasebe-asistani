@@ -25,3 +25,13 @@ dist-ssr
 *.sw?
 .vercel
 .env*.local
+
+# Claude Code
+.claude/
+
+# Electron Builder Output
+release/
+out/
+
+# Build artifacts
+build/

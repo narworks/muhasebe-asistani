@@ -1,6 +1,8 @@
 const { app, BrowserWindow, ipcMain } = require('electron');
 const path = require('path');
-require('dotenv').config();
+require('dotenv').config({
+    path: path.join(__dirname, '../.env')
+});
 const supabase = require('./supabase');
 const licenseManager = require('./license');
 const database = require('./database');
@@ -33,6 +35,7 @@ const createWindow = () => {
         mainWindow.webContents.openDevTools();
     } else {
         mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
+        mainWindow.webContents.openDevTools(); // Temporarily open DevTools in production to debug
     }
 };
 
