@@ -75,8 +75,8 @@ const setStateFromSubscription = (subscription) => {
     if (!subscription) return;
 
     state.subscriptionStatus = subscription.status || 'inactive';
-    state.plan = subscription.plan || 'pro';
-    state.expiresAt = subscription.expires_at || null;
+    state.plan = subscription.plan_type || subscription.plan || 'pro'; // Support both field names
+    state.expiresAt = subscription.end_date || subscription.expires_at || null; // Support both field names
     state.lastCheckAt = new Date().toISOString();
 
     persistState();
