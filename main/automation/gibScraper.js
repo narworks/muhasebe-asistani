@@ -33,24 +33,22 @@ const solveCaptcha = async (page, apiKey) => {
     const captchaBuffer = await captchaElement.screenshot();
     const captchaBase64 = captchaBuffer.toString('base64');
 
-    const ai = new GoogleGenAI({ apiKey });
-    const response = await ai.models.generateContent({
-        model: 'gemini-2.0-flash-exp',
-        contents: [
-            {
-                parts: [
-                    { text: 'Bu resimdeki metni oku. Sadece metni döndür, boşluksuz. Başka hiçbir şey yazma.' },
-                    {
-                        inlineData: {
-                            mimeType: 'image/png',
-                            data: captchaBase64
-                        }
-                    }
-                ]
-            }
-        ]
-    });
+    const genAI = new GoogleGenAI({ apiKey });
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash-exp' });
 
+    const result = await model.generateContent([
+        {
+            text: 'Bu resimdeki metni oku. Sadece metni döndür, boşluksuz. Başka hiçbir şey yazma.'
+        },
+        {
+            inlineData: {
+                mimeType: 'image/png',
+                data: captchaBase64
+            }
+        }
+    ]);
+
+    const response = await result.response;
     return response.text().trim().replace(/\s/g, '');
 };
 
