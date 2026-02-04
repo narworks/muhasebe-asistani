@@ -21,8 +21,9 @@ asarUnpack:
 
 mac:
   target: dmg
-  hardenedRuntime: true
-  entitlements: build/entitlements.mac.plist # If needed later for signing
+  identity: null  # Ad-hoc signing (no Apple Developer ID yet)
+  hardenedRuntime: false
+  entitlements: build/entitlements.mac.plist
   entitlementsInherit: build/entitlements.mac.plist
 
 win:
