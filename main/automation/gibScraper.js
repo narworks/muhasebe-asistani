@@ -13,13 +13,28 @@ const ensureLoginForm = async (page) => {
         await page.waitForSelector(loginInputSelector, { timeout: 5000 });
         return;
     } catch {
-        const loginButtons = await page.$x("//a[contains(., 'Giriş Yap')] | //button[contains(., 'Giriş Yap')]");
-        if (loginButtons.length > 0) {
-            await Promise.all([
-                page.waitForNavigation({ waitUntil: 'networkidle0', timeout: 30000 }),
-                loginButtons[0].click()
-            ]);
+        // Try to find and click "Giriş Yap" button
+        try {
+            const loginButton = await page.evaluate(() => {
+                const buttons = Array.from(document.querySelectorAll('a, button'));
+                const btn = buttons.find(b => b.textContent.includes('Giriş Yap'));
+                return btn ? true : false;
+            });
+
+            if (loginButton) {
+                await Promise.all([
+                    page.waitForNavigation({ waitUntil: 'networkidle0', timeout: 30000 }),
+                    page.evaluate(() => {
+                        const buttons = Array.from(document.querySelectorAll('a, button'));
+                        const btn = buttons.find(b => b.textContent.includes('Giriş Yap'));
+                        if (btn) btn.click();
+                    })
+                ]);
+            }
+        } catch (e) {
+            console.error('Login button click failed:', e);
         }
+
         await page.waitForSelector(loginInputSelector, { timeout: 15000 });
     }
 };
@@ -72,11 +87,21 @@ const loginAndFetch = async (page, client, password, apiKey) => {
         }
     }
 
-    const eTebligatLink = await page.$x("//a[contains(text(), 'E-Tebligat')]");
-    if (eTebligatLink.length > 0) {
+    // Find and click E-Tebligat link
+    const eTebligatLinkExists = await page.evaluate(() => {
+        const links = Array.from(document.querySelectorAll('a'));
+        const link = links.find(a => a.textContent.includes('E-Tebligat'));
+        return link ? true : false;
+    });
+
+    if (eTebligatLinkExists) {
         await Promise.all([
             page.waitForNavigation({ waitUntil: 'networkidle0', timeout: 20000 }),
-            eTebligatLink[0].click()
+            page.evaluate(() => {
+                const links = Array.from(document.querySelectorAll('a'));
+                const link = links.find(a => a.textContent.includes('E-Tebligat'));
+                if (link) link.click();
+            })
         ]);
     }
 
