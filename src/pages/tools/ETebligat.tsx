@@ -51,6 +51,7 @@ const ETebligat: React.FC = () => {
     const [scheduleLoading, setScheduleLoading] = useState(false);
     const [creditBalance, setCreditBalance] = useState<{ totalRemaining: number } | null>(null);
     const [insufficientCredits, setInsufficientCredits] = useState(false);
+    const [subscriptionStatus, setSubscriptionStatus] = useState<{ isActive: boolean; status: string } | null>(null);
 
     const fetchTebligatlar = async () => {
         setLoadingTebligatlar(true);
@@ -121,6 +122,13 @@ const ETebligat: React.FC = () => {
 
     useEffect(() => { fetchTebligatlar(); }, []);
     useEffect(() => { fetchClients(); }, []);
+
+    // Check subscription status
+    useEffect(() => {
+        window.electronAPI.getSubscriptionStatus().then(setSubscriptionStatus).catch(() => {
+            setSubscriptionStatus({ isActive: false, status: 'unknown' });
+        });
+    }, []);
 
     // Fetch credits and listen for updates
     useEffect(() => {
@@ -454,6 +462,44 @@ const ETebligat: React.FC = () => {
     const progressPercent = scanProgress && scanProgress.total > 0
         ? Math.round((scanProgress.current / scanProgress.total) * 100)
         : 0;
+
+    // Show subscription inactive screen
+    if (subscriptionStatus && !subscriptionStatus.isActive) {
+        return (
+            <div className="p-6 h-full flex flex-col">
+                <div className="flex justify-between items-center mb-6">
+                    <div>
+                        <h1 className="text-2xl font-bold text-slate-800">E-Tebligat Tarama</h1>
+                        <p className="text-slate-500 text-sm mt-1">GİB E-Tebligat kutunuzdaki yeni tebligatları otomatik tarar</p>
+                    </div>
+                </div>
+
+                <div className="flex-1 flex items-center justify-center">
+                    <div className="bg-white rounded-xl shadow-lg p-8 max-w-md w-full text-center">
+                        <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-amber-100 mb-6">
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                            </svg>
+                        </div>
+                        <h2 className="text-xl font-bold text-slate-800 mb-3">Abonelik Gerekli</h2>
+                        <p className="text-slate-600 mb-6">
+                            Bu özelliği kullanabilmek için aktif bir aboneliğe sahip olmanız gerekmektedir.
+                            Abonelik durumunuz: <span className="text-amber-600 font-medium">Pasif</span>
+                        </p>
+                        <button
+                            onClick={() => window.electronAPI.openBillingPortal()}
+                            className="inline-flex items-center px-6 py-3 bg-sky-500 hover:bg-sky-600 text-white font-semibold rounded-lg transition-colors"
+                        >
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+                            </svg>
+                            Abonelik Satın Al
+                        </button>
+                    </div>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="p-6 h-full flex flex-col">

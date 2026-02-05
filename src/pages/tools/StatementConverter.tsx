@@ -59,12 +59,18 @@ const StatementConverter: React.FC = () => {
     const [error, setError] = useState<string | null>(null);
     const [userTemplates, setUserTemplates] = useState<UserTemplate[]>([]);
     const [creditBalance, setCreditBalance] = useState<{ totalRemaining: number } | null>(null);
+    const [subscriptionStatus, setSubscriptionStatus] = useState<{ isActive: boolean; status: string } | null>(null);
 
     const { currentUser } = useAuth();
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     // --- Effects ---
     useEffect(() => {
+        // Check subscription status
+        window.electronAPI.getSubscriptionStatus().then(setSubscriptionStatus).catch(() => {
+            setSubscriptionStatus({ isActive: false, status: 'unknown' });
+        });
+
         window.electronAPI.getCredits().then(setCreditBalance).catch(() => {});
         window.electronAPI.onCreditsUpdated((credits) => setCreditBalance(credits));
         return () => { window.electronAPI.removeCreditsListeners(); };
@@ -288,6 +294,44 @@ const StatementConverter: React.FC = () => {
         setUserTemplates(updatedTemplates);
         localStorage.setItem(USER_TEMPLATES_KEY, JSON.stringify(updatedTemplates));
     };
+
+    // Show subscription inactive screen
+    if (subscriptionStatus && !subscriptionStatus.isActive) {
+        return (
+            <div>
+                <div className="flex justify-between items-center mb-8">
+                    <div>
+                        <h1 className="text-3xl md:text-4xl font-bold text-white mb-2">Banka Ekstresi Dönüştürücü</h1>
+                        <p className="text-slate-400 text-lg">Dosyanızı yükleyin ve yapay zekaya ne yapması gerektiğini söyleyin.</p>
+                    </div>
+                </div>
+
+                <Card>
+                    <div className="text-center py-12">
+                        <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-amber-500/20 mb-6">
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                            </svg>
+                        </div>
+                        <h2 className="text-2xl font-bold text-white mb-3">Abonelik Gerekli</h2>
+                        <p className="text-slate-400 mb-6 max-w-md mx-auto">
+                            Bu özelliği kullanabilmek için aktif bir aboneliğe sahip olmanız gerekmektedir.
+                            Abonelik durumunuz: <span className="text-amber-400 font-medium">Pasif</span>
+                        </p>
+                        <button
+                            onClick={() => window.electronAPI.openBillingPortal()}
+                            className="inline-flex items-center px-6 py-3 bg-sky-500 hover:bg-sky-600 text-white font-semibold rounded-lg transition-colors"
+                        >
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+                            </svg>
+                            Abonelik Satın Al
+                        </button>
+                    </div>
+                </Card>
+            </div>
+        );
+    }
 
     return (
         <div>
