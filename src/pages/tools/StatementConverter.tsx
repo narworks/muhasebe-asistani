@@ -31,7 +31,7 @@ const DownloadIcon = () => (
     </svg>
 );
 
-const ACCEPTED_FILE_TYPES = ['application/pdf', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'text/plain'];
+const ACCEPTED_FILE_TYPES = ['application/pdf', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'text/plain', 'text/csv', '.csv'];
 const PREDEFINED_TEMPLATES = [
     { title: "Basit Tarih, Açıklama, Tutar", prompt: "Dosyadaki tarih, işlem açıklaması ve tutar sütunlarını bularak CSV formatına dönüştür." },
     { title: "Borç/Alacak Ayrı Sütun", prompt: "Tarih, Açıklama, Borç ve Alacak sütunları oluştur. Gelen para alacak, giden para borç sütununa yazılsın." },
@@ -111,6 +111,48 @@ const StatementConverter: React.FC = () => {
                     setPreviewContent(previewTable);
                 };
                 reader.readAsArrayBuffer(file);
+            } else if (file.type === 'text/csv' || file.name.endsWith('.csv')) {
+                // Parse CSV file for table preview
+                reader.onload = (e) => {
+                    const textContent = e.target?.result as string;
+                    const lines = textContent.split('\n').filter(line => line.trim());
+                    const rows = lines.map(line => {
+                        // Simple CSV parsing (handles basic cases)
+                        const cells: string[] = [];
+                        let current = '';
+                        let inQuotes = false;
+                        for (const char of line) {
+                            if (char === '"') {
+                                inQuotes = !inQuotes;
+                            } else if ((char === ',' || char === ';') && !inQuotes) {
+                                cells.push(current.trim());
+                                current = '';
+                            } else {
+                                current += char;
+                            }
+                        }
+                        cells.push(current.trim());
+                        return cells;
+                    });
+
+                    const previewTable = (
+                        <div className="overflow-x-auto max-h-60 bg-slate-900/50 rounded-lg">
+                            <table className="w-full text-xs text-left text-slate-400">
+                                <tbody>
+                                    {rows.slice(0, 10).map((row, rIndex) => (
+                                        <tr key={rIndex} className="border-b border-slate-700">
+                                            {row.map((cell, cIndex) => (
+                                                <td key={cIndex} className="px-4 py-2 whitespace-nowrap">{cell}</td>
+                                            ))}
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    );
+                    setPreviewContent(previewTable);
+                };
+                reader.readAsText(file);
             } else if (file.type === 'application/pdf' || file.type === 'text/plain') {
                 reader.onload = (e) => {
                     const textContent = e.target?.result as string;
@@ -183,7 +225,7 @@ const StatementConverter: React.FC = () => {
             // Call Electron IPC
             const resultText = await window.electronAPI.convertStatement({
                 fileBuffer: Array.from(new Uint8Array(buffer)), // Convert to array for IPC
-                mimeType: uploadedFile.type || (uploadedFile.name.endsWith('.xlsx') ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' : 'text/plain'),
+                mimeType: uploadedFile.type || (uploadedFile.name.endsWith('.xlsx') ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' : uploadedFile.name.endsWith('.csv') ? 'text/csv' : 'text/plain'),
                 prompt: userPrompt
             });
 
@@ -197,19 +239,37 @@ const StatementConverter: React.FC = () => {
         }
     };
 
-    const handleDownload = () => {
+    const handleDownloadCsv = async () => {
         if (!conversionResult) return;
-        const blob = new Blob([conversionResult], { type: 'text/csv;charset=utf-8;' });
-        const link = document.createElement("a");
-        if (link.download !== undefined) {
-            const url = URL.createObjectURL(blob);
-            link.setAttribute("href", url);
-            const originalFileName = uploadedFile?.name.split('.').slice(0, -1).join('.') || 'donusum';
-            link.setAttribute("download", `${originalFileName}_donusturuldu.csv`);
-            link.style.visibility = 'hidden';
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
+        const originalFileName = uploadedFile?.name.split('.').slice(0, -1).join('.') || 'donusum';
+        const fileName = `${originalFileName}_donusturuldu.csv`;
+
+        try {
+            await window.electronAPI.exportCsv(conversionResult, fileName);
+        } catch (err) {
+            console.error('CSV indirme hatası:', err);
+        }
+    };
+
+    const handleDownloadExcel = async () => {
+        if (!parsedResult || parsedResult.length === 0) return;
+
+        const headers = parsedResult[0];
+        const dataRows = parsedResult.slice(1).map(row => {
+            const obj: Record<string, string> = {};
+            headers.forEach((header, index) => {
+                obj[header.trim()] = row[index]?.trim() || '';
+            });
+            return obj;
+        });
+
+        const originalFileName = uploadedFile?.name.split('.').slice(0, -1).join('.') || 'donusum';
+        const fileName = `${originalFileName}_donusturuldu.xlsx`;
+
+        try {
+            await window.electronAPI.exportExcel(dataRows, 'Dönüşüm', fileName);
+        } catch (err) {
+            console.error('Excel indirme hatası:', err);
         }
     };
 
@@ -264,7 +324,7 @@ const StatementConverter: React.FC = () => {
                                 <p className="mt-2 font-semibold text-slate-300">
                                     Dosyanızı buraya sürükleyin veya <button type="button" onClick={handleBrowseClick} className="font-semibold text-sky-400 hover:text-sky-300">gözatın</button>
                                 </p>
-                                <p className="text-xs text-slate-500 mt-1">Desteklenen formatlar: PDF, XLSX, TXT</p>
+                                <p className="text-xs text-slate-500 mt-1">Desteklenen formatlar: PDF, XLSX, CSV, TXT</p>
                                 <input type="file" ref={fileInputRef} onChange={handleFileInputChange} className="hidden" accept={ACCEPTED_FILE_TYPES.join(',')} />
                             </div>
                         )}
@@ -358,10 +418,16 @@ const StatementConverter: React.FC = () => {
                     <Card>
                         <div className="flex justify-between items-center mb-4">
                             <h2 className="text-xl font-bold text-white">Dönüşüm Sonucu</h2>
-                            <button onClick={handleDownload} className="flex items-center bg-emerald-500 text-white font-semibold py-2 px-4 rounded-lg hover:bg-emerald-600 transition-colors text-sm">
-                                <DownloadIcon />
-                                CSV Olarak İndir
-                            </button>
+                            <div className="flex space-x-2">
+                                <button onClick={handleDownloadExcel} className="flex items-center bg-emerald-500 text-white font-semibold py-2 px-4 rounded-lg hover:bg-emerald-600 transition-colors text-sm">
+                                    <DownloadIcon />
+                                    Excel Olarak İndir
+                                </button>
+                                <button onClick={handleDownloadCsv} className="flex items-center bg-slate-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-slate-500 transition-colors text-sm">
+                                    <DownloadIcon />
+                                    CSV Olarak İndir
+                                </button>
+                            </div>
                         </div>
                         <div className="overflow-x-auto bg-slate-900/50 rounded-lg max-h-96">
                             <table className="min-w-full text-sm text-left text-slate-300">

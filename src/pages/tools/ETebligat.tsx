@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useRef } from 'react';
-import * as XLSX from 'xlsx';
 
 const ETebligat: React.FC = () => {
     const [scanning, setScanning] = useState(false);
@@ -44,6 +43,8 @@ const ETebligat: React.FC = () => {
     const [scheduleConfig, setScheduleConfig] = useState({
         enabled: false,
         time: '08:00',
+        frequency: 'daily' as 'daily' | 'weekdays' | 'weekends' | 'custom',
+        customDays: [] as number[],
         lastScheduledScanAt: null as string | null,
         nextScheduledScanAt: null as string | null
     });
@@ -214,7 +215,9 @@ const ETebligat: React.FC = () => {
             const newEnabled = !scheduleConfig.enabled;
             await window.electronAPI.setSchedule({
                 enabled: newEnabled,
-                time: scheduleConfig.time
+                time: scheduleConfig.time,
+                frequency: scheduleConfig.frequency,
+                customDays: scheduleConfig.customDays
             });
             const updated = await window.electronAPI.getScheduleStatus();
             setScheduleConfig(updated);
@@ -229,7 +232,61 @@ const ETebligat: React.FC = () => {
         setScheduleConfig(prev => ({ ...prev, time: newTime }));
         if (scheduleConfig.enabled) {
             try {
-                await window.electronAPI.setSchedule({ enabled: true, time: newTime });
+                await window.electronAPI.setSchedule({
+                    enabled: true,
+                    time: newTime,
+                    frequency: scheduleConfig.frequency,
+                    customDays: scheduleConfig.customDays
+                });
+                const updated = await window.electronAPI.getScheduleStatus();
+                setScheduleConfig(updated);
+            } catch (err) {
+                console.error('Zamanlama güncellenemedi', err);
+            }
+        }
+    };
+
+    const handleFrequencyChange = async (newFrequency: 'daily' | 'weekdays' | 'weekends' | 'custom') => {
+        const newCustomDays = newFrequency === 'custom' && scheduleConfig.customDays.length === 0
+            ? [1, 2, 3, 4, 5] // Default to weekdays if switching to custom with no days selected
+            : scheduleConfig.customDays;
+
+        setScheduleConfig(prev => ({ ...prev, frequency: newFrequency, customDays: newCustomDays }));
+
+        if (scheduleConfig.enabled) {
+            try {
+                await window.electronAPI.setSchedule({
+                    enabled: true,
+                    time: scheduleConfig.time,
+                    frequency: newFrequency,
+                    customDays: newCustomDays
+                });
+                const updated = await window.electronAPI.getScheduleStatus();
+                setScheduleConfig(updated);
+            } catch (err) {
+                console.error('Zamanlama güncellenemedi', err);
+            }
+        }
+    };
+
+    const handleCustomDayToggle = async (day: number) => {
+        const newDays = scheduleConfig.customDays.includes(day)
+            ? scheduleConfig.customDays.filter(d => d !== day)
+            : [...scheduleConfig.customDays, day].sort((a, b) => a - b);
+
+        // Don't allow empty selection
+        if (newDays.length === 0) return;
+
+        setScheduleConfig(prev => ({ ...prev, customDays: newDays }));
+
+        if (scheduleConfig.enabled && scheduleConfig.frequency === 'custom') {
+            try {
+                await window.electronAPI.setSchedule({
+                    enabled: true,
+                    time: scheduleConfig.time,
+                    frequency: 'custom',
+                    customDays: newDays
+                });
                 const updated = await window.electronAPI.getScheduleStatus();
                 setScheduleConfig(updated);
             } catch (err) {
@@ -323,7 +380,7 @@ const ETebligat: React.FC = () => {
         return str;
     };
 
-    const handleExportCsv = () => {
+    const handleExportCsv = async () => {
         if (filteredTebligatlar.length === 0) return;
         const headers = ['Mükellef', 'Tarih', 'Gönderen', 'Konu', 'Durum', 'Kayıt Tarihi'];
         const rows = filteredTebligatlar.map((row) => [
@@ -336,18 +393,21 @@ const ETebligat: React.FC = () => {
         ]);
 
         const csvContent = [headers.map(escapeCsvValue).join(','), ...rows.map((r) => r.join(','))].join('\n');
-        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-        const link = document.createElement('a');
-        const url = URL.createObjectURL(blob);
-        link.setAttribute('href', url);
-        link.setAttribute('download', 'tebligatlar.csv');
-        link.style.visibility = 'hidden';
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
+        const fileName = `tebligatlar_${new Date().toISOString().slice(0, 10)}.csv`;
+
+        try {
+            const result = await window.electronAPI.exportCsv(csvContent, fileName);
+            if (result.success) {
+                addLog(`CSV dosyası kaydedildi: ${result.filePath}`, 'success');
+            } else if (!result.canceled) {
+                addLog(`CSV kaydedilemedi: ${result.error}`, 'error');
+            }
+        } catch (err: any) {
+            addLog(`CSV kaydedilemedi: ${err.message}`, 'error');
+        }
     };
 
-    const handleExportExcel = () => {
+    const handleExportExcel = async () => {
         if (filteredTebligatlar.length === 0) return;
 
         const dataRows = filteredTebligatlar.map((row) => ({
@@ -359,24 +419,18 @@ const ETebligat: React.FC = () => {
             'Kayıt Tarihi': row.created_at || ''
         }));
 
-        const ws = XLSX.utils.json_to_sheet(dataRows);
-
-        // Auto-width columns
-        const headers = ['Mükellef', 'Tarih', 'Gönderen', 'Konu', 'Durum', 'Kayıt Tarihi'];
-        ws['!cols'] = headers.map((header, colIndex) => {
-            let maxWidth = header.length;
-            dataRows.forEach(row => {
-                const value = String(Object.values(row)[colIndex] || '');
-                maxWidth = Math.max(maxWidth, value.length);
-            });
-            return { wch: Math.min(maxWidth + 2, 50) };
-        });
-
-        const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, 'Tebligatlar');
-
         const fileName = `tebligatlar_${new Date().toISOString().slice(0, 10)}.xlsx`;
-        XLSX.writeFile(wb, fileName);
+
+        try {
+            const result = await window.electronAPI.exportExcel(dataRows, 'Tebligatlar', fileName);
+            if (result.success) {
+                addLog(`Excel dosyası kaydedildi: ${result.filePath}`, 'success');
+            } else if (!result.canceled) {
+                addLog(`Excel kaydedilemedi: ${result.error}`, 'error');
+            }
+        } catch (err: any) {
+            addLog(`Excel kaydedilemedi: ${err.message}`, 'error');
+        }
     };
 
     const statusOptions = Array.from(new Set(tebligatlar.map((row) => row.status).filter(Boolean)));
@@ -556,31 +610,96 @@ const ETebligat: React.FC = () => {
                 <div className="mb-8 p-4 bg-gray-50 rounded-lg border border-gray-200">
                     <h2 className="text-lg font-semibold mb-2">Otomatik Tarama Zamanlama</h2>
                     <p className="text-sm text-gray-500 mb-4">Her gün belirli bir saatte otomatik tarama başlatır.</p>
-                    <div className="flex items-center space-x-4">
-                        <label className="flex items-center space-x-2">
-                            <input
-                                type="checkbox"
-                                checked={scheduleConfig.enabled}
-                                onChange={handleScheduleToggle}
-                                disabled={scheduleLoading}
-                                className="w-4 h-4 text-indigo-600 rounded"
-                            />
-                            <span className="text-sm font-medium text-gray-700">Zamanlı tarama aktif</span>
-                        </label>
-                        <div>
-                            <label className="block text-xs font-semibold text-gray-500 mb-1">Saat</label>
-                            <input
-                                type="time"
-                                value={scheduleConfig.time}
-                                onChange={(e) => handleScheduleTimeChange(e.target.value)}
-                                className="border border-gray-300 rounded-md px-3 py-1.5 text-sm text-gray-900 bg-white"
-                            />
+                    <div className="space-y-4">
+                        {/* Enable toggle and time */}
+                        <div className="flex items-center space-x-4">
+                            <label className="flex items-center space-x-2">
+                                <input
+                                    type="checkbox"
+                                    checked={scheduleConfig.enabled}
+                                    onChange={handleScheduleToggle}
+                                    disabled={scheduleLoading}
+                                    className="w-4 h-4 text-indigo-600 rounded"
+                                />
+                                <span className="text-sm font-medium text-gray-700">Zamanlı tarama aktif</span>
+                            </label>
+                            <div>
+                                <label className="block text-xs font-semibold text-gray-500 mb-1">Saat</label>
+                                <input
+                                    type="time"
+                                    value={scheduleConfig.time}
+                                    onChange={(e) => handleScheduleTimeChange(e.target.value)}
+                                    className="border border-gray-300 rounded-md px-3 py-1.5 text-sm text-gray-900 bg-white"
+                                />
+                            </div>
                         </div>
+
+                        {/* Frequency selection */}
+                        <div>
+                            <label className="block text-xs font-semibold text-gray-500 mb-2">Tekrar</label>
+                            <div className="flex flex-wrap gap-3">
+                                {[
+                                    { value: 'daily', label: 'Her gün' },
+                                    { value: 'weekdays', label: 'Hafta içi (Pzt-Cum)' },
+                                    { value: 'weekends', label: 'Hafta sonu (Cmt-Paz)' },
+                                    { value: 'custom', label: 'Özel günler' }
+                                ].map(option => (
+                                    <label key={option.value} className="flex items-center space-x-1.5 cursor-pointer">
+                                        <input
+                                            type="radio"
+                                            name="frequency"
+                                            value={option.value}
+                                            checked={scheduleConfig.frequency === option.value}
+                                            onChange={() => handleFrequencyChange(option.value as any)}
+                                            className="w-4 h-4 text-indigo-600"
+                                        />
+                                        <span className="text-sm text-gray-700">{option.label}</span>
+                                    </label>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Custom days selection */}
+                        {scheduleConfig.frequency === 'custom' && (
+                            <div>
+                                <label className="block text-xs font-semibold text-gray-500 mb-2">Günler</label>
+                                <div className="flex flex-wrap gap-2">
+                                    {[
+                                        { value: 1, label: 'Pzt' },
+                                        { value: 2, label: 'Sal' },
+                                        { value: 3, label: 'Çar' },
+                                        { value: 4, label: 'Per' },
+                                        { value: 5, label: 'Cum' },
+                                        { value: 6, label: 'Cmt' },
+                                        { value: 0, label: 'Paz' }
+                                    ].map(day => (
+                                        <label
+                                            key={day.value}
+                                            className={`flex items-center justify-center w-12 h-8 rounded-md cursor-pointer text-sm font-medium transition-colors ${
+                                                scheduleConfig.customDays.includes(day.value)
+                                                    ? 'bg-indigo-600 text-white'
+                                                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                            }`}
+                                        >
+                                            <input
+                                                type="checkbox"
+                                                checked={scheduleConfig.customDays.includes(day.value)}
+                                                onChange={() => handleCustomDayToggle(day.value)}
+                                                className="sr-only"
+                                            />
+                                            {day.label}
+                                        </label>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
                     </div>
+
+                    {/* Schedule info */}
                     {scheduleConfig.enabled && (
                         <div className="mt-3 text-xs text-gray-500 space-y-1">
                             {scheduleConfig.nextScheduledScanAt && (
-                                <p>Sonraki tarama: {new Date(scheduleConfig.nextScheduledScanAt).toLocaleString('tr-TR')}</p>
+                                <p>Sonraki tarama: {new Date(scheduleConfig.nextScheduledScanAt).toLocaleString('tr-TR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
                             )}
                             {scheduleConfig.lastScheduledScanAt && (
                                 <p>Son zamanlı tarama: {new Date(scheduleConfig.lastScheduledScanAt).toLocaleString('tr-TR')}</p>

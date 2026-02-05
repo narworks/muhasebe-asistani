@@ -1,4 +1,6 @@
-const { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage } = require('electron');
+const { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, dialog } = require('electron');
+const fs = require('fs');
+const XLSX = require('xlsx');
 const path = require('path');
 require('dotenv').config({
     path: path.join(__dirname, '../.env')
@@ -273,9 +275,9 @@ ipcMain.handle('get-schedule-status', () => {
     return scheduler.getStatus();
 });
 
-ipcMain.handle('set-schedule', (event, { enabled, time }) => {
+ipcMain.handle('set-schedule', (event, { enabled, time, frequency = 'daily', customDays = [] }) => {
     if (enabled && time) {
-        const success = scheduler.startSchedule(time);
+        const success = scheduler.startSchedule(time, frequency, customDays);
         return { success };
     } else {
         scheduler.stopSchedule();
@@ -404,4 +406,66 @@ ipcMain.handle('open-billing-portal', async (event, packageId) => {
     });
 
     return { success: true };
+});
+
+// Export to CSV
+ipcMain.handle('export-csv', async (event, { data, defaultFileName }) => {
+    const { filePath, canceled } = await dialog.showSaveDialog(mainWindow, {
+        title: 'CSV olarak kaydet',
+        defaultPath: defaultFileName || 'export.csv',
+        filters: [{ name: 'CSV', extensions: ['csv'] }]
+    });
+
+    if (canceled || !filePath) {
+        return { success: false, canceled: true };
+    }
+
+    try {
+        // Add BOM for UTF-8 Excel compatibility
+        const BOM = '\uFEFF';
+        fs.writeFileSync(filePath, BOM + data, 'utf8');
+        return { success: true, filePath };
+    } catch (error) {
+        console.error('CSV export error:', error);
+        return { success: false, error: error.message };
+    }
+});
+
+// Export to Excel
+ipcMain.handle('export-excel', async (event, { rows, sheetName, defaultFileName }) => {
+    const { filePath, canceled } = await dialog.showSaveDialog(mainWindow, {
+        title: 'Excel olarak kaydet',
+        defaultPath: defaultFileName || 'export.xlsx',
+        filters: [{ name: 'Excel', extensions: ['xlsx'] }]
+    });
+
+    if (canceled || !filePath) {
+        return { success: false, canceled: true };
+    }
+
+    try {
+        const ws = XLSX.utils.json_to_sheet(rows);
+
+        // Auto-width columns
+        if (rows.length > 0) {
+            const headers = Object.keys(rows[0]);
+            ws['!cols'] = headers.map((header, colIndex) => {
+                let maxWidth = header.length;
+                rows.forEach(row => {
+                    const value = String(Object.values(row)[colIndex] || '');
+                    maxWidth = Math.max(maxWidth, value.length);
+                });
+                return { wch: Math.min(maxWidth + 2, 50) };
+            });
+        }
+
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, sheetName || 'Sheet1');
+        XLSX.writeFile(wb, filePath);
+
+        return { success: true, filePath };
+    } catch (error) {
+        console.error('Excel export error:', error);
+        return { success: false, error: error.message };
+    }
 });

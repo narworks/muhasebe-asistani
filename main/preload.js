@@ -43,6 +43,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     purchaseCredits: () => ipcRenderer.invoke('purchase-credits'),
     onCreditsUpdated: (callback) => ipcRenderer.on('credits-updated', (_event, value) => callback(value)),
 
+    // Export
+    exportCsv: (data, defaultFileName) => ipcRenderer.invoke('export-csv', { data, defaultFileName }),
+    exportExcel: (rows, sheetName, defaultFileName) => ipcRenderer.invoke('export-excel', { rows, sheetName, defaultFileName }),
+
     // Cleanup listeners
     removeScanListeners: () => {
         ipcRenderer.removeAllListeners('scan-update');

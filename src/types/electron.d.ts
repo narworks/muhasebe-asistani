@@ -63,13 +63,24 @@ export interface IElectronAPI {
     getScheduleStatus: () => Promise<{
         enabled: boolean;
         time: string;
+        frequency: 'daily' | 'weekdays' | 'weekends' | 'custom';
+        customDays: number[];
         lastScheduledScanAt: string | null;
         nextScheduledScanAt: string | null;
     }>;
-    setSchedule: (config: { enabled: boolean; time: string }) => Promise<{ success: boolean }>;
+    setSchedule: (config: {
+        enabled: boolean;
+        time: string;
+        frequency?: 'daily' | 'weekdays' | 'weekends' | 'custom';
+        customDays?: number[];
+    }) => Promise<{ success: boolean }>;
 
     // Statement Converter
     convertStatement: (formData: any) => Promise<string>;
+
+    // Export
+    exportCsv: (data: string, defaultFileName?: string) => Promise<{ success: boolean; canceled?: boolean; filePath?: string; error?: string }>;
+    exportExcel: (rows: any[], sheetName?: string, defaultFileName?: string) => Promise<{ success: boolean; canceled?: boolean; filePath?: string; error?: string }>;
 }
 
 declare global {
