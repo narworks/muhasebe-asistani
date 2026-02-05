@@ -21,6 +21,7 @@ asarUnpack:
 
 mac:
   target: dmg
+  artifactName: "Muhasebe-Asistani-${arch}.${ext}"
   identity: null  # Ad-hoc signing (no Apple Developer ID yet)
   hardenedRuntime: false
   entitlements: build/entitlements.mac.plist
