@@ -42,9 +42,17 @@ const loadState = () => {
     const accessToken = settings.getEncryptedValue('accessToken');
     const refreshToken = settings.getEncryptedValue('refreshToken');
 
+    // Deep merge for credits to ensure all fields have defaults
+    const storedCredits = stored.license?.credits || {};
+    const mergedCredits = {
+        ...defaultState.credits,
+        ...storedCredits
+    };
+
     state = {
         ...defaultState,
         ...stored.license,
+        credits: mergedCredits,
         accessToken,
         refreshToken
     };

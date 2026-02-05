@@ -40,7 +40,7 @@ const Navbar: React.FC = () => {
     return (
         <>
             <header className="h-16 bg-slate-900 flex items-center justify-end px-6 border-b border-slate-700 space-x-4">
-                {subscription?.isActive && credits && (
+                {subscription?.isActive && credits && typeof credits.totalRemaining === 'number' && (
                     <button
                         onClick={() => setIsModalOpen(true)}
                         className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-full border transition-all cursor-pointer ${

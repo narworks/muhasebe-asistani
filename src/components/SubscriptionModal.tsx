@@ -85,7 +85,7 @@ const SubscriptionModal: React.FC<SubscriptionModalProps> = ({ isOpen, onClose, 
                     </div>
 
                     {/* Credit Details (only for active subscriptions) */}
-                    {subscription?.isActive && credits && (
+                    {subscription?.isActive && credits && typeof credits.totalRemaining === 'number' && (
                         <div>
                             <h3 className="text-sm font-bold text-white mb-3 uppercase tracking-wider">Kredi Bakiyesi</h3>
                             <div className="bg-slate-800 border border-slate-600 rounded-lg p-4 space-y-4">
