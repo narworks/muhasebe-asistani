@@ -29,6 +29,7 @@ mac:
 
 win:
   target: nsis
+  artifactName: "Muhasebe-Asistani-Setup.${ext}"
 
 nsis:
   oneClick: false
@@ -38,4 +39,5 @@ linux:
   target:
     - AppImage
     - deb
+  artifactName: "Muhasebe-Asistani.${ext}"
   category: Office
