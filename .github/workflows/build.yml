@@ -37,12 +37,32 @@ jobs:
           cache: 'npm'
 
       - name: Create .env file
+        shell: bash
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          BILLING_URL: ${{ secrets.BILLING_URL }}
         run: |
-          echo "GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}" >> .env
-          echo "SUPABASE_URL=${{ secrets.SUPABASE_URL }}" >> .env
-          echo "SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}" >> .env
-          echo "SUPABASE_SERVICE_ROLE_KEY=${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" >> .env
-          echo "BILLING_URL=${{ secrets.BILLING_URL }}" >> .env
+          echo "GEMINI_API_KEY=${GEMINI_API_KEY}" > .env
+          echo "SUPABASE_URL=${SUPABASE_URL}" >> .env
+          echo "SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}" >> .env
+          echo "SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}" >> .env
+          echo "BILLING_URL=${BILLING_URL}" >> .env
+
+      - name: Verify .env file
+        shell: bash
+        run: |
+          echo "Checking .env file..."
+          if [ -f .env ]; then
+            echo ".env file exists"
+            echo "Number of lines: $(wc -l < .env)"
+            echo "Variables defined: $(grep -c '=' .env || echo 0)"
+          else
+            echo "ERROR: .env file not created!"
+            exit 1
+          fi
 
       - name: Install dependencies
         run: npm ci
@@ -53,9 +73,15 @@ jobs:
       - name: Fix asset paths
         run: node scripts/fix-paths.js
 
-      - name: Build Electron app (macOS)
+      - name: Build Electron app (macOS arm64)
         if: matrix.platform == 'mac'
-        run: npx electron-builder --mac
+        run: npx electron-builder --mac --arm64
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build Electron app (macOS x64)
+        if: matrix.platform == 'mac'
+        run: npx electron-builder --mac --x64
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
