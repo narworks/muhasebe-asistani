@@ -467,13 +467,32 @@ async function run(onStatusUpdate, apiKey, scanConfig = {}, options = {}, deduct
                     const tebligatlar = await loginAndFetch(page, client, password, apiKey);
 
                     const count = tebligatlar.length;
-                    const savedCount = database.saveTebligatlar(client.id, tebligatlar);
+                    let savedCount = 0;
 
-                    onStatusUpdate({
-                        message: `${client.firm_name}: ${count} tebligat bulundu, ${savedCount} yeni kayıt eklendi.`,
-                        type: 'success',
-                        firmId: client.id
-                    });
+                    if (count === 0) {
+                        // Tebligat bulunamadı - "Tebligat yok" kaydı oluştur
+                        const noNotificationRecord = [{
+                            sender: '-',
+                            subject: '-',
+                            documentNo: '-',
+                            status: 'Tebligat yok',
+                            date: new Date().toLocaleDateString('tr-TR'),
+                            endDate: null
+                        }];
+                        savedCount = database.saveTebligatlar(client.id, noNotificationRecord);
+                        onStatusUpdate({
+                            message: `${client.firm_name}: Tebligat bulunamadı.`,
+                            type: 'success',
+                            firmId: client.id
+                        });
+                    } else {
+                        savedCount = database.saveTebligatlar(client.id, tebligatlar);
+                        onStatusUpdate({
+                            message: `${client.firm_name}: ${count} tebligat bulundu, ${savedCount} yeni kayıt eklendi.`,
+                            type: 'success',
+                            firmId: client.id
+                        });
+                    }
 
                     successCount++;
                     succeeded = true;
