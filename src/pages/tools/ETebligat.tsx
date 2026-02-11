@@ -1336,11 +1336,11 @@ const ETebligat: React.FC = () => {
                                                                             setClientPage(group.client_id, Math.max(1, currentPage - 1));
                                                                         }}
                                                                         disabled={currentPage === 1}
-                                                                        className="px-2 py-1 text-xs rounded border border-gray-300 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100"
+                                                                        className="px-3 py-1.5 text-xs font-medium rounded border border-gray-300 bg-white text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100"
                                                                     >
                                                                         Önceki
                                                                     </button>
-                                                                    <span className="px-3 py-1 text-xs">
+                                                                    <span className="px-3 py-1 text-xs font-medium text-gray-700">
                                                                         {currentPage} / {totalPages}
                                                                     </span>
                                                                     <button
@@ -1349,7 +1349,7 @@ const ETebligat: React.FC = () => {
                                                                             setClientPage(group.client_id, Math.min(totalPages, currentPage + 1));
                                                                         }}
                                                                         disabled={currentPage === totalPages}
-                                                                        className="px-2 py-1 text-xs rounded border border-gray-300 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100"
+                                                                        className="px-3 py-1.5 text-xs font-medium rounded border border-gray-300 bg-white text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100"
                                                                     >
                                                                         Sonraki
                                                                     </button>
