@@ -40,6 +40,20 @@ function init() {
     CREATE UNIQUE INDEX IF NOT EXISTS idx_tebligat_unique
     ON tebligatlar (client_id, tebligat_date, sender, subject, status)
   `);
+
+    // Migration: Add document columns if they don't exist
+    const tableInfo = db.pragma('table_info(tebligatlar)');
+    const columns = tableInfo.map(col => col.name);
+
+    if (!columns.includes('document_no')) {
+        db.exec('ALTER TABLE tebligatlar ADD COLUMN document_no TEXT');
+    }
+    if (!columns.includes('document_url')) {
+        db.exec('ALTER TABLE tebligatlar ADD COLUMN document_url TEXT');
+    }
+    if (!columns.includes('document_path')) {
+        db.exec('ALTER TABLE tebligatlar ADD COLUMN document_path TEXT');
+    }
 }
 
 function saveClient(clientData) {
@@ -143,8 +157,8 @@ function saveTebligatlar(clientId, tebligatlar) {
     if (!Array.isArray(tebligatlar) || tebligatlar.length === 0) return 0;
 
     const insert = db.prepare(`
-    INSERT OR IGNORE INTO tebligatlar (client_id, tebligat_date, sender, subject, status)
-    VALUES (@client_id, @tebligat_date, @sender, @subject, @status)
+    INSERT OR IGNORE INTO tebligatlar (client_id, tebligat_date, sender, subject, status, document_no, document_url, document_path)
+    VALUES (@client_id, @tebligat_date, @sender, @subject, @status, @document_no, @document_url, @document_path)
   `);
 
     const insertMany = db.transaction((items) => {
@@ -155,7 +169,10 @@ function saveTebligatlar(clientId, tebligatlar) {
                 tebligat_date: item.date || null,
                 sender: item.sender || null,
                 subject: item.subject || null,
-                status: item.status || null
+                status: item.status || null,
+                document_no: item.documentNo || null,
+                document_url: item.documentUrl || null,
+                document_path: item.documentPath || null
             });
             inserted += result.changes || 0;
         }
@@ -173,6 +190,9 @@ function getTebligatlar(limit = 200) {
            t.sender,
            t.subject,
            t.status,
+           t.document_no,
+           t.document_url,
+           t.document_path,
            t.created_at,
            c.firm_name,
            c.id as client_id
@@ -182,6 +202,13 @@ function getTebligatlar(limit = 200) {
     LIMIT ?
   `);
     return stmt.all(limit);
+}
+
+// Update document path for a tebligat
+function updateTebligatDocument(tebligatId, documentPath) {
+    if (!db) init();
+    const stmt = db.prepare('UPDATE tebligatlar SET document_path = ? WHERE id = ?');
+    return stmt.run(documentPath, tebligatId);
 }
 
 // Function to retrieve decrypted password (internal use only, for bot)
@@ -204,5 +231,6 @@ module.exports = {
     getClients,
     getClientPassword,
     saveTebligatlar,
-    getTebligatlar
+    getTebligatlar,
+    updateTebligatDocument
 };

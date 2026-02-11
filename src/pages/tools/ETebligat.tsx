@@ -43,10 +43,14 @@ const ETebligat: React.FC = () => {
     const [scheduleConfig, setScheduleConfig] = useState({
         enabled: false,
         time: '08:00',
+        finishByTime: '08:00',
         frequency: 'daily' as 'daily' | 'weekdays' | 'weekends' | 'custom',
         customDays: [] as number[],
         lastScheduledScanAt: null as string | null,
-        nextScheduledScanAt: null as string | null
+        nextScheduledScanAt: null as string | null,
+        estimatedStartTime: null as string | null,
+        estimatedDurationMinutes: 0,
+        clientCount: 0
     });
     const [scheduleLoading, setScheduleLoading] = useState(false);
     const [creditBalance, setCreditBalance] = useState<{ totalRemaining: number } | null>(null);
@@ -223,7 +227,7 @@ const ETebligat: React.FC = () => {
             const newEnabled = !scheduleConfig.enabled;
             await window.electronAPI.setSchedule({
                 enabled: newEnabled,
-                time: scheduleConfig.time,
+                finishByTime: scheduleConfig.finishByTime || scheduleConfig.time,
                 frequency: scheduleConfig.frequency,
                 customDays: scheduleConfig.customDays
             });
@@ -237,12 +241,12 @@ const ETebligat: React.FC = () => {
     };
 
     const handleScheduleTimeChange = async (newTime: string) => {
-        setScheduleConfig(prev => ({ ...prev, time: newTime }));
+        setScheduleConfig(prev => ({ ...prev, time: newTime, finishByTime: newTime }));
         if (scheduleConfig.enabled) {
             try {
                 await window.electronAPI.setSchedule({
                     enabled: true,
-                    time: newTime,
+                    finishByTime: newTime,
                     frequency: scheduleConfig.frequency,
                     customDays: scheduleConfig.customDays
                 });
@@ -265,7 +269,7 @@ const ETebligat: React.FC = () => {
             try {
                 await window.electronAPI.setSchedule({
                     enabled: true,
-                    time: scheduleConfig.time,
+                    finishByTime: scheduleConfig.finishByTime || scheduleConfig.time,
                     frequency: newFrequency,
                     customDays: newCustomDays
                 });
@@ -291,7 +295,7 @@ const ETebligat: React.FC = () => {
             try {
                 await window.electronAPI.setSchedule({
                     enabled: true,
-                    time: scheduleConfig.time,
+                    finishByTime: scheduleConfig.finishByTime || scheduleConfig.time,
                     frequency: 'custom',
                     customDays: newDays
                 });
@@ -386,6 +390,28 @@ const ETebligat: React.FC = () => {
             return `"${str.replace(/"/g, '""')}"`;
         }
         return str;
+    };
+
+    const handleOpenDocument = async (documentPath: string) => {
+        try {
+            const result = await window.electronAPI.openDocument(documentPath);
+            if (!result.success) {
+                addLog(`Döküman açılamadı: ${result.error}`, 'error');
+            }
+        } catch (err: any) {
+            addLog(`Döküman açılamadı: ${err.message}`, 'error');
+        }
+    };
+
+    const handleShareDocument = async (documentPath: string) => {
+        try {
+            const result = await window.electronAPI.shareDocument(documentPath);
+            if (!result.success) {
+                addLog(`Klasör açılamadı: ${result.error}`, 'error');
+            }
+        } catch (err: any) {
+            addLog(`Klasör açılamadı: ${err.message}`, 'error');
+        }
     };
 
     const handleExportCsv = async () => {
@@ -652,106 +678,220 @@ const ETebligat: React.FC = () => {
                     </div>
                 </div>
 
-                {/* Otomatik Tarama Zamanlama */}
-                <div className="mb-8 p-4 bg-gray-50 rounded-lg border border-gray-200">
-                    <h2 className="text-lg font-semibold mb-2">Otomatik Tarama Zamanlama</h2>
-                    <p className="text-sm text-gray-500 mb-4">Her gün belirli bir saatte otomatik tarama başlatır.</p>
-                    <div className="space-y-4">
-                        {/* Enable toggle and time */}
-                        <div className="flex items-center space-x-4">
-                            <label className="flex items-center space-x-2">
-                                <input
-                                    type="checkbox"
-                                    checked={scheduleConfig.enabled}
-                                    onChange={handleScheduleToggle}
-                                    disabled={scheduleLoading}
-                                    className="w-4 h-4 text-indigo-600 rounded"
-                                />
-                                <span className="text-sm font-medium text-gray-700">Zamanlı tarama aktif</span>
-                            </label>
+                {/* Otomatik Tarama Zamanlama - Modern Design */}
+                <div className="mb-8 bg-gradient-to-br from-indigo-50 to-purple-50 rounded-xl border border-indigo-100 overflow-hidden">
+                    {/* Header */}
+                    <div className="px-6 py-4 bg-white/50 border-b border-indigo-100 flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-lg bg-indigo-100 flex items-center justify-center">
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                </svg>
+                            </div>
                             <div>
-                                <label className="block text-xs font-semibold text-gray-500 mb-1">Saat</label>
-                                <input
-                                    type="time"
-                                    value={scheduleConfig.time}
-                                    onChange={(e) => handleScheduleTimeChange(e.target.value)}
-                                    className="border border-gray-300 rounded-md px-3 py-1.5 text-sm text-gray-900 bg-white"
-                                />
+                                <h2 className="text-lg font-semibold text-gray-800">Zamanlı Tarama</h2>
+                                <p className="text-xs text-gray-500">Belirtilen saatte tarama tamamlanır</p>
                             </div>
                         </div>
-
-                        {/* Frequency selection */}
-                        <div>
-                            <label className="block text-xs font-semibold text-gray-500 mb-2">Tekrar</label>
-                            <div className="flex flex-wrap gap-3">
-                                {[
-                                    { value: 'daily', label: 'Her gün' },
-                                    { value: 'weekdays', label: 'Hafta içi (Pzt-Cum)' },
-                                    { value: 'weekends', label: 'Hafta sonu (Cmt-Paz)' },
-                                    { value: 'custom', label: 'Özel günler' }
-                                ].map(option => (
-                                    <label key={option.value} className="flex items-center space-x-1.5 cursor-pointer">
-                                        <input
-                                            type="radio"
-                                            name="frequency"
-                                            value={option.value}
-                                            checked={scheduleConfig.frequency === option.value}
-                                            onChange={() => handleFrequencyChange(option.value as any)}
-                                            className="w-4 h-4 text-indigo-600"
-                                        />
-                                        <span className="text-sm text-gray-700">{option.label}</span>
-                                    </label>
-                                ))}
-                            </div>
-                        </div>
-
-                        {/* Custom days selection */}
-                        {scheduleConfig.frequency === 'custom' && (
-                            <div>
-                                <label className="block text-xs font-semibold text-gray-500 mb-2">Günler</label>
-                                <div className="flex flex-wrap gap-2">
-                                    {[
-                                        { value: 1, label: 'Pzt' },
-                                        { value: 2, label: 'Sal' },
-                                        { value: 3, label: 'Çar' },
-                                        { value: 4, label: 'Per' },
-                                        { value: 5, label: 'Cum' },
-                                        { value: 6, label: 'Cmt' },
-                                        { value: 0, label: 'Paz' }
-                                    ].map(day => (
-                                        <label
-                                            key={day.value}
-                                            className={`flex items-center justify-center w-12 h-8 rounded-md cursor-pointer text-sm font-medium transition-colors ${
-                                                scheduleConfig.customDays.includes(day.value)
-                                                    ? 'bg-indigo-600 text-white'
-                                                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                                            }`}
-                                        >
-                                            <input
-                                                type="checkbox"
-                                                checked={scheduleConfig.customDays.includes(day.value)}
-                                                onChange={() => handleCustomDayToggle(day.value)}
-                                                className="sr-only"
-                                            />
-                                            {day.label}
-                                        </label>
-                                    ))}
-                                </div>
-                            </div>
-                        )}
+                        {/* Toggle Switch */}
+                        <button
+                            onClick={handleScheduleToggle}
+                            disabled={scheduleLoading}
+                            className={`relative inline-flex h-7 w-14 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 ${
+                                scheduleConfig.enabled ? 'bg-indigo-600' : 'bg-gray-300'
+                            } ${scheduleLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
+                        >
+                            <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow-md transition-transform ${
+                                scheduleConfig.enabled ? 'translate-x-8' : 'translate-x-1'
+                            }`} />
+                        </button>
                     </div>
 
-                    {/* Schedule info */}
-                    {scheduleConfig.enabled && (
-                        <div className="mt-3 text-xs text-gray-500 space-y-1">
-                            {scheduleConfig.nextScheduledScanAt && (
-                                <p>Sonraki tarama: {new Date(scheduleConfig.nextScheduledScanAt).toLocaleString('tr-TR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
-                            )}
-                            {scheduleConfig.lastScheduledScanAt && (
-                                <p>Son zamanlı tarama: {new Date(scheduleConfig.lastScheduledScanAt).toLocaleString('tr-TR')}</p>
-                            )}
+                    <div className="p-6">
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                            {/* Left Column - Time & Frequency */}
+                            <div className="space-y-5">
+                                {/* Finish By Time */}
+                                <div className="bg-white rounded-lg p-4 shadow-sm border border-indigo-100">
+                                    <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-3">
+                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-indigo-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                        </svg>
+                                        Tarama Bitiş Saati
+                                    </label>
+                                    <input
+                                        type="time"
+                                        value={scheduleConfig.finishByTime || scheduleConfig.time}
+                                        onChange={(e) => handleScheduleTimeChange(e.target.value)}
+                                        className="w-full border border-gray-200 rounded-lg px-4 py-3 text-lg font-semibold text-gray-800 bg-gray-50 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                                    />
+                                    <p className="mt-2 text-xs text-gray-500">Tarama bu saate kadar tamamlanacak şekilde otomatik başlatılır</p>
+                                </div>
+
+                                {/* Frequency Selection */}
+                                <div className="bg-white rounded-lg p-4 shadow-sm border border-indigo-100">
+                                    <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-3">
+                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-indigo-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                                        </svg>
+                                        Tekrar Sıklığı
+                                    </label>
+                                    <div className="grid grid-cols-2 gap-2">
+                                        {[
+                                            { value: 'daily', label: 'Her Gün', icon: '📅' },
+                                            { value: 'weekdays', label: 'Hafta İçi', icon: '💼' },
+                                            { value: 'weekends', label: 'Hafta Sonu', icon: '🌴' },
+                                            { value: 'custom', label: 'Özel', icon: '⚙️' }
+                                        ].map(option => (
+                                            <button
+                                                key={option.value}
+                                                type="button"
+                                                onClick={() => handleFrequencyChange(option.value as any)}
+                                                className={`flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all ${
+                                                    scheduleConfig.frequency === option.value
+                                                        ? 'bg-indigo-600 text-white shadow-md'
+                                                        : 'bg-gray-50 text-gray-700 hover:bg-gray-100 border border-gray-200'
+                                                }`}
+                                            >
+                                                <span>{option.icon}</span>
+                                                {option.label}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                {/* Custom Days Selection */}
+                                {scheduleConfig.frequency === 'custom' && (
+                                    <div className="bg-white rounded-lg p-4 shadow-sm border border-indigo-100">
+                                        <label className="block text-sm font-medium text-gray-700 mb-3">Günler Seçin</label>
+                                        <div className="flex flex-wrap gap-2">
+                                            {[
+                                                { value: 1, label: 'Pzt' },
+                                                { value: 2, label: 'Sal' },
+                                                { value: 3, label: 'Çar' },
+                                                { value: 4, label: 'Per' },
+                                                { value: 5, label: 'Cum' },
+                                                { value: 6, label: 'Cmt' },
+                                                { value: 0, label: 'Paz' }
+                                            ].map(day => (
+                                                <button
+                                                    key={day.value}
+                                                    type="button"
+                                                    onClick={() => handleCustomDayToggle(day.value)}
+                                                    className={`w-12 h-10 rounded-lg text-sm font-semibold transition-all ${
+                                                        scheduleConfig.customDays.includes(day.value)
+                                                            ? 'bg-indigo-600 text-white shadow-md'
+                                                            : 'bg-gray-50 text-gray-600 hover:bg-gray-100 border border-gray-200'
+                                                    }`}
+                                                >
+                                                    {day.label}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Right Column - Status & Info */}
+                            <div className="space-y-4">
+                                {/* Schedule Status Card */}
+                                <div className={`rounded-lg p-5 ${scheduleConfig.enabled ? 'bg-emerald-50 border border-emerald-200' : 'bg-gray-50 border border-gray-200'}`}>
+                                    <div className="flex items-center gap-3 mb-4">
+                                        <div className={`w-3 h-3 rounded-full ${scheduleConfig.enabled ? 'bg-emerald-500 animate-pulse' : 'bg-gray-400'}`} />
+                                        <span className={`font-semibold ${scheduleConfig.enabled ? 'text-emerald-700' : 'text-gray-600'}`}>
+                                            {scheduleConfig.enabled ? 'Zamanlama Aktif' : 'Zamanlama Kapalı'}
+                                        </span>
+                                    </div>
+
+                                    {scheduleConfig.enabled && scheduleConfig.clientCount > 0 && (
+                                        <div className="space-y-3">
+                                            {/* Estimated Duration */}
+                                            <div className="flex items-center justify-between text-sm">
+                                                <span className="text-gray-600">Tahmini Süre:</span>
+                                                <span className="font-semibold text-gray-800">
+                                                    ~{scheduleConfig.estimatedDurationMinutes} dk
+                                                </span>
+                                            </div>
+
+                                            {/* Client Count */}
+                                            <div className="flex items-center justify-between text-sm">
+                                                <span className="text-gray-600">Aktif Mükellef:</span>
+                                                <span className="font-semibold text-gray-800">
+                                                    {scheduleConfig.clientCount} adet
+                                                </span>
+                                            </div>
+
+                                            {/* Estimated Start Time */}
+                                            {scheduleConfig.estimatedStartTime && (
+                                                <div className="flex items-center justify-between text-sm">
+                                                    <span className="text-gray-600">Başlama Saati:</span>
+                                                    <span className="font-semibold text-indigo-600">
+                                                        {new Date(scheduleConfig.estimatedStartTime).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}
+                                                    </span>
+                                                </div>
+                                            )}
+
+                                            <hr className="border-gray-200" />
+
+                                            {/* Next Scan */}
+                                            {scheduleConfig.nextScheduledScanAt && (
+                                                <div className="bg-white rounded-lg p-3 border border-gray-100">
+                                                    <p className="text-xs text-gray-500 mb-1">Sonraki Tarama (Bitiş)</p>
+                                                    <p className="font-semibold text-gray-800">
+                                                        {new Date(scheduleConfig.nextScheduledScanAt).toLocaleString('tr-TR', {
+                                                            weekday: 'long',
+                                                            day: 'numeric',
+                                                            month: 'long',
+                                                            hour: '2-digit',
+                                                            minute: '2-digit'
+                                                        })}
+                                                    </p>
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+
+                                    {scheduleConfig.enabled && scheduleConfig.clientCount === 0 && (
+                                        <div className="flex items-center gap-2 text-amber-600">
+                                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                                            </svg>
+                                            <span className="text-sm">Aktif mükellef bulunamadı</span>
+                                        </div>
+                                    )}
+
+                                    {!scheduleConfig.enabled && (
+                                        <p className="text-sm text-gray-500">
+                                            Zamanlamayı aktif ederek taramanın belirttiğiniz saatte tamamlanmasını sağlayabilirsiniz.
+                                        </p>
+                                    )}
+                                </div>
+
+                                {/* Last Scan Info */}
+                                {scheduleConfig.lastScheduledScanAt && (
+                                    <div className="bg-white rounded-lg p-4 border border-gray-100">
+                                        <p className="text-xs text-gray-500 mb-1">Son Zamanlı Tarama</p>
+                                        <p className="text-sm font-medium text-gray-700">
+                                            {new Date(scheduleConfig.lastScheduledScanAt).toLocaleString('tr-TR')}
+                                        </p>
+                                    </div>
+                                )}
+
+                                {/* How it works info */}
+                                <div className="bg-blue-50 rounded-lg p-4 border border-blue-100">
+                                    <div className="flex items-start gap-2">
+                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-blue-500 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                        </svg>
+                                        <div className="text-xs text-blue-700">
+                                            <p className="font-semibold mb-1">Nasıl Çalışır?</p>
+                                            <p>Sistem, mükellef sayısı ve tarama ayarlarınıza göre tahmini süreyi hesaplar ve tarama otomatik olarak belirlediğiniz saatte tamamlanacak şekilde erken başlatılır.</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
-                    )}
+                    </div>
                 </div>
 
                 {/* İşlem Logları */}
@@ -980,6 +1120,7 @@ const ETebligat: React.FC = () => {
                                                 <th className="px-4 py-2">Gönderen</th>
                                                 <th className="px-4 py-2">Konu</th>
                                                 <th className="px-4 py-2">Durum</th>
+                                                <th className="px-4 py-2">Döküman</th>
                                             </tr>
                                         </thead>
                                         <tbody>
@@ -994,6 +1135,33 @@ const ETebligat: React.FC = () => {
                                                     <td className="px-4 py-2 whitespace-nowrap">{row.sender || '-'}</td>
                                                     <td className="px-4 py-2">{row.subject || '-'}</td>
                                                     <td className="px-4 py-2 whitespace-nowrap">{row.status || '-'}</td>
+                                                    <td className="px-4 py-2 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                                                        {row.document_path ? (
+                                                            <div className="flex gap-2">
+                                                                <button
+                                                                    onClick={() => handleOpenDocument(row.document_path)}
+                                                                    className="text-sky-600 hover:text-sky-700"
+                                                                    title="Dökümanı Aç"
+                                                                >
+                                                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                                                    </svg>
+                                                                </button>
+                                                                <button
+                                                                    onClick={() => handleShareDocument(row.document_path)}
+                                                                    className="text-emerald-600 hover:text-emerald-700"
+                                                                    title="Klasörde Göster"
+                                                                >
+                                                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+                                                                    </svg>
+                                                                </button>
+                                                            </div>
+                                                        ) : (
+                                                            <span className="text-gray-400 text-xs">-</span>
+                                                        )}
+                                                    </td>
                                                 </tr>
                                             ))}
                                         </tbody>

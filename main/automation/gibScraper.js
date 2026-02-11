@@ -1,9 +1,52 @@
 const puppeteer = require('puppeteer');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const database = require('../database');
+const path = require('path');
+const fs = require('fs');
+const { app } = require('electron');
 
 const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 const GIB_LOGIN_URL = 'https://dijital.gib.gov.tr/portal/login';
+
+// Get documents directory
+const getDocumentsDir = (clientId) => {
+    const userDataPath = app.getPath('userData');
+    const docsDir = path.join(userDataPath, 'documents', String(clientId));
+    if (!fs.existsSync(docsDir)) {
+        fs.mkdirSync(docsDir, { recursive: true });
+    }
+    return docsDir;
+};
+
+// Download a document from GIB portal
+const downloadDocument = async (page, documentUrl, clientId, documentNo) => {
+    try {
+        const docsDir = getDocumentsDir(clientId);
+        const safeDocNo = (documentNo || 'doc').replace(/[^a-zA-Z0-9-_]/g, '_');
+        const fileName = `tebligat_${safeDocNo}_${Date.now()}.pdf`;
+        const filePath = path.join(docsDir, fileName);
+
+        console.log('[DEBUG] Downloading document:', documentUrl);
+
+        // Navigate to document URL and get the response
+        const response = await page.goto(documentUrl, {
+            waitUntil: 'networkidle0',
+            timeout: 30000
+        });
+
+        if (response) {
+            const buffer = await response.buffer();
+            fs.writeFileSync(filePath, buffer);
+            console.log('[DEBUG] Document saved to:', filePath);
+            return filePath;
+        }
+
+        return null;
+    } catch (err) {
+        console.error('[DEBUG] Document download failed:', err.message);
+        return null;
+    }
+};
 
 // Module-level state
 let scanCancelled = false;
@@ -141,6 +184,157 @@ const logoutFromGIB = async (page) => {
     }
 };
 
+// Extract tebligat data from current page
+const extractTebligatFromPage = async (page, selector) => {
+    return await page.evaluate((sel) => {
+        const rows = Array.from(document.querySelectorAll(sel));
+        return rows.map(row => {
+            let cols = row.querySelectorAll('td');
+            if (cols.length === 0) {
+                cols = row.querySelectorAll('[role="cell"], [class*="MuiDataGrid-cell"]');
+            }
+            if (cols.length < 3) return null;
+
+            // Try to find document link in the row
+            const docLinkSelectors = [
+                'a[href*="pdf"]',
+                'a[href*="document"]',
+                'a[href*="download"]',
+                'a[href*="indir"]',
+                'a[href*="goruntule"]',
+                'a[href*="view"]',
+                'button[data-document]',
+                '[onclick*="download"]',
+                '[onclick*="indir"]'
+            ];
+
+            let documentUrl = null;
+            for (const s of docLinkSelectors) {
+                const link = row.querySelector(s);
+                if (link) {
+                    documentUrl = link.href || link.getAttribute('data-url') || null;
+                    // Handle onclick attribute
+                    if (!documentUrl && link.getAttribute('onclick')) {
+                        const onclickMatch = link.getAttribute('onclick').match(/['"]([^'"]*(?:pdf|document|download)[^'"]*)['"]/i);
+                        if (onclickMatch) {
+                            documentUrl = onclickMatch[1];
+                        }
+                    }
+                    break;
+                }
+            }
+
+            // Also check for any anchor in the row that might be a document link
+            if (!documentUrl) {
+                const allLinks = row.querySelectorAll('a[href]');
+                for (const link of allLinks) {
+                    const href = link.href || '';
+                    if (href && !href.includes('#') && !href.includes('javascript:')) {
+                        // Check if this looks like a document link
+                        if (href.includes('pdf') || href.includes('doc') || href.includes('view') ||
+                            href.includes('indir') || href.includes('download') || href.includes('tebligat')) {
+                            documentUrl = href;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            return {
+                sender: cols[0]?.innerText?.trim(),
+                subject: cols[1]?.innerText?.trim(),
+                documentNo: cols[2]?.innerText?.trim(),
+                status: cols[3]?.innerText?.trim(),
+                date: cols[4]?.innerText?.trim(),
+                endDate: cols[5]?.innerText?.trim(),
+                documentUrl: documentUrl
+            };
+        }).filter(Boolean);
+    }, selector);
+};
+
+// Check if there's a next page and navigate to it
+const goToNextPage = async (page) => {
+    // Try various pagination selectors
+    const nextPageResult = await page.evaluate(() => {
+        // Strategy 1: Look for "next" button by common patterns
+        const nextButtonSelectors = [
+            'button[aria-label*="next" i]',
+            'button[aria-label*="sonraki" i]',
+            'button[title*="next" i]',
+            'button[title*="sonraki" i]',
+            '[class*="next" i]',
+            '[class*="sonraki" i]',
+            'a[aria-label*="next" i]',
+            'a[aria-label*="sonraki" i]'
+        ];
+
+        for (const sel of nextButtonSelectors) {
+            const btn = document.querySelector(sel);
+            if (btn && !btn.disabled && !btn.classList.contains('disabled')) {
+                btn.click();
+                return { clicked: true, method: 'next-button' };
+            }
+        }
+
+        // Strategy 2: Look for MUI DataGrid pagination
+        const muiNextBtn = document.querySelector('.MuiTablePagination-actions button:last-child');
+        if (muiNextBtn && !muiNextBtn.disabled) {
+            muiNextBtn.click();
+            return { clicked: true, method: 'mui-pagination' };
+        }
+
+        // Strategy 3: Look for numbered pagination and click next number
+        const paginationContainer = document.querySelector('[class*="pagination" i], nav[aria-label*="pagination" i]');
+        if (paginationContainer) {
+            const currentPage = paginationContainer.querySelector('[aria-current="page"], .active, [class*="selected"]');
+            if (currentPage) {
+                const currentPageNum = parseInt(currentPage.textContent, 10);
+                if (!isNaN(currentPageNum)) {
+                    // Find next page number
+                    const allPageLinks = paginationContainer.querySelectorAll('a, button');
+                    for (const link of allPageLinks) {
+                        const num = parseInt(link.textContent, 10);
+                        if (num === currentPageNum + 1) {
+                            link.click();
+                            return { clicked: true, method: 'numbered-pagination' };
+                        }
+                    }
+                }
+            }
+        }
+
+        // Strategy 4: Look for ">" or ">>" buttons
+        const arrowButtons = document.querySelectorAll('button, a');
+        for (const btn of arrowButtons) {
+            const text = btn.textContent?.trim();
+            if ((text === '>' || text === '»' || text === '›' || text === 'İleri' || text === 'Sonraki')
+                && !btn.disabled && !btn.classList.contains('disabled')) {
+                btn.click();
+                return { clicked: true, method: 'arrow-button' };
+            }
+        }
+
+        return { clicked: false };
+    });
+
+    if (nextPageResult.clicked) {
+        console.log('[DEBUG] Navigated to next page using:', nextPageResult.method);
+        await new Promise(r => setTimeout(r, 2000)); // Wait for page to load
+        return true;
+    }
+
+    return false;
+};
+
+// Check if current page has data
+const hasDataOnPage = async (page, selector) => {
+    const count = await page.evaluate((sel) => {
+        return document.querySelectorAll(sel).length;
+    }, selector);
+    return count > 0;
+};
+
 const loginAndFetch = async (page, client, password, apiKey) => {
     await page.type('#userid', client.gib_user_code);
     await page.type('#sifre', password);
@@ -222,7 +416,7 @@ const loginAndFetch = async (page, client, password, apiKey) => {
         }).catch(() => {});
     }
 
-    // Scrape tebligatlar
+    // Scrape tebligatlar with pagination support
     const tableSelectors = [
         'table tbody tr',
         '[role="row"]',
@@ -244,24 +438,46 @@ const loginAndFetch = async (page, client, password, apiKey) => {
         return [];
     }
 
-    return await page.evaluate((selector) => {
-        const rows = Array.from(document.querySelectorAll(selector));
-        return rows.map(row => {
-            let cols = row.querySelectorAll('td');
-            if (cols.length === 0) {
-                cols = row.querySelectorAll('[role="cell"], [class*="MuiDataGrid-cell"]');
-            }
-            if (cols.length < 3) return null;
-            return {
-                sender: cols[0]?.innerText?.trim(),
-                subject: cols[1]?.innerText?.trim(),
-                documentNo: cols[2]?.innerText?.trim(),
-                status: cols[3]?.innerText?.trim(),
-                date: cols[4]?.innerText?.trim(),
-                endDate: cols[5]?.innerText?.trim()
-            };
-        }).filter(Boolean);
-    }, foundSelector);
+    // Extract from all pages
+    const allTebligatlar = [];
+    let pageNum = 1;
+    const maxPages = 20; // Safety limit to prevent infinite loops
+
+    while (pageNum <= maxPages) {
+        console.log(`[DEBUG] Scraping page ${pageNum}...`);
+
+        // Extract data from current page
+        const pageTebligatlar = await extractTebligatFromPage(page, foundSelector);
+        console.log(`[DEBUG] Found ${pageTebligatlar.length} tebligatlar on page ${pageNum}`);
+
+        if (pageTebligatlar.length === 0) {
+            break; // No more data
+        }
+
+        allTebligatlar.push(...pageTebligatlar);
+
+        // Try to go to next page
+        const hasNextPage = await goToNextPage(page);
+        if (!hasNextPage) {
+            console.log('[DEBUG] No more pages to scrape.');
+            break;
+        }
+
+        // Wait for the page content to update
+        await new Promise(r => setTimeout(r, 1500));
+
+        // Verify we're on a new page with data
+        const hasData = await hasDataOnPage(page, foundSelector);
+        if (!hasData) {
+            console.log('[DEBUG] Next page has no data, stopping pagination.');
+            break;
+        }
+
+        pageNum++;
+    }
+
+    console.log(`[DEBUG] Total tebligatlar scraped: ${allTebligatlar.length} from ${pageNum} page(s)`);
+    return allTebligatlar;
 };
 
 function cancelScan() {
@@ -468,6 +684,7 @@ async function run(onStatusUpdate, apiKey, scanConfig = {}, options = {}, deduct
 
                     const count = tebligatlar.length;
                     let savedCount = 0;
+                    let downloadedCount = 0;
 
                     if (count === 0) {
                         // Tebligat bulunamadı - "Tebligat yok" kaydı oluştur
@@ -477,7 +694,9 @@ async function run(onStatusUpdate, apiKey, scanConfig = {}, options = {}, deduct
                             documentNo: '-',
                             status: 'Tebligat yok',
                             date: new Date().toLocaleDateString('tr-TR'),
-                            endDate: null
+                            endDate: null,
+                            documentUrl: null,
+                            documentPath: null
                         }];
                         savedCount = database.saveTebligatlar(client.id, noNotificationRecord);
                         onStatusUpdate({
@@ -486,9 +705,46 @@ async function run(onStatusUpdate, apiKey, scanConfig = {}, options = {}, deduct
                             firmId: client.id
                         });
                     } else {
+                        // Download documents for each tebligat
+                        for (const tebligat of tebligatlar) {
+                            if (tebligat.documentUrl) {
+                                try {
+                                    const docPath = await downloadDocument(
+                                        page,
+                                        tebligat.documentUrl,
+                                        client.id,
+                                        tebligat.documentNo
+                                    );
+                                    if (docPath) {
+                                        tebligat.documentPath = docPath;
+                                        downloadedCount++;
+                                    }
+                                } catch (downloadErr) {
+                                    console.error('[DEBUG] Failed to download document:', downloadErr.message);
+                                }
+
+                                // Navigate back to tebligat list after each download
+                                try {
+                                    await page.goBack({ waitUntil: 'networkidle0', timeout: 10000 });
+                                    await new Promise(r => setTimeout(r, 1000));
+                                } catch {
+                                    // If goBack fails, try to navigate to e-tebligat page directly
+                                    await page.goto('https://dijital.gib.gov.tr/portal/e-tebligat', {
+                                        waitUntil: 'networkidle0',
+                                        timeout: 20000
+                                    }).catch(() => {});
+                                }
+                            }
+                        }
+
                         savedCount = database.saveTebligatlar(client.id, tebligatlar);
+
+                        let message = `${client.firm_name}: ${count} tebligat bulundu, ${savedCount} yeni kayıt eklendi.`;
+                        if (downloadedCount > 0) {
+                            message += ` ${downloadedCount} döküman indirildi.`;
+                        }
                         onStatusUpdate({
-                            message: `${client.firm_name}: ${count} tebligat bulundu, ${savedCount} yeni kayıt eklendi.`,
+                            message,
                             type: 'success',
                             firmId: client.id
                         });

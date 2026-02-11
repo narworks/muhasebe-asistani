@@ -47,6 +47,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     exportCsv: (data, defaultFileName) => ipcRenderer.invoke('export-csv', { data, defaultFileName }),
     exportExcel: (rows, sheetName, defaultFileName) => ipcRenderer.invoke('export-excel', { rows, sheetName, defaultFileName }),
 
+    // Document operations
+    openDocument: (documentPath) => ipcRenderer.invoke('open-document', documentPath),
+    shareDocument: (documentPath) => ipcRenderer.invoke('share-document', documentPath),
+
     // Cleanup listeners
     removeScanListeners: () => {
         ipcRenderer.removeAllListeners('scan-update');

@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, dialog, shell } = require('electron');
 const fs = require('fs');
 const XLSX = require('xlsx');
 const path = require('path');
@@ -275,9 +275,11 @@ ipcMain.handle('get-schedule-status', () => {
     return scheduler.getStatus();
 });
 
-ipcMain.handle('set-schedule', (event, { enabled, time, frequency = 'daily', customDays = [] }) => {
-    if (enabled && time) {
-        const success = scheduler.startSchedule(time, frequency, customDays);
+ipcMain.handle('set-schedule', (event, { enabled, time, finishByTime, frequency = 'daily', customDays = [] }) => {
+    // Use finishByTime if provided, otherwise fallback to time for backwards compatibility
+    const targetTime = finishByTime || time;
+    if (enabled && targetTime) {
+        const success = scheduler.startSchedule(targetTime, frequency, customDays);
         return { success };
     } else {
         scheduler.stopSchedule();
@@ -326,7 +328,10 @@ ipcMain.handle('get-clients', (event) => {
 });
 
 ipcMain.handle('save-client', (event, clientData) => {
-    return database.saveClient(clientData);
+    const result = database.saveClient(clientData);
+    // Refresh schedule when client count changes
+    scheduler.refreshSchedule();
+    return result;
 });
 
 ipcMain.handle('update-client', (event, id, clientData) => {
@@ -334,11 +339,17 @@ ipcMain.handle('update-client', (event, id, clientData) => {
 });
 
 ipcMain.handle('update-client-status', (event, id, status) => {
-    return database.updateClientStatus(id, status);
+    const result = database.updateClientStatus(id, status);
+    // Refresh schedule when client status changes (affects active count)
+    scheduler.refreshSchedule();
+    return result;
 });
 
 ipcMain.handle('delete-client', (event, id) => {
-    return database.deleteClient(id);
+    const result = database.deleteClient(id);
+    // Refresh schedule when client count changes
+    scheduler.refreshSchedule();
+    return result;
 });
 
 ipcMain.handle('get-tebligatlar', () => {
@@ -466,6 +477,44 @@ ipcMain.handle('export-excel', async (event, { rows, sheetName, defaultFileName 
         return { success: true, filePath };
     } catch (error) {
         console.error('Excel export error:', error);
+        return { success: false, error: error.message };
+    }
+});
+
+// Open document (PDF, etc.)
+ipcMain.handle('open-document', async (event, documentPath) => {
+    if (!documentPath) {
+        return { success: false, error: 'Döküman yolu belirtilmedi.' };
+    }
+
+    if (!fs.existsSync(documentPath)) {
+        return { success: false, error: 'Döküman bulunamadı.' };
+    }
+
+    try {
+        await shell.openPath(documentPath);
+        return { success: true };
+    } catch (error) {
+        console.error('Open document error:', error);
+        return { success: false, error: error.message };
+    }
+});
+
+// Share document (show in folder)
+ipcMain.handle('share-document', async (event, documentPath) => {
+    if (!documentPath) {
+        return { success: false, error: 'Döküman yolu belirtilmedi.' };
+    }
+
+    if (!fs.existsSync(documentPath)) {
+        return { success: false, error: 'Döküman bulunamadı.' };
+    }
+
+    try {
+        shell.showItemInFolder(documentPath);
+        return { success: true };
+    } catch (error) {
+        console.error('Share document error:', error);
         return { success: false, error: error.message };
     }
 });
