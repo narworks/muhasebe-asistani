@@ -19,26 +19,135 @@ const getDocumentsDir = (clientId) => {
 };
 
 // Download a document from GIB portal
-const downloadDocument = async (page, documentUrl, clientId, documentNo) => {
+const downloadDocument = async (page, documentUrl, clientId, documentNo, rowIndex = null, tableSelector = null) => {
     try {
         const docsDir = getDocumentsDir(clientId);
         const safeDocNo = (documentNo || 'doc').replace(/[^a-zA-Z0-9-_]/g, '_');
         const fileName = `tebligat_${safeDocNo}_${Date.now()}.pdf`;
         const filePath = path.join(docsDir, fileName);
 
-        console.log('[DEBUG] Downloading document:', documentUrl);
+        console.log('[DEBUG] Processing document:', documentUrl);
 
-        // Navigate to document URL and get the response
+        // Handle click-based document access
+        if (documentUrl && documentUrl.startsWith('__CLICK_ACTION__:')) {
+            const targetRowIndex = parseInt(documentUrl.split(':')[1], 10);
+            console.log('[DEBUG] Attempting click-based document access for row:', targetRowIndex);
+
+            // Click on the action button in the row
+            const clicked = await page.evaluate((sel, rowIdx) => {
+                const rows = Array.from(document.querySelectorAll(sel));
+                const row = rows[rowIdx];
+                if (!row) return false;
+
+                // Find and click the action button
+                const actionTexts = ['görüntüle', 'incele', 'detay', 'indir', 'aç', 'pdf', 'download', 'view'];
+                const allClickables = row.querySelectorAll('button, a, [role="button"]');
+
+                for (const el of allClickables) {
+                    const text = (el.textContent || '').toLowerCase().trim();
+                    const title = (el.getAttribute('title') || '').toLowerCase();
+                    const ariaLabel = (el.getAttribute('aria-label') || '').toLowerCase();
+
+                    const isActionButton = actionTexts.some(t =>
+                        text.includes(t) || title.includes(t) || ariaLabel.includes(t)
+                    );
+
+                    if (isActionButton) {
+                        el.click();
+                        return true;
+                    }
+                }
+
+                // If no text match, try clicking the last button/link in the row (usually action column)
+                const lastCell = row.querySelector('td:last-child, [role="cell"]:last-child');
+                if (lastCell) {
+                    const actionEl = lastCell.querySelector('button, a');
+                    if (actionEl) {
+                        actionEl.click();
+                        return true;
+                    }
+                }
+
+                return false;
+            }, tableSelector || 'table tbody tr', targetRowIndex);
+
+            if (clicked) {
+                // Wait for modal/new content to appear
+                await new Promise(r => setTimeout(r, 3000));
+
+                // Try to find and download the PDF from the opened modal/page
+                const pdfUrl = await page.evaluate(() => {
+                    // Check for PDF viewer iframe
+                    const iframe = document.querySelector('iframe[src*="pdf"], iframe[src*="document"]');
+                    if (iframe) return iframe.src;
+
+                    // Check for download link in modal
+                    const downloadLink = document.querySelector('.modal a[href*="pdf"], .MuiDialog-root a[href*="pdf"], [role="dialog"] a[href*="download"]');
+                    if (downloadLink) return downloadLink.href;
+
+                    // Check for embedded object
+                    const pdfObject = document.querySelector('object[data*="pdf"], embed[src*="pdf"]');
+                    if (pdfObject) return pdfObject.data || pdfObject.src;
+
+                    return null;
+                });
+
+                if (pdfUrl) {
+                    console.log('[DEBUG] Found PDF URL in modal:', pdfUrl);
+                    const response = await page.goto(pdfUrl, { waitUntil: 'networkidle0', timeout: 30000 });
+                    if (response) {
+                        const buffer = await response.buffer();
+                        fs.writeFileSync(filePath, buffer);
+                        console.log('[DEBUG] Document saved to:', filePath);
+
+                        // Close modal if present
+                        await page.evaluate(() => {
+                            const closeBtn = document.querySelector('.modal [class*="close"], .MuiDialog-root button, [role="dialog"] button[aria-label*="close" i]');
+                            if (closeBtn) closeBtn.click();
+                        });
+
+                        return filePath;
+                    }
+                }
+
+                // Close modal and return null
+                await page.evaluate(() => {
+                    const closeBtn = document.querySelector('.modal [class*="close"], .MuiDialog-root button, [role="dialog"] button[aria-label*="close" i]');
+                    if (closeBtn) closeBtn.click();
+                });
+            }
+
+            return null;
+        }
+
+        // Handle data-id based document access
+        if (documentUrl && documentUrl.startsWith('__DATA_ID__:')) {
+            console.log('[DEBUG] Data-ID based access not yet implemented');
+            return null;
+        }
+
+        // Skip invalid URLs
+        if (!documentUrl || documentUrl.startsWith('__')) {
+            return null;
+        }
+
+        // Standard URL-based download
+        console.log('[DEBUG] Downloading document from URL:', documentUrl);
         const response = await page.goto(documentUrl, {
             waitUntil: 'networkidle0',
             timeout: 30000
         });
 
         if (response) {
-            const buffer = await response.buffer();
-            fs.writeFileSync(filePath, buffer);
-            console.log('[DEBUG] Document saved to:', filePath);
-            return filePath;
+            const contentType = response.headers()['content-type'] || '';
+            if (contentType.includes('pdf') || contentType.includes('application/octet-stream')) {
+                const buffer = await response.buffer();
+                fs.writeFileSync(filePath, buffer);
+                console.log('[DEBUG] Document saved to:', filePath);
+                return filePath;
+            } else {
+                console.log('[DEBUG] Response is not a PDF, content-type:', contentType);
+            }
         }
 
         return null;
@@ -188,51 +297,114 @@ const logoutFromGIB = async (page) => {
 const extractTebligatFromPage = async (page, selector) => {
     return await page.evaluate((sel) => {
         const rows = Array.from(document.querySelectorAll(sel));
-        return rows.map(row => {
+        return rows.map((row, rowIndex) => {
             let cols = row.querySelectorAll('td');
             if (cols.length === 0) {
                 cols = row.querySelectorAll('[role="cell"], [class*="MuiDataGrid-cell"]');
             }
             if (cols.length < 3) return null;
 
-            // Try to find document link in the row
+            // Try to find document link/button in the row
             const docLinkSelectors = [
+                // Direct link patterns
                 'a[href*="pdf"]',
                 'a[href*="document"]',
                 'a[href*="download"]',
                 'a[href*="indir"]',
                 'a[href*="goruntule"]',
                 'a[href*="view"]',
+                'a[href*="detay"]',
+                'a[href*="incele"]',
+                // Button patterns
                 'button[data-document]',
+                'button[data-id]',
+                'button[data-tebligat]',
+                // Icon button patterns (MUI icons)
+                'button svg[data-testid*="Visibility"]',
+                'button svg[data-testid*="Download"]',
+                'button svg[data-testid*="PictureAsPdf"]',
+                '[class*="icon"][class*="view"]',
+                '[class*="icon"][class*="pdf"]',
+                // onclick handlers
                 '[onclick*="download"]',
-                '[onclick*="indir"]'
+                '[onclick*="indir"]',
+                '[onclick*="goruntule"]',
+                '[onclick*="view"]',
+                '[onclick*="detay"]',
+                '[onclick*="incele"]',
+                '[onclick*="openDocument"]',
+                '[onclick*="showDocument"]',
+                // Turkish action buttons by text
+                'button',
+                'a'
             ];
 
             let documentUrl = null;
-            for (const s of docLinkSelectors) {
+            let actionElement = null;
+
+            // First pass: look for specific link patterns
+            for (const s of docLinkSelectors.slice(0, -2)) { // Exclude generic button/a
                 const link = row.querySelector(s);
                 if (link) {
-                    documentUrl = link.href || link.getAttribute('data-url') || null;
+                    documentUrl = link.href || link.getAttribute('data-url') ||
+                                  link.getAttribute('data-href') || link.getAttribute('data-src') || null;
+
                     // Handle onclick attribute
                     if (!documentUrl && link.getAttribute('onclick')) {
-                        const onclickMatch = link.getAttribute('onclick').match(/['"]([^'"]*(?:pdf|document|download)[^'"]*)['"]/i);
-                        if (onclickMatch) {
-                            documentUrl = onclickMatch[1];
+                        const onclick = link.getAttribute('onclick');
+                        const urlMatch = onclick.match(/['"]([^'"]*(?:pdf|document|download|tebligat|view)[^'"]*)['"]/i);
+                        if (urlMatch) {
+                            documentUrl = urlMatch[1];
+                        }
+                        // Check for function calls with IDs
+                        const idMatch = onclick.match(/\((['"]?)(\d+)\1\)/);
+                        if (idMatch && !documentUrl) {
+                            documentUrl = `__CLICK_ACTION__:${rowIndex}`;
+                            actionElement = s;
                         }
                     }
-                    break;
+
+                    // Check data attributes
+                    if (!documentUrl) {
+                        const dataId = link.getAttribute('data-id') || link.getAttribute('data-document-id');
+                        if (dataId) {
+                            documentUrl = `__DATA_ID__:${dataId}`;
+                        }
+                    }
+
+                    if (documentUrl) break;
                 }
             }
 
-            // Also check for any anchor in the row that might be a document link
+            // Second pass: look for action buttons/links with Turkish text
+            if (!documentUrl) {
+                const allClickables = row.querySelectorAll('button, a, [role="button"]');
+                for (const el of allClickables) {
+                    const text = (el.textContent || '').toLowerCase().trim();
+                    const title = (el.getAttribute('title') || '').toLowerCase();
+                    const ariaLabel = (el.getAttribute('aria-label') || '').toLowerCase();
+
+                    const actionTexts = ['görüntüle', 'incele', 'detay', 'indir', 'aç', 'bak', 'pdf', 'download', 'view'];
+                    const isActionButton = actionTexts.some(t =>
+                        text.includes(t) || title.includes(t) || ariaLabel.includes(t)
+                    );
+
+                    if (isActionButton) {
+                        documentUrl = el.href || el.getAttribute('data-url') || `__CLICK_ACTION__:${rowIndex}`;
+                        break;
+                    }
+                }
+            }
+
+            // Third pass: check for any anchor in the row
             if (!documentUrl) {
                 const allLinks = row.querySelectorAll('a[href]');
                 for (const link of allLinks) {
                     const href = link.href || '';
-                    if (href && !href.includes('#') && !href.includes('javascript:')) {
-                        // Check if this looks like a document link
+                    if (href && !href.includes('#') && !href.includes('javascript:') && !href.includes('login')) {
                         if (href.includes('pdf') || href.includes('doc') || href.includes('view') ||
-                            href.includes('indir') || href.includes('download') || href.includes('tebligat')) {
+                            href.includes('indir') || href.includes('download') || href.includes('tebligat') ||
+                            href.includes('detay') || href.includes('incele')) {
                             documentUrl = href;
                             break;
                         }
@@ -247,7 +419,8 @@ const extractTebligatFromPage = async (page, selector) => {
                 status: cols[3]?.innerText?.trim(),
                 date: cols[4]?.innerText?.trim(),
                 endDate: cols[5]?.innerText?.trim(),
-                documentUrl: documentUrl
+                documentUrl: documentUrl,
+                rowIndex: rowIndex
             };
         }).filter(Boolean);
     }, selector);

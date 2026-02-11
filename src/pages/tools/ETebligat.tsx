@@ -195,6 +195,7 @@ const ETebligat: React.FC = () => {
         setScanProgress(null);
         setScanState(null);
         setInsufficientCredits(false);
+        setTebligatlar([]); // Listeyi sıfırla
         addLog('Tarama başlatılıyor...', 'info');
         window.electronAPI.startScan();
     };
@@ -533,7 +534,7 @@ const ETebligat: React.FC = () => {
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
                     <div className="bg-white rounded-lg shadow-xl w-full max-w-lg p-6">
                         <div className="flex items-center justify-between mb-4">
-                            <h3 className="text-lg font-semibold">Tebligat Detayı</h3>
+                            <h3 className="text-lg font-semibold text-gray-800">Tebligat Detayı</h3>
                             <button
                                 type="button"
                                 onClick={() => setSelectedTebligat(null)}
@@ -679,18 +680,18 @@ const ETebligat: React.FC = () => {
                 </div>
 
                 {/* Otomatik Tarama Zamanlama - Modern Design */}
-                <div className="mb-8 bg-gradient-to-br from-indigo-50 to-purple-50 rounded-xl border border-indigo-100 overflow-hidden">
+                <div className={`mb-8 rounded-xl border overflow-hidden ${scheduleConfig.enabled ? 'bg-gradient-to-br from-indigo-50 to-purple-50 border-indigo-100' : 'bg-gray-50 border-gray-200'}`}>
                     {/* Header */}
-                    <div className="px-6 py-4 bg-white/50 border-b border-indigo-100 flex items-center justify-between">
+                    <div className={`px-6 py-4 flex items-center justify-between ${scheduleConfig.enabled ? 'bg-white/50 border-b border-indigo-100' : ''}`}>
                         <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-lg bg-indigo-100 flex items-center justify-center">
-                                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${scheduleConfig.enabled ? 'bg-indigo-100' : 'bg-gray-200'}`}>
+                                <svg xmlns="http://www.w3.org/2000/svg" className={`h-5 w-5 ${scheduleConfig.enabled ? 'text-indigo-600' : 'text-gray-500'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                                 </svg>
                             </div>
                             <div>
                                 <h2 className="text-lg font-semibold text-gray-800">Zamanlı Tarama</h2>
-                                <p className="text-xs text-gray-500">Belirtilen saatte tarama tamamlanır</p>
+                                <p className="text-xs text-gray-500">{scheduleConfig.enabled ? 'Belirtilen saatte tarama tamamlanır' : 'Otomatik zamanlı tarama kapalı'}</p>
                             </div>
                         </div>
                         {/* Toggle Switch */}
@@ -707,6 +708,7 @@ const ETebligat: React.FC = () => {
                         </button>
                     </div>
 
+                    {scheduleConfig.enabled && (
                     <div className="p-6">
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                             {/* Left Column - Time & Frequency */}
@@ -892,6 +894,7 @@ const ETebligat: React.FC = () => {
                             </div>
                         </div>
                     </div>
+                    )}
                 </div>
 
                 {/* İşlem Logları */}
