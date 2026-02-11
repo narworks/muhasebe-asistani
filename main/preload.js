@@ -50,6 +50,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     // Document operations
     openDocument: (documentPath) => ipcRenderer.invoke('open-document', documentPath),
     shareDocument: (documentPath) => ipcRenderer.invoke('share-document', documentPath),
+    openDocumentsFolder: () => ipcRenderer.invoke('open-documents-folder'),
+    getDocumentsPath: () => ipcRenderer.invoke('get-documents-path'),
 
     // Cleanup listeners
     removeScanListeners: () => {

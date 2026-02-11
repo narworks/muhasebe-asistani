@@ -90,6 +90,8 @@ export interface IElectronAPI {
     // Document operations
     openDocument: (documentPath: string) => Promise<{ success: boolean; error?: string }>;
     shareDocument: (documentPath: string) => Promise<{ success: boolean; error?: string }>;
+    openDocumentsFolder: () => Promise<{ success: boolean; path?: string; error?: string }>;
+    getDocumentsPath: () => Promise<string>;
 }
 
 declare global {

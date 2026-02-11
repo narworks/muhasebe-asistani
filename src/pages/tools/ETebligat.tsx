@@ -57,6 +57,11 @@ const ETebligat: React.FC = () => {
     const [insufficientCredits, setInsufficientCredits] = useState(false);
     const [subscriptionStatus, setSubscriptionStatus] = useState<{ isActive: boolean; status: string } | null>(null);
 
+    // Accordion & Pagination state
+    const [expandedClients, setExpandedClients] = useState<Set<number>>(new Set());
+    const [clientPages, setClientPages] = useState<Record<number, number>>({});
+    const ITEMS_PER_PAGE = 10;
+
     const fetchTebligatlar = async () => {
         setLoadingTebligatlar(true);
         try {
@@ -415,6 +420,52 @@ const ETebligat: React.FC = () => {
         }
     };
 
+    const handleOpenDocumentsFolder = async () => {
+        try {
+            const result = await window.electronAPI.openDocumentsFolder();
+            if (!result.success) {
+                addLog(`Döküman klasörü açılamadı: ${result.error}`, 'error');
+            }
+        } catch (err: any) {
+            addLog(`Döküman klasörü açılamadı: ${err.message}`, 'error');
+        }
+    };
+
+    // Accordion toggle
+    const toggleClientAccordion = (clientId: number) => {
+        setExpandedClients(prev => {
+            const newSet = new Set(prev);
+            if (newSet.has(clientId)) {
+                newSet.delete(clientId);
+            } else {
+                newSet.add(clientId);
+            }
+            return newSet;
+        });
+    };
+
+    // Get page for a client
+    const getClientPage = (clientId: number) => clientPages[clientId] || 1;
+
+    // Set page for a client
+    const setClientPage = (clientId: number, page: number) => {
+        setClientPages(prev => ({ ...prev, [clientId]: page }));
+    };
+
+    // Format date from document number or raw date
+    const formatDisplayDate = (row: any) => {
+        // If we have created_at, use it for display
+        if (row.created_at) {
+            try {
+                const date = new Date(row.created_at);
+                return date.toLocaleDateString('tr-TR');
+            } catch {
+                return row.created_at;
+            }
+        }
+        return '-';
+    };
+
     const handleExportCsv = async () => {
         if (filteredTebligatlar.length === 0) return;
         const headers = ['Mükellef', 'Tarih', 'Gönderen', 'Konu', 'Durum', 'Kayıt Tarihi'];
@@ -479,6 +530,24 @@ const ETebligat: React.FC = () => {
         }
         return true;
     });
+
+    // Group tebligatlar by client
+    const groupedByClient = filteredTebligatlar.reduce((acc, row) => {
+        const clientId = row.client_id;
+        if (!acc[clientId]) {
+            acc[clientId] = {
+                client_id: clientId,
+                firm_name: row.firm_name,
+                tebligatlar: []
+            };
+        }
+        acc[clientId].tebligatlar.push(row);
+        return acc;
+    }, {} as Record<number, { client_id: number; firm_name: string; tebligatlar: any[] }>);
+
+    const clientGroups = Object.values(groupedByClient).sort((a, b) =>
+        (a.firm_name || '').localeCompare(b.firm_name || '', 'tr')
+    );
 
     const resetFilters = () => {
         setFilterClientId('all');
@@ -549,8 +618,8 @@ const ETebligat: React.FC = () => {
                                 <p className="font-semibold">{selectedTebligat.firm_name || '-'}</p>
                             </div>
                             <div>
-                                <p className="text-xs text-gray-500">Tarih</p>
-                                <p>{selectedTebligat.tebligat_date || '-'}</p>
+                                <p className="text-xs text-gray-500">Belge No</p>
+                                <p>{selectedTebligat.document_no || selectedTebligat.tebligat_date || '-'}</p>
                             </div>
                             <div>
                                 <p className="text-xs text-gray-500">Gönderen</p>
@@ -567,6 +636,35 @@ const ETebligat: React.FC = () => {
                             <div>
                                 <p className="text-xs text-gray-500">Kayıt Tarihi</p>
                                 <p>{selectedTebligat.created_at || '-'}</p>
+                            </div>
+                            {/* Döküman İşlemleri */}
+                            <div className="pt-3 border-t border-gray-200">
+                                <p className="text-xs text-gray-500 mb-2">Döküman</p>
+                                {selectedTebligat.document_path ? (
+                                    <div className="flex gap-3">
+                                        <button
+                                            onClick={() => handleOpenDocument(selectedTebligat.document_path)}
+                                            className="flex items-center gap-2 px-3 py-2 bg-sky-50 text-sky-700 rounded-lg hover:bg-sky-100 transition-colors"
+                                        >
+                                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                            </svg>
+                                            Dökümanı Aç
+                                        </button>
+                                        <button
+                                            onClick={() => handleShareDocument(selectedTebligat.document_path)}
+                                            className="flex items-center gap-2 px-3 py-2 bg-emerald-50 text-emerald-700 rounded-lg hover:bg-emerald-100 transition-colors"
+                                        >
+                                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+                                            </svg>
+                                            Klasörde Göster
+                                        </button>
+                                    </div>
+                                ) : (
+                                    <p className="text-gray-400 text-sm">Döküman bulunamadı</p>
+                                )}
                             </div>
                         </div>
                     </div>
@@ -1033,6 +1131,13 @@ const ETebligat: React.FC = () => {
                         <h2 className="text-lg font-semibold">Son Tebligatlar</h2>
                         <div className="flex items-center space-x-3">
                             <button
+                                onClick={handleOpenDocumentsFolder}
+                                className="text-xs font-semibold text-amber-600 hover:text-amber-700"
+                                title="Döküman klasörünü aç"
+                            >
+                                Döküman Klasörü
+                            </button>
+                            <button
                                 onClick={handleExportExcel}
                                 className="text-xs font-semibold text-emerald-600 hover:text-emerald-700 disabled:text-emerald-300"
                                 disabled={filteredTebligatlar.length === 0}
@@ -1114,61 +1219,148 @@ const ETebligat: React.FC = () => {
                             {filteredTebligatlar.length === 0 ? (
                                 <div className="text-sm text-gray-500">Filtre sonucu kayıt bulunamadı.</div>
                             ) : (
-                                <div className="overflow-x-auto border border-gray-200 rounded-lg">
-                                    <table className="min-w-full text-sm text-left text-gray-700">
-                                        <thead className="bg-gray-100 text-xs uppercase text-gray-500">
-                                            <tr>
-                                                <th className="px-4 py-2">Mükellef</th>
-                                                <th className="px-4 py-2">Tarih</th>
-                                                <th className="px-4 py-2">Gönderen</th>
-                                                <th className="px-4 py-2">Konu</th>
-                                                <th className="px-4 py-2">Durum</th>
-                                                <th className="px-4 py-2">Döküman</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {filteredTebligatlar.map((row) => (
-                                                <tr
-                                                    key={row.id}
-                                                    className="border-t border-gray-200 hover:bg-gray-50 cursor-pointer"
-                                                    onClick={() => setSelectedTebligat(row)}
+                                <div className="space-y-3">
+                                    {clientGroups.map((group) => {
+                                        const isExpanded = expandedClients.has(group.client_id);
+                                        const currentPage = getClientPage(group.client_id);
+                                        const totalPages = Math.ceil(group.tebligatlar.length / ITEMS_PER_PAGE);
+                                        const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+                                        const paginatedItems = group.tebligatlar.slice(startIndex, startIndex + ITEMS_PER_PAGE);
+
+                                        return (
+                                            <div key={group.client_id} className="border border-gray-200 rounded-lg overflow-hidden">
+                                                {/* Accordion Header */}
+                                                <button
+                                                    onClick={() => toggleClientAccordion(group.client_id)}
+                                                    className={`w-full px-4 py-3 flex items-center justify-between transition-colors ${
+                                                        isExpanded ? 'bg-indigo-50' : 'bg-gray-50 hover:bg-gray-100'
+                                                    }`}
                                                 >
-                                                    <td className="px-4 py-2 whitespace-nowrap">{row.firm_name || '-'}</td>
-                                                    <td className="px-4 py-2 whitespace-nowrap">{row.tebligat_date || '-'}</td>
-                                                    <td className="px-4 py-2 whitespace-nowrap">{row.sender || '-'}</td>
-                                                    <td className="px-4 py-2">{row.subject || '-'}</td>
-                                                    <td className="px-4 py-2 whitespace-nowrap">{row.status || '-'}</td>
-                                                    <td className="px-4 py-2 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
-                                                        {row.document_path ? (
-                                                            <div className="flex gap-2">
-                                                                <button
-                                                                    onClick={() => handleOpenDocument(row.document_path)}
-                                                                    className="text-sky-600 hover:text-sky-700"
-                                                                    title="Dökümanı Aç"
-                                                                >
-                                                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                                                                    </svg>
-                                                                </button>
-                                                                <button
-                                                                    onClick={() => handleShareDocument(row.document_path)}
-                                                                    className="text-emerald-600 hover:text-emerald-700"
-                                                                    title="Klasörde Göster"
-                                                                >
-                                                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
-                                                                    </svg>
-                                                                </button>
+                                                    <div className="flex items-center gap-3">
+                                                        <svg
+                                                            xmlns="http://www.w3.org/2000/svg"
+                                                            className={`h-4 w-4 text-gray-500 transition-transform ${isExpanded ? 'rotate-90' : ''}`}
+                                                            fill="none"
+                                                            viewBox="0 0 24 24"
+                                                            stroke="currentColor"
+                                                        >
+                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                                                        </svg>
+                                                        <span className="font-semibold text-gray-800">{group.firm_name || 'Bilinmeyen'}</span>
+                                                    </div>
+                                                    <span className={`text-sm font-medium px-2 py-1 rounded-full ${
+                                                        group.tebligatlar.length > 0 ? 'bg-indigo-100 text-indigo-700' : 'bg-gray-100 text-gray-600'
+                                                    }`}>
+                                                        {group.tebligatlar.length} tebligat
+                                                    </span>
+                                                </button>
+
+                                                {/* Accordion Content */}
+                                                {isExpanded && (
+                                                    <div className="bg-white">
+                                                        <div className="overflow-x-auto">
+                                                            <table className="min-w-full text-sm text-left text-gray-700">
+                                                                <thead className="bg-gray-100 text-xs uppercase text-gray-500">
+                                                                    <tr>
+                                                                        <th className="px-4 py-2">Kayıt Tarihi</th>
+                                                                        <th className="px-4 py-2">Belge No</th>
+                                                                        <th className="px-4 py-2">Gönderen</th>
+                                                                        <th className="px-4 py-2">Konu</th>
+                                                                        <th className="px-4 py-2">Durum</th>
+                                                                        <th className="px-4 py-2">Döküman</th>
+                                                                    </tr>
+                                                                </thead>
+                                                                <tbody>
+                                                                    {paginatedItems.map((row) => (
+                                                                        <tr
+                                                                            key={row.id}
+                                                                            className="border-t border-gray-200 hover:bg-gray-50 cursor-pointer"
+                                                                            onClick={() => setSelectedTebligat(row)}
+                                                                        >
+                                                                            <td className="px-4 py-2 whitespace-nowrap">{formatDisplayDate(row)}</td>
+                                                                            <td className="px-4 py-2 whitespace-nowrap text-xs font-mono">{row.document_no || row.tebligat_date || '-'}</td>
+                                                                            <td className="px-4 py-2 whitespace-nowrap">{row.sender || '-'}</td>
+                                                                            <td className="px-4 py-2 max-w-xs truncate">{row.subject || '-'}</td>
+                                                                            <td className="px-4 py-2 whitespace-nowrap">
+                                                                                <span className={`px-2 py-1 text-xs rounded-full ${
+                                                                                    row.status === 'Tebligat yok' ? 'bg-gray-100 text-gray-600' :
+                                                                                    row.status?.toLowerCase().includes('okundu') ? 'bg-green-100 text-green-700' :
+                                                                                    'bg-amber-100 text-amber-700'
+                                                                                }`}>
+                                                                                    {row.status || '-'}
+                                                                                </span>
+                                                                            </td>
+                                                                            <td className="px-4 py-2 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                                                                                {row.document_path ? (
+                                                                                    <div className="flex gap-2">
+                                                                                        <button
+                                                                                            onClick={() => handleOpenDocument(row.document_path)}
+                                                                                            className="text-sky-600 hover:text-sky-700"
+                                                                                            title="Dökümanı Aç"
+                                                                                        >
+                                                                                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                                                                            </svg>
+                                                                                        </button>
+                                                                                        <button
+                                                                                            onClick={() => handleShareDocument(row.document_path)}
+                                                                                            className="text-emerald-600 hover:text-emerald-700"
+                                                                                            title="Klasörde Göster"
+                                                                                        >
+                                                                                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+                                                                                            </svg>
+                                                                                        </button>
+                                                                                    </div>
+                                                                                ) : (
+                                                                                    <span className="text-gray-400 text-xs">-</span>
+                                                                                )}
+                                                                            </td>
+                                                                        </tr>
+                                                                    ))}
+                                                                </tbody>
+                                                            </table>
+                                                        </div>
+
+                                                        {/* Pagination */}
+                                                        {totalPages > 1 && (
+                                                            <div className="flex items-center justify-between px-4 py-3 border-t border-gray-200 bg-gray-50">
+                                                                <span className="text-xs text-gray-500">
+                                                                    {startIndex + 1}-{Math.min(startIndex + ITEMS_PER_PAGE, group.tebligatlar.length)} / {group.tebligatlar.length}
+                                                                </span>
+                                                                <div className="flex gap-1">
+                                                                    <button
+                                                                        onClick={(e) => {
+                                                                            e.stopPropagation();
+                                                                            setClientPage(group.client_id, Math.max(1, currentPage - 1));
+                                                                        }}
+                                                                        disabled={currentPage === 1}
+                                                                        className="px-2 py-1 text-xs rounded border border-gray-300 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100"
+                                                                    >
+                                                                        Önceki
+                                                                    </button>
+                                                                    <span className="px-3 py-1 text-xs">
+                                                                        {currentPage} / {totalPages}
+                                                                    </span>
+                                                                    <button
+                                                                        onClick={(e) => {
+                                                                            e.stopPropagation();
+                                                                            setClientPage(group.client_id, Math.min(totalPages, currentPage + 1));
+                                                                        }}
+                                                                        disabled={currentPage === totalPages}
+                                                                        className="px-2 py-1 text-xs rounded border border-gray-300 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100"
+                                                                    >
+                                                                        Sonraki
+                                                                    </button>
+                                                                </div>
                                                             </div>
-                                                        ) : (
-                                                            <span className="text-gray-400 text-xs">-</span>
                                                         )}
-                                                    </td>
-                                                </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    })}
                                 </div>
                             )}
                         </>

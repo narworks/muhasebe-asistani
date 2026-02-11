@@ -878,9 +878,20 @@ async function run(onStatusUpdate, apiKey, scanConfig = {}, options = {}, deduct
                             firmId: client.id
                         });
                     } else {
+                        // Log found tebligatlar and their document URLs
+                        console.log(`[DEBUG] Found ${count} tebligatlar for ${client.firm_name}:`);
+                        tebligatlar.forEach((t, i) => {
+                            console.log(`[DEBUG] ${i + 1}. documentUrl: ${t.documentUrl || 'NULL'}, documentNo: ${t.documentNo}`);
+                        });
+
+                        // Count how many have document URLs
+                        const withUrls = tebligatlar.filter(t => t.documentUrl).length;
+                        console.log(`[DEBUG] ${withUrls}/${count} tebligatlar have document URLs`);
+
                         // Download documents for each tebligat
                         for (const tebligat of tebligatlar) {
                             if (tebligat.documentUrl) {
+                                console.log(`[DEBUG] Attempting to download: ${tebligat.documentUrl}`);
                                 try {
                                     const docPath = await downloadDocument(
                                         page,
@@ -891,6 +902,9 @@ async function run(onStatusUpdate, apiKey, scanConfig = {}, options = {}, deduct
                                     if (docPath) {
                                         tebligat.documentPath = docPath;
                                         downloadedCount++;
+                                        console.log(`[DEBUG] Document saved to: ${docPath}`);
+                                    } else {
+                                        console.log(`[DEBUG] downloadDocument returned null`);
                                     }
                                 } catch (downloadErr) {
                                     console.error('[DEBUG] Failed to download document:', downloadErr.message);
@@ -913,8 +927,10 @@ async function run(onStatusUpdate, apiKey, scanConfig = {}, options = {}, deduct
                         savedCount = database.saveTebligatlar(client.id, tebligatlar);
 
                         let message = `${client.firm_name}: ${count} tebligat bulundu, ${savedCount} yeni kayıt eklendi.`;
-                        if (downloadedCount > 0) {
-                            message += ` ${downloadedCount} döküman indirildi.`;
+                        if (withUrls > 0) {
+                            message += ` (${withUrls} döküman linki bulundu, ${downloadedCount} indirildi)`;
+                        } else {
+                            message += ` (döküman linki bulunamadı)`;
                         }
                         onStatusUpdate({
                             message,

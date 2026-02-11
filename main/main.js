@@ -518,3 +518,28 @@ ipcMain.handle('share-document', async (event, documentPath) => {
         return { success: false, error: error.message };
     }
 });
+
+// Open documents folder
+ipcMain.handle('open-documents-folder', async () => {
+    const userDataPath = app.getPath('userData');
+    const documentsPath = path.join(userDataPath, 'documents');
+
+    // Create folder if it doesn't exist
+    if (!fs.existsSync(documentsPath)) {
+        fs.mkdirSync(documentsPath, { recursive: true });
+    }
+
+    try {
+        await shell.openPath(documentsPath);
+        return { success: true, path: documentsPath };
+    } catch (error) {
+        console.error('Open documents folder error:', error);
+        return { success: false, error: error.message };
+    }
+});
+
+// Get documents folder path
+ipcMain.handle('get-documents-path', () => {
+    const userDataPath = app.getPath('userData');
+    return path.join(userDataPath, 'documents');
+});
