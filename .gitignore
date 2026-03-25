@@ -33,5 +33,6 @@ dist-ssr
 release/
 out/
 
-# Build artifacts
-build/
+# Build artifacts (except macOS entitlements)
+build/*
+!build/entitlements.mac.plist
