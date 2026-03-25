@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
+import Skeleton from '../../components/ui/Skeleton';
 import { useAuth } from '../../context/AuthContext';
 import type { Credits, Subscription } from '../../types';
 
@@ -133,15 +134,21 @@ const Account: React.FC = () => {
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
                     <div>
                         <h3 className="text-slate-400 text-sm font-medium">Plan</h3>
-                        <p className="text-white text-lg">{getPlanDisplayName(subscription?.plan || null)}</p>
+                        <p className="text-white text-lg">
+                            {getPlanDisplayName(subscription?.plan || null)}
+                        </p>
                     </div>
                     <div>
                         <h3 className="text-slate-400 text-sm font-medium">Bitiş Tarihi</h3>
-                        <p className="text-white text-lg">{formatDate(subscription?.expiresAt || null)}</p>
+                        <p className="text-white text-lg">
+                            {formatDate(subscription?.expiresAt || null)}
+                        </p>
                     </div>
                     <div>
                         <h3 className="text-slate-400 text-sm font-medium">Durum</h3>
-                        <p className="text-white text-lg capitalize">{subscription?.status || 'N/A'}</p>
+                        <p className="text-white text-lg capitalize">
+                            {subscription?.status || 'N/A'}
+                        </p>
                     </div>
                 </div>
                 <div className="flex gap-3">
@@ -180,7 +187,9 @@ const Account: React.FC = () => {
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
                             <div className="bg-slate-800 rounded-lg p-4">
                                 <h3 className="text-slate-400 text-sm font-medium">Toplam Kalan</h3>
-                                <p className="text-2xl font-bold text-white">{credits.totalRemaining}</p>
+                                <p className="text-2xl font-bold text-white">
+                                    {credits.totalRemaining}
+                                </p>
                             </div>
                             <div className="bg-slate-800 rounded-lg p-4">
                                 <h3 className="text-slate-400 text-sm font-medium">Aylık Kalan</h3>
@@ -190,11 +199,17 @@ const Account: React.FC = () => {
                             </div>
                             <div className="bg-slate-800 rounded-lg p-4">
                                 <h3 className="text-slate-400 text-sm font-medium">Satın Alınan</h3>
-                                <p className="text-2xl font-bold text-green-400">{credits.purchasedRemaining}</p>
+                                <p className="text-2xl font-bold text-green-400">
+                                    {credits.purchasedRemaining}
+                                </p>
                             </div>
                             <div className="bg-slate-800 rounded-lg p-4">
-                                <h3 className="text-slate-400 text-sm font-medium">Bu Ay Kullanılan</h3>
-                                <p className="text-2xl font-bold text-orange-400">{credits.monthlyUsed}</p>
+                                <h3 className="text-slate-400 text-sm font-medium">
+                                    Bu Ay Kullanılan
+                                </h3>
+                                <p className="text-2xl font-bold text-orange-400">
+                                    {credits.monthlyUsed}
+                                </p>
                             </div>
                         </div>
 
@@ -202,7 +217,9 @@ const Account: React.FC = () => {
                         <div className="mb-4">
                             <div className="flex justify-between text-sm text-slate-400 mb-1">
                                 <span>Aylık Kullanım</span>
-                                <span>{credits.monthlyUsed} / {credits.monthlyLimit}</span>
+                                <span>
+                                    {credits.monthlyUsed} / {credits.monthlyLimit}
+                                </span>
                             </div>
                             <div className="h-2 bg-slate-700 rounded-full overflow-hidden">
                                 <div
@@ -216,7 +233,12 @@ const Account: React.FC = () => {
 
                         <div className="flex items-center justify-between text-sm text-slate-400 mb-4">
                             <span>Yenileme: {formatDate(credits.resetAt)}</span>
-                            <span>Son Senkronizasyon: {credits.lastSyncAt ? new Date(credits.lastSyncAt).toLocaleString('tr-TR') : 'N/A'}</span>
+                            <span>
+                                Son Senkronizasyon:{' '}
+                                {credits.lastSyncAt
+                                    ? new Date(credits.lastSyncAt).toLocaleString('tr-TR')
+                                    : 'N/A'}
+                            </span>
                         </div>
 
                         <Button
@@ -228,7 +250,22 @@ const Account: React.FC = () => {
                         </Button>
                     </>
                 ) : (
-                    <div className="text-slate-400">Kredi bilgileri yükleniyor...</div>
+                    <div className="space-y-4">
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                            {[1, 2, 3, 4].map((i) => (
+                                <div key={i} className="bg-slate-800 rounded-lg p-4">
+                                    <Skeleton
+                                        variant="text"
+                                        height="0.875rem"
+                                        width="60%"
+                                        className="mb-2"
+                                    />
+                                    <Skeleton variant="text" height="2rem" width="50%" />
+                                </div>
+                            ))}
+                        </div>
+                        <Skeleton variant="rectangular" height="0.5rem" className="rounded-full" />
+                    </div>
                 )}
             </Card>
 
@@ -238,11 +275,7 @@ const Account: React.FC = () => {
                 <p className="text-slate-400 mb-4">
                     Hesabınızdan çıkış yaparak tüm oturumlarınızı sonlandırabilirsiniz.
                 </p>
-                <Button
-                    onClick={handleLogout}
-                    disabled={loading}
-                    variant="danger"
-                >
+                <Button onClick={handleLogout} disabled={loading} variant="danger">
                     {loading ? 'Çıkış yapılıyor...' : 'Çıkış Yap'}
                 </Button>
             </Card>
