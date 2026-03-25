@@ -1,5 +1,3 @@
-
-import React from 'react';
 import { Routes, Route } from 'react-router-dom';
 import Login from './pages/auth/Login';
 import Register from './pages/auth/Register';
@@ -10,9 +8,11 @@ import StatementConverter from './pages/tools/StatementConverter';
 import ETebligat from './pages/tools/ETebligat';
 import ProtectedRoute from './components/ProtectedRoute';
 import MainLayout from './components/layout/MainLayout';
+import ErrorBoundary from './components/ErrorBoundary';
 
 function App() {
   return (
+    <ErrorBoundary>
     <Routes>
       {/* Public Routes */}
       <Route path="/login" element={<Login />} />
@@ -29,6 +29,7 @@ function App() {
         </Route>
       </Route>
     </Routes>
+    </ErrorBoundary>
   );
 }
 

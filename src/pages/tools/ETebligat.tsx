@@ -1,5 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 
+// Type definitions
+interface ClientGroup {
+    client_id: number;
+    firm_name: string;
+    tebligatlar: any[];
+}
+
 const ETebligat: React.FC = () => {
     const [scanning, setScanning] = useState(false);
     const [logs, setLogs] = useState<{ message: string; type: 'info' | 'error' | 'success' | 'process'; timestamp: string }[]>([]);
@@ -193,7 +200,9 @@ const ETebligat: React.FC = () => {
             if (credits.totalRemaining < activeClients) {
                 addLog(`Dikkat: ${credits.totalRemaining} krediniz kaldı, ${activeClients} aktif mükellef var. Kredi bitince tarama duracaktır.`, 'info');
             }
-        } catch {}
+        } catch {
+            // Credit check failed, continue with scan
+        }
 
         setScanning(true);
         setLogs([]);
@@ -543,9 +552,9 @@ const ETebligat: React.FC = () => {
         }
         acc[clientId].tebligatlar.push(row);
         return acc;
-    }, {} as Record<number, { client_id: number; firm_name: string; tebligatlar: any[] }>);
+    }, {} as Record<number, ClientGroup>);
 
-    const clientGroups = Object.values(groupedByClient).sort((a, b) =>
+    const clientGroups: ClientGroup[] = (Object.values(groupedByClient) as ClientGroup[]).sort((a, b) =>
         (a.firm_name || '').localeCompare(b.firm_name || '', 'tr')
     );
 
@@ -1142,14 +1151,14 @@ const ETebligat: React.FC = () => {
                                 className="text-xs font-semibold text-emerald-600 hover:text-emerald-700 disabled:text-emerald-300"
                                 disabled={filteredTebligatlar.length === 0}
                             >
-                                Excel'e Aktar
+                                Excel&apos;e Aktar
                             </button>
                             <button
                                 onClick={handleExportCsv}
                                 className="text-xs font-semibold text-emerald-600 hover:text-emerald-700 disabled:text-emerald-300"
                                 disabled={filteredTebligatlar.length === 0}
                             >
-                                CSV'ye Aktar
+                                CSV&apos;ye Aktar
                             </button>
                             <button
                                 onClick={fetchTebligatlar}

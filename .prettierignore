@@ -1,0 +1,6 @@
+dist/
+node_modules/
+backend/
+*.min.js
+*.min.css
+package-lock.json

@@ -5,6 +5,26 @@ const path = require('path');
 require('dotenv').config({
     path: path.join(__dirname, '../.env')
 });
+
+// Global error handlers
+process.on('uncaughtException', (error) => {
+    console.error('[FATAL] Uncaught Exception:', error.message);
+    console.error(error.stack);
+    // Log to file for debugging
+    const logPath = path.join(app.getPath('userData'), 'error.log');
+    const timestamp = new Date().toISOString();
+    const logEntry = `[${timestamp}] UNCAUGHT: ${error.message}\n${error.stack}\n\n`;
+    fs.appendFileSync(logPath, logEntry);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('[ERROR] Unhandled Promise Rejection:', reason);
+    // Log to file for debugging
+    const logPath = path.join(app.getPath('userData'), 'error.log');
+    const timestamp = new Date().toISOString();
+    const logEntry = `[${timestamp}] UNHANDLED_REJECTION: ${reason}\n\n`;
+    fs.appendFileSync(logPath, logEntry);
+});
 const supabase = require('./supabase');
 const licenseManager = require('./license');
 const database = require('./database');
@@ -12,6 +32,7 @@ const gibScraper = require('./automation/gibScraper');
 const statementConverter = require('./automation/statementConverter');
 const settings = require('./settings');
 const scheduler = require('./scheduler');
+const validation = require('./validation');
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (require('electron-squirrel-startup')) {
@@ -30,7 +51,7 @@ const createWindow = () => {
             preload: path.join(__dirname, 'preload.js'),
             nodeIntegration: false,
             contextIsolation: true,
-            sandbox: false
+            sandbox: true
         },
     });
 
@@ -266,6 +287,7 @@ ipcMain.handle('get-scan-settings', () => {
 });
 
 ipcMain.handle('save-scan-settings', (event, scanSettings) => {
+    validation.validateScanSettings(scanSettings);
     settings.updateSettings({ scan: scanSettings });
     return { success: true };
 });
@@ -275,7 +297,9 @@ ipcMain.handle('get-schedule-status', () => {
     return scheduler.getStatus();
 });
 
-ipcMain.handle('set-schedule', (event, { enabled, time, finishByTime, frequency = 'daily', customDays = [] }) => {
+ipcMain.handle('set-schedule', (event, config) => {
+    const { enabled, time, finishByTime, frequency = 'daily', customDays = [] } = config;
+    validation.validateScheduleConfig(config);
     // Use finishByTime if provided, otherwise fallback to time for backwards compatibility
     const targetTime = finishByTime || time;
     if (enabled && targetTime) {
@@ -328,6 +352,7 @@ ipcMain.handle('get-clients', (event) => {
 });
 
 ipcMain.handle('save-client', (event, clientData) => {
+    validation.validateClientData(clientData);
     const result = database.saveClient(clientData);
     // Refresh schedule when client count changes
     scheduler.refreshSchedule();
@@ -335,18 +360,23 @@ ipcMain.handle('save-client', (event, clientData) => {
 });
 
 ipcMain.handle('update-client', (event, id, clientData) => {
-    return database.updateClient(id, clientData);
+    const validId = validation.validateId(id, 'Müşteri ID');
+    validation.validateClientData(clientData);
+    return database.updateClient(validId, clientData);
 });
 
 ipcMain.handle('update-client-status', (event, id, status) => {
-    const result = database.updateClientStatus(id, status);
+    const validId = validation.validateId(id, 'Müşteri ID');
+    const validStatus = validation.validateStatus(status);
+    const result = database.updateClientStatus(validId, validStatus);
     // Refresh schedule when client status changes (affects active count)
     scheduler.refreshSchedule();
     return result;
 });
 
 ipcMain.handle('delete-client', (event, id) => {
-    const result = database.deleteClient(id);
+    const validId = validation.validateId(id, 'Müşteri ID');
+    const result = database.deleteClient(validId);
     // Refresh schedule when client count changes
     scheduler.refreshSchedule();
     return result;
@@ -357,7 +387,10 @@ ipcMain.handle('get-tebligatlar', () => {
 });
 
 // Statement Converter
-ipcMain.handle('convert-statement', async (event, { fileBuffer, mimeType, prompt }) => {
+ipcMain.handle('convert-statement', async (event, data) => {
+    const { fileBuffer, mimeType, prompt } = data;
+    validation.validateStatementInput(data);
+
     if (!licenseManager.hasActiveSubscription()) {
         throw new Error('Aktif aboneliğiniz bulunmamaktadır. Lütfen abone olun.');
     }
