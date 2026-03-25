@@ -41,3 +41,9 @@ linux:
     - deb
   artifactName: "Muhasebe-Asistani.${ext}"
   category: Office
+
+# Auto-update configuration
+publish:
+  provider: github
+  owner: narworks
+  repo: muhasebe-asistani

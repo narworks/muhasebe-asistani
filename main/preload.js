@@ -53,6 +53,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
     openDocumentsFolder: () => ipcRenderer.invoke('open-documents-folder'),
     getDocumentsPath: () => ipcRenderer.invoke('get-documents-path'),
 
+    // Auto-update
+    onUpdateStatus: (callback) => ipcRenderer.on('update-status', (_event, value) => callback(value)),
+    removeUpdateListeners: () => {
+        ipcRenderer.removeAllListeners('update-status');
+    },
+
     // Cleanup listeners
     removeScanListeners: () => {
         ipcRenderer.removeAllListeners('scan-update');

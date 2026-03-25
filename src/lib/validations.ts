@@ -20,17 +20,16 @@ export type LoginFormData = z.infer<typeof loginSchema>;
  * Client (Mükellef) form validation schema
  */
 export const clientSchema = z.object({
-    name: z
+    firm_name: z
         .string()
         .min(1, 'Firma adı zorunludur')
         .max(255, 'Firma adı çok uzun (max 255 karakter)'),
-    gib_username: z
+    gib_user_code: z
         .string()
-        .max(100, 'GİB kullanıcı adı çok uzun')
-        .optional()
-        .or(z.literal('')),
+        .min(1, 'GİB kullanıcı kodu zorunludur')
+        .max(100, 'GİB kullanıcı kodu çok uzun'),
     gib_password: z.string().optional().or(z.literal('')),
-    tax_id: z
+    tax_number: z
         .string()
         .optional()
         .refine(
@@ -41,7 +40,20 @@ export const clientSchema = z.object({
             },
             { message: 'Vergi numarası 10 veya 11 haneli olmalıdır' }
         ),
-    status: z.enum(['active', 'inactive', 'pending']).default('active'),
+});
+
+/**
+ * Client schema for editing (password optional)
+ */
+export const clientEditSchema = clientSchema.extend({
+    gib_password: z.string().optional().or(z.literal('')),
+});
+
+/**
+ * Client schema for new client (password required)
+ */
+export const clientCreateSchema = clientSchema.extend({
+    gib_password: z.string().min(1, 'GİB şifresi zorunludur'),
 });
 
 export type ClientFormData = z.infer<typeof clientSchema>;

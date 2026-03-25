@@ -1,97 +1,81 @@
+import type {
+    Client,
+    ClientFormData,
+    Tebligat,
+    ScanSettings,
+    ScanState,
+    ScanStatus,
+    ScheduleConfig,
+    ScheduleStatus,
+    Credits,
+    Subscription,
+    UserInfo,
+    LoginCredentials,
+    LoginResult,
+    StatementConvertRequest,
+    ExportResult,
+    UpdateStatus,
+    ApiResponse,
+} from './index';
+
 export interface IElectronAPI {
     // License & Auth
-    login: (credentials: { email: string; password: string }) => Promise<{ success: boolean; subscriptionStatus?: string; plan?: string; expiresAt?: string; message?: string }>;
-    logout: () => Promise<{ success: boolean }>;
-    checkLicense: () => Promise<{ success: boolean; subscriptionStatus?: string; message?: string }>;
-    getSubscriptionStatus: () => Promise<{ isActive: boolean; plan: string | null; expiresAt: string | null; status: string }>;
-    getUserInfo: () => Promise<{ userId: string | null; email: string | null }>;
-    openBillingPortal: (packageId?: string) => Promise<{ success: boolean }>;
+    login: (credentials: LoginCredentials) => Promise<LoginResult>;
+    logout: () => Promise<ApiResponse>;
+    checkLicense: () => Promise<ApiResponse & { subscriptionStatus?: string }>;
+    getSubscriptionStatus: () => Promise<Subscription>;
+    getUserInfo: () => Promise<UserInfo>;
+    openBillingPortal: (packageId?: string) => Promise<ApiResponse>;
 
     // Database Operations
-    getClients: () => Promise<any[]>;
-    saveClient: (clientData: any) => Promise<any>;
-    updateClient: (id: number, clientData: any) => Promise<any>;
-    updateClientStatus: (id: number, status: string) => Promise<any>;
-    deleteClient: (id: number) => Promise<any>;
-    getTebligatlar: () => Promise<any[]>;
+    getClients: () => Promise<Client[]>;
+    saveClient: (clientData: ClientFormData) => Promise<Client>;
+    updateClient: (id: number, clientData: ClientFormData) => Promise<Client>;
+    updateClientStatus: (id: number, status: Client['status']) => Promise<ApiResponse>;
+    deleteClient: (id: number) => Promise<ApiResponse>;
+    getTebligatlar: () => Promise<Tebligat[]>;
 
     // Automation
     startScan: () => void;
     resumeScan: () => void;
     cancelScan: () => void;
-    getScanState: () => Promise<{
-        canResume: boolean;
-        processedCount: number;
-        total: number;
-        errors: number;
-        successes: number;
-        wasCancelled: boolean;
-    }>;
-    onScanUpdate: (callback: (status: any) => void) => void;
-    onScanError: (callback: (error: any) => void) => void;
-    onScanComplete: (callback: (result: any) => void) => void;
+    getScanState: () => Promise<ScanState>;
+    onScanUpdate: (callback: (status: ScanStatus) => void) => void;
+    onScanError: (callback: (error: string) => void) => void;
+    onScanComplete: (callback: (result: string) => void) => void;
     removeScanListeners: () => void;
 
     // Credits
-    getCredits: () => Promise<{
-        monthlyRemaining: number;
-        monthlyLimit: number;
-        monthlyUsed: number;
-        purchasedRemaining: number;
-        totalRemaining: number;
-        resetAt: string | null;
-        lastSyncAt: string | null;
-    }>;
-    syncCredits: () => Promise<{ success: boolean; message?: string }>;
-    purchaseCredits: () => Promise<{ success: boolean }>;
-    onCreditsUpdated: (callback: (credits: {
-        monthlyRemaining: number;
-        monthlyLimit: number;
-        monthlyUsed: number;
-        purchasedRemaining: number;
-        totalRemaining: number;
-        resetAt: string | null;
-        lastSyncAt: string | null;
-    }) => void) => void;
+    getCredits: () => Promise<Credits>;
+    syncCredits: () => Promise<ApiResponse>;
+    purchaseCredits: () => Promise<ApiResponse>;
+    onCreditsUpdated: (callback: (credits: Credits) => void) => void;
     removeCreditsListeners: () => void;
 
     // Scan Settings
-    getScanSettings: () => Promise<any>;
-    saveScanSettings: (settings: any) => Promise<{ success: boolean }>;
+    getScanSettings: () => Promise<ScanSettings>;
+    saveScanSettings: (settings: ScanSettings) => Promise<ApiResponse>;
 
     // Schedule
-    getScheduleStatus: () => Promise<{
-        enabled: boolean;
-        time: string;
-        finishByTime: string;
-        frequency: 'daily' | 'weekdays' | 'weekends' | 'custom';
-        customDays: number[];
-        lastScheduledScanAt: string | null;
-        nextScheduledScanAt: string | null;
-        estimatedStartTime: string | null;
-        estimatedDurationMinutes: number;
-        clientCount: number;
-    }>;
-    setSchedule: (config: {
-        enabled: boolean;
-        time?: string;
-        finishByTime?: string;
-        frequency?: 'daily' | 'weekdays' | 'weekends' | 'custom';
-        customDays?: number[];
-    }) => Promise<{ success: boolean }>;
+    getScheduleStatus: () => Promise<ScheduleStatus>;
+    setSchedule: (config: ScheduleConfig) => Promise<ApiResponse>;
 
     // Statement Converter
-    convertStatement: (formData: any) => Promise<string>;
+    convertStatement: (data: StatementConvertRequest) => Promise<string>;
 
     // Export
-    exportCsv: (data: string, defaultFileName?: string) => Promise<{ success: boolean; canceled?: boolean; filePath?: string; error?: string }>;
-    exportExcel: (rows: any[], sheetName?: string, defaultFileName?: string) => Promise<{ success: boolean; canceled?: boolean; filePath?: string; error?: string }>;
+    exportCsv: (data: string, defaultFileName?: string) => Promise<ExportResult>;
+    exportExcel: (rows: Record<string, unknown>[], sheetName?: string, defaultFileName?: string) => Promise<ExportResult>;
 
     // Document operations
-    openDocument: (documentPath: string) => Promise<{ success: boolean; error?: string }>;
-    shareDocument: (documentPath: string) => Promise<{ success: boolean; error?: string }>;
-    openDocumentsFolder: () => Promise<{ success: boolean; path?: string; error?: string }>;
+    openDocument: (documentPath: string) => Promise<ApiResponse>;
+    shareDocument: (documentPath: string) => Promise<ApiResponse>;
+    openDocumentsFolder: () => Promise<ApiResponse & { path?: string }>;
     getDocumentsPath: () => Promise<string>;
+
+    // Auto-update
+    onUpdateStatus: (callback: (status: UpdateStatus) => void) => void;
+    removeUpdateListeners: () => void;
 }
 
 declare global {

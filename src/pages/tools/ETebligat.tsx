@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { clientCreateSchema, clientEditSchema, validateForm } from '../../lib/validations';
+import type { ScheduleStatus } from '../../types';
 
 // Type definitions
 interface ClientGroup {
@@ -20,7 +22,7 @@ const ETebligat: React.FC = () => {
         gib_user_code: '',
         gib_password: ''
     });
-    const [clientError, setClientError] = useState<string | null>(null);
+    const [clientErrors, setClientErrors] = useState<Record<string, string>>({});
     const [savingClient, setSavingClient] = useState(false);
     const [editingClientId, setEditingClientId] = useState<number | null>(null);
     const [selectedTebligat, setSelectedTebligat] = useState<any | null>(null);
@@ -47,15 +49,15 @@ const ETebligat: React.FC = () => {
         wasCancelled: boolean;
     } | null>(null);
 
-    const [scheduleConfig, setScheduleConfig] = useState({
+    const [scheduleConfig, setScheduleConfig] = useState<ScheduleStatus>({
         enabled: false,
         time: '08:00',
         finishByTime: '08:00',
-        frequency: 'daily' as 'daily' | 'weekdays' | 'weekends' | 'custom',
-        customDays: [] as number[],
-        lastScheduledScanAt: null as string | null,
-        nextScheduledScanAt: null as string | null,
-        estimatedStartTime: null as string | null,
+        frequency: 'daily',
+        customDays: [],
+        lastScheduledScanAt: null,
+        nextScheduledScanAt: null,
+        estimatedStartTime: null,
         estimatedDurationMinutes: 0,
         clientCount: 0
     });
@@ -157,12 +159,21 @@ const ETebligat: React.FC = () => {
         };
     }, []);
 
+    // Helper to merge schedule status with defaults
+    const mergeScheduleStatus = (status: ScheduleStatus): ScheduleStatus => ({
+        ...status,
+        time: status.time || '08:00',
+        finishByTime: status.finishByTime || status.time || '08:00',
+        frequency: status.frequency || 'daily',
+        customDays: status.customDays || [],
+    });
+
     // Load schedule config
     useEffect(() => {
         const loadSchedule = async () => {
             try {
                 const status = await window.electronAPI.getScheduleStatus();
-                setScheduleConfig(status);
+                setScheduleConfig(mergeScheduleStatus(status));
             } catch (err) {
                 console.error('Zamanlama durumu alınamadı', err);
             }
@@ -247,7 +258,7 @@ const ETebligat: React.FC = () => {
                 customDays: scheduleConfig.customDays
             });
             const updated = await window.electronAPI.getScheduleStatus();
-            setScheduleConfig(updated);
+            setScheduleConfig(mergeScheduleStatus(updated));
         } catch (err) {
             console.error('Zamanlama ayarlanamadı', err);
         } finally {
@@ -266,7 +277,7 @@ const ETebligat: React.FC = () => {
                     customDays: scheduleConfig.customDays
                 });
                 const updated = await window.electronAPI.getScheduleStatus();
-                setScheduleConfig(updated);
+                setScheduleConfig(mergeScheduleStatus(updated));
             } catch (err) {
                 console.error('Zamanlama güncellenemedi', err);
             }
@@ -289,7 +300,7 @@ const ETebligat: React.FC = () => {
                     customDays: newCustomDays
                 });
                 const updated = await window.electronAPI.getScheduleStatus();
-                setScheduleConfig(updated);
+                setScheduleConfig(mergeScheduleStatus(updated));
             } catch (err) {
                 console.error('Zamanlama güncellenemedi', err);
             }
@@ -315,40 +326,33 @@ const ETebligat: React.FC = () => {
                     customDays: newDays
                 });
                 const updated = await window.electronAPI.getScheduleStatus();
-                setScheduleConfig(updated);
+                setScheduleConfig(mergeScheduleStatus(updated));
             } catch (err) {
                 console.error('Zamanlama güncellenemedi', err);
             }
         }
     };
 
-    const handleClientChange = (field: string, value: string) => {
-        setClientForm((prev) => ({ ...prev, [field]: value }));
-    };
-
     const handleSaveClient = async (event: React.FormEvent) => {
         event.preventDefault();
-        setClientError(null);
+        setClientErrors({});
 
-        if (!clientForm.firm_name.trim() || !clientForm.gib_user_code.trim() || !clientForm.gib_password.trim()) {
-            if (!editingClientId || clientForm.gib_password.trim()) {
-                setClientError('Firma adı, GİB kullanıcı kodu ve şifre zorunludur.');
-                return;
-            }
-        }
+        // Use appropriate schema based on edit vs create mode
+        const schema = editingClientId ? clientEditSchema : clientCreateSchema;
+        const result = validateForm(schema, clientForm);
 
-        if (!clientForm.firm_name.trim() || !clientForm.gib_user_code.trim()) {
-            setClientError('Firma adı ve GİB kullanıcı kodu zorunludur.');
+        if (!result.success) {
+            setClientErrors((result as { success: false; errors: Record<string, string> }).errors);
             return;
         }
 
         setSavingClient(true);
         try {
             const payload = {
-                firm_name: clientForm.firm_name.trim(),
-                tax_number: clientForm.tax_number.trim(),
-                gib_user_code: clientForm.gib_user_code.trim(),
-                gib_password: clientForm.gib_password
+                firm_name: result.data.firm_name.trim(),
+                tax_number: result.data.tax_number?.trim() || '',
+                gib_user_code: result.data.gib_user_code.trim(),
+                gib_password: result.data.gib_password || ''
             };
 
             if (editingClientId) {
@@ -361,7 +365,7 @@ const ETebligat: React.FC = () => {
             setEditingClientId(null);
             await fetchClients();
         } catch (err: any) {
-            setClientError(err.message || 'Mükellef kaydedilemedi.');
+            setClientErrors({ _form: err.message || 'Mükellef kaydedilemedi.' });
         } finally {
             setSavingClient(false);
         }
@@ -375,13 +379,21 @@ const ETebligat: React.FC = () => {
             gib_user_code: client.gib_user_code || '',
             gib_password: ''
         });
-        setClientError(null);
+        setClientErrors({});
     };
 
     const handleCancelEdit = () => {
         setEditingClientId(null);
         setClientForm({ firm_name: '', tax_number: '', gib_user_code: '', gib_password: '' });
-        setClientError(null);
+        setClientErrors({});
+    };
+
+    // Clear field error on change
+    const handleClientFieldChange = (field: string, value: string) => {
+        setClientForm((prev) => ({ ...prev, [field]: value }));
+        if (clientErrors[field]) {
+            setClientErrors((prev) => ({ ...prev, [field]: '' }));
+        }
     };
 
     const handleToggleClientStatus = async (client: any) => {
@@ -687,48 +699,68 @@ const ETebligat: React.FC = () => {
                     <h2 className="text-lg font-semibold mb-2">Mükellef Yönetimi</h2>
                     <p className="text-sm text-gray-500 mb-4">Tarama için mükellef bilgilerini kaydedin.</p>
 
-                    <form onSubmit={handleSaveClient} className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <form onSubmit={handleSaveClient} className="grid grid-cols-1 md:grid-cols-2 gap-4" noValidate>
                         <div>
                             <label className="block text-xs font-semibold text-gray-500 mb-1">Firma Adı</label>
                             <input
                                 type="text"
                                 value={clientForm.firm_name}
-                                onChange={(e) => handleClientChange('firm_name', e.target.value)}
-                                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm text-gray-900 bg-white"
+                                onChange={(e) => handleClientFieldChange('firm_name', e.target.value)}
+                                className={`w-full border rounded-md px-3 py-2 text-sm text-gray-900 bg-white ${
+                                    clientErrors.firm_name ? 'border-red-500' : 'border-gray-300'
+                                }`}
                                 placeholder="Örnek Ltd. Şti."
                             />
+                            {clientErrors.firm_name && (
+                                <p className="mt-1 text-xs text-red-500">{clientErrors.firm_name}</p>
+                            )}
                         </div>
                         <div>
                             <label className="block text-xs font-semibold text-gray-500 mb-1">Vergi No</label>
                             <input
                                 type="text"
                                 value={clientForm.tax_number}
-                                onChange={(e) => handleClientChange('tax_number', e.target.value)}
-                                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm text-gray-900 bg-white"
+                                onChange={(e) => handleClientFieldChange('tax_number', e.target.value)}
+                                className={`w-full border rounded-md px-3 py-2 text-sm text-gray-900 bg-white ${
+                                    clientErrors.tax_number ? 'border-red-500' : 'border-gray-300'
+                                }`}
                                 placeholder="Opsiyonel"
                             />
+                            {clientErrors.tax_number && (
+                                <p className="mt-1 text-xs text-red-500">{clientErrors.tax_number}</p>
+                            )}
                         </div>
                         <div>
                             <label className="block text-xs font-semibold text-gray-500 mb-1">GİB Kullanıcı Kodu</label>
                             <input
                                 type="text"
                                 value={clientForm.gib_user_code}
-                                onChange={(e) => handleClientChange('gib_user_code', e.target.value)}
-                                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm text-gray-900 bg-white"
+                                onChange={(e) => handleClientFieldChange('gib_user_code', e.target.value)}
+                                className={`w-full border rounded-md px-3 py-2 text-sm text-gray-900 bg-white ${
+                                    clientErrors.gib_user_code ? 'border-red-500' : 'border-gray-300'
+                                }`}
                             />
+                            {clientErrors.gib_user_code && (
+                                <p className="mt-1 text-xs text-red-500">{clientErrors.gib_user_code}</p>
+                            )}
                         </div>
                         <div>
                             <label className="block text-xs font-semibold text-gray-500 mb-1">GİB Şifre</label>
                             <input
                                 type="password"
                                 value={clientForm.gib_password}
-                                onChange={(e) => handleClientChange('gib_password', e.target.value)}
-                                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm text-gray-900 bg-white"
+                                onChange={(e) => handleClientFieldChange('gib_password', e.target.value)}
+                                className={`w-full border rounded-md px-3 py-2 text-sm text-gray-900 bg-white ${
+                                    clientErrors.gib_password ? 'border-red-500' : 'border-gray-300'
+                                }`}
                                 placeholder={editingClientId ? '(değiştirmek için yazın)' : ''}
                             />
+                            {clientErrors.gib_password && (
+                                <p className="mt-1 text-xs text-red-500">{clientErrors.gib_password}</p>
+                            )}
                         </div>
                         <div className="md:col-span-2 flex items-center justify-between">
-                            {clientError && <p className="text-sm text-red-500">{clientError}</p>}
+                            {clientErrors._form && <p className="text-sm text-red-500">{clientErrors._form}</p>}
                             <button
                                 type="submit"
                                 disabled={savingClient}

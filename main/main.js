@@ -33,6 +33,7 @@ const statementConverter = require('./automation/statementConverter');
 const settings = require('./settings');
 const scheduler = require('./scheduler');
 const validation = require('./validation');
+const autoUpdater = require('./autoUpdater');
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (require('electron-squirrel-startup')) {
@@ -135,6 +136,9 @@ app.whenReady().then(() => {
     scheduler.init(() => runScanWithUpdates());
 
     createWindow();
+
+    // Initialize auto-updater
+    autoUpdater.init(mainWindow);
 
     // System tray
     const trayIcon = nativeImage.createFromDataURL(

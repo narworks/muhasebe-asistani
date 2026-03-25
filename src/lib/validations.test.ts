@@ -2,6 +2,8 @@ import { describe, it, expect } from 'vitest';
 import {
     loginSchema,
     clientSchema,
+    clientCreateSchema,
+    clientEditSchema,
     scanSettingsSchema,
     scheduleConfigSchema,
     validateForm,
@@ -37,42 +39,85 @@ describe('Validation Schemas', () => {
     describe('clientSchema', () => {
         it('should accept valid client data', () => {
             const result = clientSchema.safeParse({
-                name: 'Test Firma',
-                gib_username: 'testuser',
-                tax_id: '1234567890',
+                firm_name: 'Test Firma',
+                gib_user_code: 'testuser',
+                tax_number: '1234567890',
             });
             expect(result.success).toBe(true);
         });
 
-        it('should reject empty name', () => {
+        it('should reject empty firm name', () => {
             const result = clientSchema.safeParse({
-                name: '',
+                firm_name: '',
+                gib_user_code: 'testuser',
             });
             expect(result.success).toBe(false);
         });
 
-        it('should accept 10-digit tax ID', () => {
+        it('should reject empty gib_user_code', () => {
             const result = clientSchema.safeParse({
-                name: 'Test',
-                tax_id: '1234567890',
+                firm_name: 'Test',
+                gib_user_code: '',
+            });
+            expect(result.success).toBe(false);
+        });
+
+        it('should accept 10-digit tax number', () => {
+            const result = clientSchema.safeParse({
+                firm_name: 'Test',
+                gib_user_code: 'testuser',
+                tax_number: '1234567890',
             });
             expect(result.success).toBe(true);
         });
 
         it('should accept 11-digit TC Kimlik No', () => {
             const result = clientSchema.safeParse({
-                name: 'Test',
-                tax_id: '12345678901',
+                firm_name: 'Test',
+                gib_user_code: 'testuser',
+                tax_number: '12345678901',
             });
             expect(result.success).toBe(true);
         });
 
-        it('should reject invalid tax ID', () => {
+        it('should reject invalid tax number', () => {
             const result = clientSchema.safeParse({
-                name: 'Test',
-                tax_id: '123',
+                firm_name: 'Test',
+                gib_user_code: 'testuser',
+                tax_number: '123',
             });
             expect(result.success).toBe(false);
+        });
+    });
+
+    describe('clientCreateSchema', () => {
+        it('should require password for new clients', () => {
+            const result = clientCreateSchema.safeParse({
+                firm_name: 'Test',
+                gib_user_code: 'testuser',
+                gib_password: '',
+            });
+            expect(result.success).toBe(false);
+        });
+
+        it('should accept valid new client data with password', () => {
+            const result = clientCreateSchema.safeParse({
+                firm_name: 'Test',
+                gib_user_code: 'testuser',
+                gib_password: 'password123',
+            });
+            expect(result.success).toBe(true);
+        });
+    });
+
+    describe('clientEditSchema', () => {
+        it('should allow empty password for editing', () => {
+            const result = clientEditSchema.safeParse({
+                firm_name: 'Test',
+                gib_user_code: 'testuser',
+                gib_password: '',
+            });
+            expect(result.success).toBe(true);
         });
     });
 
@@ -140,8 +185,9 @@ describe('Validation Schemas', () => {
             });
             expect(result.success).toBe(false);
             if (!result.success) {
-                expect(result.errors).toHaveProperty('email');
-                expect(result.errors).toHaveProperty('password');
+                const errorResult = result as { success: false; errors: Record<string, string> };
+                expect(errorResult.errors).toHaveProperty('email');
+                expect(errorResult.errors).toHaveProperty('password');
             }
         });
     });
