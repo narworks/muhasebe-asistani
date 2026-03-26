@@ -17,7 +17,7 @@ process.on('uncaughtException', (error) => {
     fs.appendFileSync(logPath, logEntry);
 });
 
-process.on('unhandledRejection', (reason, promise) => {
+process.on('unhandledRejection', (reason, _promise) => {
     console.error('[ERROR] Unhandled Promise Rejection:', reason);
     // Log to file for debugging
     const logPath = path.join(app.getPath('userData'), 'error.log');
@@ -392,7 +392,7 @@ ipcMain.handle('purchase-credits', async () => {
 });
 
 // Database IPCs
-ipcMain.handle('get-clients', (event) => {
+ipcMain.handle('get-clients', (_event) => {
     return database.getClients();
 });
 

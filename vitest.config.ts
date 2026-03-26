@@ -16,8 +16,13 @@ export default defineConfig({
         deps: {
             optimizer: {
                 web: {
-                    include: ['@testing-library/react'],
+                    include: ['@testing-library/react', 'react-dom'],
                 },
+            },
+        },
+        server: {
+            deps: {
+                inline: ['react-dom'],
             },
         },
     },

@@ -11,7 +11,7 @@ function validateClientData(data) {
         throw new Error('Geçersiz müşteri verisi.');
     }
 
-    const { name, gib_username, gib_password, tax_id } = data;
+    const { name, gib_username, gib_password: _gib_password, tax_id } = data;
 
     // Required fields
     if (!name || typeof name !== 'string' || name.trim().length === 0) {
@@ -182,7 +182,7 @@ function validateStatementInput(data) {
         'image/jpeg',
         'image/jpg',
         'text/plain',
-        'text/csv'
+        'text/csv',
     ];
     if (mimeType && !validMimeTypes.includes(mimeType)) {
         throw new Error('Desteklenmeyen dosya formatı.');
@@ -206,5 +206,5 @@ module.exports = {
     validateStatus,
     validateScanSettings,
     validateScheduleConfig,
-    validateStatementInput
+    validateStatementInput,
 };

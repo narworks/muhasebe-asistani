@@ -551,7 +551,7 @@ const extractTebligatFromPage = async (page, selector) => {
                 const documentNo = cols[offset + 3]?.innerText?.trim() || ''; // Belge No
                 const sendDate = cols[offset + 4]?.innerText?.trim() || ''; // Gönderme Tarihi
                 const notificationDate = cols[offset + 5]?.innerText?.trim() || ''; // Tebliğ Tarihi
-                const taxpayer = cols[offset + 6]?.innerText?.trim() || ''; // Mükellef
+                const _taxpayer = cols[offset + 6]?.innerText?.trim() || ''; // Mükellef (unused)
 
                 // In GİB portal, clicking the row opens the document detail
                 // Mark all rows for click-based document access

@@ -1,5 +1,5 @@
 const { autoUpdater } = require('electron-updater');
-const { app, dialog, BrowserWindow } = require('electron');
+const { app, dialog } = require('electron');
 
 let mainWindow = null;
 
@@ -31,19 +31,21 @@ function init(win) {
         sendStatusToWindow('update-available', info);
 
         // Show dialog to user
-        dialog.showMessageBox(mainWindow, {
-            type: 'info',
-            title: 'Güncelleme Mevcut',
-            message: `Yeni bir sürüm mevcut: v${info.version}`,
-            detail: 'Güncellemek ister misiniz? Uygulama kapanacak ve güncelleme yüklenecek.',
-            buttons: ['Güncelle', 'Daha Sonra'],
-            defaultId: 0,
-            cancelId: 1
-        }).then(({ response }) => {
-            if (response === 0) {
-                autoUpdater.downloadUpdate();
-            }
-        });
+        dialog
+            .showMessageBox(mainWindow, {
+                type: 'info',
+                title: 'Güncelleme Mevcut',
+                message: `Yeni bir sürüm mevcut: v${info.version}`,
+                detail: 'Güncellemek ister misiniz? Uygulama kapanacak ve güncelleme yüklenecek.',
+                buttons: ['Güncelle', 'Daha Sonra'],
+                defaultId: 0,
+                cancelId: 1,
+            })
+            .then(({ response }) => {
+                if (response === 0) {
+                    autoUpdater.downloadUpdate();
+                }
+            });
     });
 
     autoUpdater.on('update-not-available', (info) => {
@@ -63,7 +65,7 @@ function init(win) {
             percent,
             bytesPerSecond: progressObj.bytesPerSecond,
             transferred: progressObj.transferred,
-            total: progressObj.total
+            total: progressObj.total,
         });
     });
 
@@ -72,19 +74,21 @@ function init(win) {
         sendStatusToWindow('update-downloaded', info);
 
         // Show dialog and quit/install
-        dialog.showMessageBox(mainWindow, {
-            type: 'info',
-            title: 'Güncelleme Hazır',
-            message: 'Güncelleme indirildi.',
-            detail: 'Uygulamayı yeniden başlatmak için "Şimdi Yeniden Başlat" butonuna tıklayın.',
-            buttons: ['Şimdi Yeniden Başlat', 'Daha Sonra'],
-            defaultId: 0,
-            cancelId: 1
-        }).then(({ response }) => {
-            if (response === 0) {
-                autoUpdater.quitAndInstall(false, true);
-            }
-        });
+        dialog
+            .showMessageBox(mainWindow, {
+                type: 'info',
+                title: 'Güncelleme Hazır',
+                message: 'Güncelleme indirildi.',
+                detail: 'Uygulamayı yeniden başlatmak için "Şimdi Yeniden Başlat" butonuna tıklayın.',
+                buttons: ['Şimdi Yeniden Başlat', 'Daha Sonra'],
+                defaultId: 0,
+                cancelId: 1,
+            })
+            .then(({ response }) => {
+                if (response === 0) {
+                    autoUpdater.quitAndInstall(false, true);
+                }
+            });
     });
 
     // Check for updates after app is ready (delay 5 seconds)
@@ -119,5 +123,5 @@ function sendStatusToWindow(status, data = {}) {
 
 module.exports = {
     init,
-    checkForUpdates
+    checkForUpdates,
 };
