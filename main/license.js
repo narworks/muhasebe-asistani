@@ -4,12 +4,14 @@
  */
 
 const { app } = require('electron');
+const crypto = require('crypto');
 const settings = require('./settings');
 const supabase = require('./supabase');
 
 const BILLING_URL = process.env.BILLING_URL || 'https://muhasebeasistani.com/pricing';
 const CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000; // 6 saat
 const GRACE_PERIOD_MS = 7 * 24 * 60 * 60 * 1000; // 7 gün
+const MAX_OFFLINE_OPERATIONS = 50; // Maksimum offline işlem sayısı
 
 let state = null;
 let checkIntervalId = null;
@@ -30,8 +32,30 @@ const defaultState = {
         purchasedRemaining: 0,
         totalRemaining: 0,
         resetAt: null,
-        lastSyncAt: null
-    }
+        lastSyncAt: null,
+        signature: null,
+        offlineOpsCount: 0,
+    },
+};
+
+/**
+ * Kredi bütünlük imzası oluşturur
+ */
+const generateCreditSignature = (credits, deviceId) => {
+    const data = `${credits.totalRemaining}:${credits.monthlyRemaining}:${credits.purchasedRemaining}:${deviceId}`;
+    return crypto.createHmac('sha256', deviceId).update(data).digest('hex');
+};
+
+/**
+ * Kredi bütünlük imzasını doğrular
+ */
+const verifyCreditSignature = (credits, deviceId) => {
+    if (!credits.signature) return false;
+    const expected = generateCreditSignature(credits, deviceId);
+    return crypto.timingSafeEqual(
+        Buffer.from(credits.signature, 'hex'),
+        Buffer.from(expected, 'hex')
+    );
 };
 
 /**
@@ -46,7 +70,7 @@ const loadState = () => {
     const storedCredits = stored.license?.credits || {};
     const mergedCredits = {
         ...defaultState.credits,
-        ...storedCredits
+        ...storedCredits,
     };
 
     state = {
@@ -54,7 +78,7 @@ const loadState = () => {
         ...stored.license,
         credits: mergedCredits,
         accessToken,
-        refreshToken
+        refreshToken,
     };
 };
 
@@ -125,9 +149,10 @@ const login = async ({ email, password }) => {
             console.error('Supabase login failed:', error.message);
             return {
                 success: false,
-                message: error.message === 'Invalid login credentials'
-                    ? 'E-posta veya şifre hatalı.'
-                    : 'Giriş başarısız: ' + error.message
+                message:
+                    error.message === 'Invalid login credentials'
+                        ? 'E-posta veya şifre hatalı.'
+                        : 'Giriş başarısız: ' + error.message,
             };
         }
 
@@ -162,7 +187,7 @@ const login = async ({ email, password }) => {
             success: true,
             subscriptionStatus: state.subscriptionStatus,
             plan: state.plan,
-            expiresAt: state.expiresAt
+            expiresAt: state.expiresAt,
         };
     } catch (error) {
         console.error('Login error:', error.message);
@@ -205,7 +230,7 @@ const checkLicense = async () => {
 
         return {
             success: true,
-            subscriptionStatus: state.subscriptionStatus
+            subscriptionStatus: state.subscriptionStatus,
         };
     } catch (error) {
         console.error('License check error:', error.message);
@@ -288,7 +313,7 @@ const getSubscriptionStatus = () => {
         isActive: hasActiveSubscription(),
         plan: state.plan || null,
         expiresAt: state.expiresAt || null,
-        status: state.subscriptionStatus || 'inactive'
+        status: state.subscriptionStatus || 'inactive',
     };
 };
 
@@ -307,7 +332,7 @@ const getUserInfo = () => {
 
     return {
         userId: state.userId,
-        email: state.email
+        email: state.email,
     };
 };
 
@@ -329,6 +354,7 @@ const syncCredits = async () => {
             return { success: false, message: error.message };
         }
 
+        const deviceId = settings.getDeviceId();
         state.credits = {
             monthlyRemaining: credits.monthly_remaining,
             monthlyLimit: credits.monthly_limit,
@@ -336,8 +362,12 @@ const syncCredits = async () => {
             purchasedRemaining: credits.purchased_remaining,
             totalRemaining: credits.total_remaining,
             resetAt: credits.reset_at,
-            lastSyncAt: new Date().toISOString()
+            lastSyncAt: new Date().toISOString(),
+            signature: null,
+            offlineOpsCount: 0,
         };
+        // Bütünlük imzası oluştur
+        state.credits.signature = generateCreditSignature(state.credits, deviceId);
 
         persistState();
         return { success: true };
@@ -362,7 +392,12 @@ const deductCredits = async (amount, operationType) => {
 
     try {
         const deviceId = settings.getDeviceId();
-        const { result, error } = await supabase.deductCredits(state.userId, amount, operationType, deviceId);
+        const { result, error } = await supabase.deductCredits(
+            state.userId,
+            amount,
+            operationType,
+            deviceId
+        );
 
         if (error) {
             // Offline fallback: lokal cache'den düş
@@ -379,6 +414,10 @@ const deductCredits = async (amount, operationType) => {
         state.credits.purchasedRemaining = result.purchased_remaining;
         state.credits.totalRemaining = result.total_remaining;
         state.credits.lastSyncAt = new Date().toISOString();
+        state.credits.offlineOpsCount = 0; // Online başarılı, sayacı sıfırla
+
+        // Bütünlük imzası güncelle
+        state.credits.signature = generateCreditSignature(state.credits, deviceId);
         persistState();
 
         return { success: true, credits: state.credits };
@@ -390,10 +429,34 @@ const deductCredits = async (amount, operationType) => {
 
 /**
  * Offline kredi düşme (lokal cache'den)
+ * Bütünlük kontrolü ve işlem limiti ile korunur
  */
 const deductCreditsOffline = (amount) => {
+    const deviceId = settings.getDeviceId();
+
+    // Bütünlük imzası kontrolü
+    if (state.credits.signature && !verifyCreditSignature(state.credits, deviceId)) {
+        console.warn('Credit signature verification failed - possible tampering');
+        return { success: false, error: 'integrity_check_failed', totalRemaining: 0 };
+    }
+
+    // Offline işlem limiti kontrolü
+    const offlineOps = state.credits.offlineOpsCount || 0;
+    if (offlineOps >= MAX_OFFLINE_OPERATIONS) {
+        console.warn('Offline operation limit reached');
+        return {
+            success: false,
+            error: 'offline_limit_reached',
+            totalRemaining: state.credits.totalRemaining,
+        };
+    }
+
     if (state.credits.totalRemaining < amount) {
-        return { success: false, error: 'insufficient_credits', totalRemaining: state.credits.totalRemaining };
+        return {
+            success: false,
+            error: 'insufficient_credits',
+            totalRemaining: state.credits.totalRemaining,
+        };
     }
 
     // Önce aylık krediden düş
@@ -404,6 +467,10 @@ const deductCreditsOffline = (amount) => {
     state.credits.monthlyUsed += monthlyDeduct;
     state.credits.purchasedRemaining -= purchasedDeduct;
     state.credits.totalRemaining -= amount;
+    state.credits.offlineOpsCount = offlineOps + 1;
+
+    // Yeni imza oluştur
+    state.credits.signature = generateCreditSignature(state.credits, deviceId);
     persistState();
 
     return { success: true, credits: state.credits };
@@ -507,5 +574,5 @@ module.exports = {
     deductCredits,
     refundCredits,
     getCredits,
-    hasEnoughCredits
+    hasEnoughCredits,
 };

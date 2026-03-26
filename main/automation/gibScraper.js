@@ -5,7 +5,8 @@ const path = require('path');
 const fs = require('fs');
 const { app } = require('electron');
 
-const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+const USER_AGENT =
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 const GIB_LOGIN_URL = 'https://dijital.gib.gov.tr/portal/login';
 
 // Get documents directory
@@ -19,7 +20,7 @@ const getDocumentsDir = (clientId) => {
 };
 
 // Download a document from GIB portal
-const downloadDocument = async (page, documentUrl, clientId, documentNo, rowIndex = null, tableSelector = null) => {
+const downloadDocument = async (page, documentUrl, clientId, documentNo, tableSelector = null) => {
     try {
         const docsDir = getDocumentsDir(clientId);
         const safeDocNo = (documentNo || 'doc').replace(/[^a-zA-Z0-9-_]/g, '_');
@@ -28,106 +29,303 @@ const downloadDocument = async (page, documentUrl, clientId, documentNo, rowInde
 
         console.log('[DEBUG] Processing document:', documentUrl);
 
-        // Handle click-based document access
-        if (documentUrl && documentUrl.startsWith('__CLICK_ACTION__:')) {
+        // Handle row-click based document access (GİB portal style)
+        // User clicks a row to open detail modal, then downloads PDF from there
+        if (documentUrl && documentUrl.startsWith('__CLICK_ROW__:')) {
             const targetRowIndex = parseInt(documentUrl.split(':')[1], 10);
-            console.log('[DEBUG] Attempting click-based document access for row:', targetRowIndex);
+            console.log('[DEBUG] Attempting row-click document access for row:', targetRowIndex);
 
-            // Click on the action button in the row
-            const clicked = await page.evaluate((sel, rowIdx) => {
-                const rows = Array.from(document.querySelectorAll(sel));
-                const row = rows[rowIdx];
-                if (!row) return false;
-
-                // Find and click the action button
-                const actionTexts = ['görüntüle', 'incele', 'detay', 'indir', 'aç', 'pdf', 'download', 'view'];
-                const allClickables = row.querySelectorAll('button, a, [role="button"]');
-
-                for (const el of allClickables) {
-                    const text = (el.textContent || '').toLowerCase().trim();
-                    const title = (el.getAttribute('title') || '').toLowerCase();
-                    const ariaLabel = (el.getAttribute('aria-label') || '').toLowerCase();
-
-                    const isActionButton = actionTexts.some(t =>
-                        text.includes(t) || title.includes(t) || ariaLabel.includes(t)
-                    );
-
-                    if (isActionButton) {
-                        el.click();
-                        return true;
+            // Click on the table row to open detail modal
+            const clicked = await page.evaluate(
+                (sel, rowIdx) => {
+                    const rows = Array.from(document.querySelectorAll(sel));
+                    const row = rows[rowIdx];
+                    if (!row) {
+                        console.log('[DEBUG] Row not found at index:', rowIdx);
+                        return { success: false, reason: 'row_not_found' };
                     }
-                }
 
-                // If no text match, try clicking the last button/link in the row (usually action column)
-                const lastCell = row.querySelector('td:last-child, [role="cell"]:last-child');
-                if (lastCell) {
-                    const actionEl = lastCell.querySelector('button, a');
-                    if (actionEl) {
-                        actionEl.click();
-                        return true;
+                    // Try clicking the row itself first
+                    row.click();
+                    return { success: true, method: 'row_click' };
+                },
+                tableSelector || 'table tbody tr',
+                targetRowIndex
+            );
+
+            console.log('[DEBUG] Row click result:', JSON.stringify(clicked));
+
+            if (clicked.success) {
+                // Wait for modal/detail view to appear
+                await new Promise((r) => setTimeout(r, 3000));
+
+                // Take screenshot for debugging
+                const screenshotPath = path.join(docsDir, `debug_modal_${Date.now()}.png`);
+                await page.screenshot({ path: screenshotPath, fullPage: true });
+                console.log('[DEBUG] Modal screenshot saved:', screenshotPath);
+
+                // Try multiple strategies to find and download the PDF
+                const pdfInfo = await page.evaluate(() => {
+                    const result = { found: false, url: null, method: null, debugInfo: [] };
+
+                    // Strategy 1: Check for PDF viewer iframe
+                    const iframes = document.querySelectorAll('iframe');
+                    for (const iframe of iframes) {
+                        const src = iframe.src || '';
+                        if (
+                            src.includes('pdf') ||
+                            src.includes('document') ||
+                            src.includes('viewer')
+                        ) {
+                            result.found = true;
+                            result.url = src;
+                            result.method = 'iframe';
+                            return result;
+                        }
                     }
-                }
+                    result.debugInfo.push(`Found ${iframes.length} iframes`);
 
-                return false;
-            }, tableSelector || 'table tbody tr', targetRowIndex);
+                    // Strategy 2: Look for download/view buttons in modal
+                    const modalSelectors = [
+                        '.modal',
+                        '.MuiDialog-root',
+                        '[role="dialog"]',
+                        '.MuiModal-root',
+                        '.popup',
+                        '.overlay',
+                        '[class*="modal" i]',
+                        '[class*="dialog" i]',
+                        '[class*="detay" i]',
+                    ];
 
-            if (clicked) {
-                // Wait for modal/new content to appear
-                await new Promise(r => setTimeout(r, 3000));
+                    let modalElement = null;
+                    for (const sel of modalSelectors) {
+                        const el = document.querySelector(sel);
+                        if (el) {
+                            modalElement = el;
+                            result.debugInfo.push(`Found modal: ${sel}`);
+                            break;
+                        }
+                    }
 
-                // Try to find and download the PDF from the opened modal/page
-                const pdfUrl = await page.evaluate(() => {
-                    // Check for PDF viewer iframe
-                    const iframe = document.querySelector('iframe[src*="pdf"], iframe[src*="document"]');
-                    if (iframe) return iframe.src;
+                    if (!modalElement) {
+                        result.debugInfo.push('No modal found, searching entire document');
+                        modalElement = document.body;
+                    }
 
-                    // Check for download link in modal
-                    const downloadLink = document.querySelector('.modal a[href*="pdf"], .MuiDialog-root a[href*="pdf"], [role="dialog"] a[href*="download"]');
-                    if (downloadLink) return downloadLink.href;
+                    // Strategy 3: Find PDF/download links
+                    const downloadKeywords = [
+                        'pdf',
+                        'indir',
+                        'download',
+                        'görüntüle',
+                        'belge',
+                        'document',
+                        'dosya',
+                    ];
+                    const links = modalElement.querySelectorAll('a[href], button[onclick]');
 
-                    // Check for embedded object
-                    const pdfObject = document.querySelector('object[data*="pdf"], embed[src*="pdf"]');
-                    if (pdfObject) return pdfObject.data || pdfObject.src;
+                    for (const link of links) {
+                        const href = link.href || link.getAttribute('onclick') || '';
+                        const text = (link.textContent || '').toLowerCase();
 
-                    return null;
+                        if (
+                            downloadKeywords.some(
+                                (kw) => href.toLowerCase().includes(kw) || text.includes(kw)
+                            )
+                        ) {
+                            if (link.href && link.href.startsWith('http')) {
+                                result.found = true;
+                                result.url = link.href;
+                                result.method = 'download_link';
+                                return result;
+                            }
+                        }
+                    }
+                    result.debugInfo.push(`Checked ${links.length} links/buttons`);
+
+                    // Strategy 4: Check for embedded PDF object
+                    const embedElements = document.querySelectorAll('object[data], embed[src]');
+                    for (const el of embedElements) {
+                        const src = el.data || el.src || '';
+                        if (src.includes('pdf') || src.includes('document')) {
+                            result.found = true;
+                            result.url = src;
+                            result.method = 'embed';
+                            return result;
+                        }
+                    }
+                    result.debugInfo.push(`Checked ${embedElements.length} embed elements`);
+
+                    // Strategy 5: Look for any button that might trigger download
+                    const allButtons = modalElement.querySelectorAll('button, [role="button"]');
+                    for (const btn of allButtons) {
+                        const text = (btn.textContent || '').toLowerCase();
+                        const title = (btn.getAttribute('title') || '').toLowerCase();
+
+                        if (
+                            ['indir', 'download', 'pdf', 'görüntüle', 'aç'].some(
+                                (kw) => text.includes(kw) || title.includes(kw)
+                            )
+                        ) {
+                            result.debugInfo.push(
+                                `Found potential download button: "${btn.textContent?.trim()}"`
+                            );
+                            // Click the button
+                            btn.click();
+                            result.method = 'button_click';
+                            result.found = true;
+                            return result;
+                        }
+                    }
+                    result.debugInfo.push(`Checked ${allButtons.length} buttons in modal`);
+
+                    return result;
                 });
 
-                if (pdfUrl) {
-                    console.log('[DEBUG] Found PDF URL in modal:', pdfUrl);
-                    const response = await page.goto(pdfUrl, { waitUntil: 'networkidle0', timeout: 30000 });
+                console.log('[DEBUG] PDF search result:', JSON.stringify(pdfInfo));
+
+                if (pdfInfo.found && pdfInfo.url) {
+                    console.log('[DEBUG] Found PDF URL:', pdfInfo.url, 'via', pdfInfo.method);
+
+                    // Navigate to PDF and download
+                    const response = await page.goto(pdfInfo.url, {
+                        waitUntil: 'networkidle0',
+                        timeout: 30000,
+                    });
                     if (response) {
                         const buffer = await response.buffer();
                         fs.writeFileSync(filePath, buffer);
                         console.log('[DEBUG] Document saved to:', filePath);
 
-                        // Close modal if present
-                        await page.evaluate(() => {
-                            const closeBtn = document.querySelector('.modal [class*="close"], .MuiDialog-root button, [role="dialog"] button[aria-label*="close" i]');
-                            if (closeBtn) closeBtn.click();
-                        });
-
+                        // Navigate back
+                        await page
+                            .goBack({ waitUntil: 'networkidle0', timeout: 10000 })
+                            .catch(() => {});
                         return filePath;
+                    }
+                } else if (pdfInfo.found && pdfInfo.method === 'button_click') {
+                    // Button was clicked, wait for download or new content
+                    await new Promise((r) => setTimeout(r, 2000));
+
+                    // Check if a new tab/window opened with PDF
+                    const pages = await page.browser().pages();
+                    if (pages.length > 1) {
+                        const newPage = pages[pages.length - 1];
+                        const newUrl = newPage.url();
+                        console.log('[DEBUG] New page opened:', newUrl);
+
+                        if (newUrl.includes('pdf') || newUrl.includes('document')) {
+                            const response = await newPage.goto(newUrl, {
+                                waitUntil: 'networkidle0',
+                            });
+                            if (response) {
+                                const buffer = await response.buffer();
+                                fs.writeFileSync(filePath, buffer);
+                                console.log('[DEBUG] Document saved from new page:', filePath);
+                                await newPage.close();
+                                return filePath;
+                            }
+                        }
+                        await newPage.close();
                     }
                 }
 
-                // Close modal and return null
+                // Close modal by pressing Escape or clicking close button
+                await page.keyboard.press('Escape');
+                await new Promise((r) => setTimeout(r, 500));
                 await page.evaluate(() => {
-                    const closeBtn = document.querySelector('.modal [class*="close"], .MuiDialog-root button, [role="dialog"] button[aria-label*="close" i]');
-                    if (closeBtn) closeBtn.click();
+                    const closeSelectors = [
+                        '[class*="close" i]',
+                        'button[aria-label*="close" i]',
+                        'button[aria-label*="kapat" i]',
+                        '.MuiIconButton-root',
+                        '[class*="modal"] button:first-child',
+                    ];
+                    for (const sel of closeSelectors) {
+                        const btn = document.querySelector(sel);
+                        if (btn) {
+                            btn.click();
+                            break;
+                        }
+                    }
                 });
+                await new Promise((r) => setTimeout(r, 500));
             }
 
             return null;
         }
 
-        // Handle data-id based document access
-        if (documentUrl && documentUrl.startsWith('__DATA_ID__:')) {
-            console.log('[DEBUG] Data-ID based access not yet implemented');
+        // Handle click-action based document access (button click in row)
+        if (documentUrl && documentUrl.startsWith('__CLICK_ACTION__:')) {
+            const targetRowIndex = parseInt(documentUrl.split(':')[1], 10);
+            console.log(
+                '[DEBUG] Attempting action-button document access for row:',
+                targetRowIndex
+            );
+
+            // Click on the action button in the row
+            const clicked = await page.evaluate(
+                (sel, rowIdx) => {
+                    const rows = Array.from(document.querySelectorAll(sel));
+                    const row = rows[rowIdx];
+                    if (!row) return false;
+
+                    // Find and click the action button
+                    const actionTexts = [
+                        'görüntüle',
+                        'incele',
+                        'detay',
+                        'indir',
+                        'aç',
+                        'pdf',
+                        'download',
+                        'view',
+                    ];
+                    const allClickables = row.querySelectorAll('button, a, [role="button"]');
+
+                    for (const el of allClickables) {
+                        const text = (el.textContent || '').toLowerCase().trim();
+                        const title = (el.getAttribute('title') || '').toLowerCase();
+                        const ariaLabel = (el.getAttribute('aria-label') || '').toLowerCase();
+
+                        const isActionButton = actionTexts.some(
+                            (t) => text.includes(t) || title.includes(t) || ariaLabel.includes(t)
+                        );
+
+                        if (isActionButton) {
+                            el.click();
+                            return true;
+                        }
+                    }
+
+                    // If no text match, try clicking the last button/link in the row
+                    const lastCell = row.querySelector('td:last-child, [role="cell"]:last-child');
+                    if (lastCell) {
+                        const actionEl = lastCell.querySelector('button, a');
+                        if (actionEl) {
+                            actionEl.click();
+                            return true;
+                        }
+                    }
+
+                    return false;
+                },
+                tableSelector || 'table tbody tr',
+                targetRowIndex
+            );
+
+            if (clicked) {
+                await new Promise((r) => setTimeout(r, 3000));
+                // Same PDF detection logic as above...
+            }
+
             return null;
         }
 
         // Skip invalid URLs
         if (!documentUrl || documentUrl.startsWith('__')) {
+            console.log('[DEBUG] Skipping invalid URL:', documentUrl);
             return null;
         }
 
@@ -135,7 +333,7 @@ const downloadDocument = async (page, documentUrl, clientId, documentNo, rowInde
         console.log('[DEBUG] Downloading document from URL:', documentUrl);
         const response = await page.goto(documentUrl, {
             waitUntil: 'networkidle0',
-            timeout: 30000
+            timeout: 30000,
         });
 
         if (response) {
@@ -163,18 +361,18 @@ let isRunning = false;
 
 // Resume state: tracks which clients were successfully processed in the last scan
 let lastScanState = {
-    processedClientIds: new Set(),  // IDs of clients that completed successfully
+    processedClientIds: new Set(), // IDs of clients that completed successfully
     wasCancelled: false,
     wasError: false,
     errors: 0,
     successes: 0,
-    total: 0
+    total: 0,
 };
 
 // Helper: random delay between min and max seconds
 const randomDelay = (minSec, maxSec) => {
     const ms = (Math.floor(Math.random() * (maxSec - minSec + 1)) + minSec) * 1000;
-    return new Promise(r => setTimeout(r, ms));
+    return new Promise((r) => setTimeout(r, ms));
 };
 
 const ensureLoginForm = async (page) => {
@@ -191,14 +389,17 @@ const solveCaptcha = async (page, apiKey) => {
     if (!captchaElement) {
         const hasCaptcha = await page.evaluate(() => {
             const imgs = Array.from(document.querySelectorAll('img'));
-            return imgs.some(img =>
-                img.alt?.toLowerCase().includes('captcha') ||
-                img.className?.toLowerCase().includes('captcha') ||
-                img.src?.includes('captcha')
+            return imgs.some(
+                (img) =>
+                    img.alt?.toLowerCase().includes('captcha') ||
+                    img.className?.toLowerCase().includes('captcha') ||
+                    img.src?.includes('captcha')
             );
         });
         if (hasCaptcha) {
-            captchaElement = await page.$('img[alt*="captcha" i], img[class*="captcha" i], img[src*="captcha" i]');
+            captchaElement = await page.$(
+                'img[alt*="captcha" i], img[class*="captcha" i], img[src*="captcha" i]'
+            );
         }
     }
 
@@ -216,7 +417,7 @@ const solveCaptcha = async (page, apiKey) => {
 
     const result = await model.generateContent([
         { text: 'Bu resimdeki metni oku. Sadece metni döndür, boşluksuz. Başka hiçbir şey yazma.' },
-        { inlineData: { mimeType: 'image/png', data: captchaBase64 } }
+        { inlineData: { mimeType: 'image/png', data: captchaBase64 } },
     ]);
 
     const response = await result.response;
@@ -235,21 +436,30 @@ const logoutFromGIB = async (page) => {
                 ...Array.from(document.querySelectorAll('a')),
                 ...Array.from(document.querySelectorAll('button')),
                 ...Array.from(document.querySelectorAll('[role="button"]')),
-                ...Array.from(document.querySelectorAll('[role="menuitem"]'))
+                ...Array.from(document.querySelectorAll('[role="menuitem"]')),
             ];
-            const logoutEl = allElements.find(el => {
+            const logoutEl = allElements.find((el) => {
                 const text = (el.textContent || '').toLowerCase().trim();
-                return text.includes('çıkış') || text.includes('çık') ||
-                       text.includes('oturumu kapat') || text.includes('logout');
+                return (
+                    text.includes('çıkış') ||
+                    text.includes('çık') ||
+                    text.includes('oturumu kapat') ||
+                    text.includes('logout')
+                );
             });
-            if (logoutEl) { logoutEl.click(); return true; }
+            if (logoutEl) {
+                logoutEl.click();
+                return true;
+            }
             return false;
         });
 
         if (loggedOut) {
             console.log('[DEBUG] Logout button clicked');
-            await page.waitForNavigation({ waitUntil: 'networkidle0', timeout: 10000 }).catch(() => {});
-            await new Promise(r => setTimeout(r, 2000));
+            await page
+                .waitForNavigation({ waitUntil: 'networkidle0', timeout: 10000 })
+                .catch(() => {});
+            await new Promise((r) => setTimeout(r, 2000));
         } else {
             // Strategy 2: Try user menu first, then logout
             await page.evaluate(() => {
@@ -257,33 +467,45 @@ const logoutFromGIB = async (page) => {
                     '[class*="avatar" i], [class*="user" i], [class*="profile" i]'
                 );
                 for (const t of triggers) {
-                    if (t.textContent && t.textContent.length < 50) { t.click(); break; }
+                    if (t.textContent && t.textContent.length < 50) {
+                        t.click();
+                        break;
+                    }
                 }
             });
-            await new Promise(r => setTimeout(r, 1500));
+            await new Promise((r) => setTimeout(r, 1500));
 
             const menuLogout = await page.evaluate(() => {
                 const items = [
                     ...Array.from(document.querySelectorAll('[role="menuitem"]')),
                     ...Array.from(document.querySelectorAll('.MuiMenuItem-root')),
-                    ...Array.from(document.querySelectorAll('li a'))
+                    ...Array.from(document.querySelectorAll('li a')),
                 ];
-                const logoutItem = items.find(el =>
-                    (el.textContent || '').toLowerCase().includes('çıkış') ||
-                    (el.textContent || '').toLowerCase().includes('logout')
+                const logoutItem = items.find(
+                    (el) =>
+                        (el.textContent || '').toLowerCase().includes('çıkış') ||
+                        (el.textContent || '').toLowerCase().includes('logout')
                 );
-                if (logoutItem) { logoutItem.click(); return true; }
+                if (logoutItem) {
+                    logoutItem.click();
+                    return true;
+                }
                 return false;
             });
 
             if (menuLogout) {
-                await page.waitForNavigation({ waitUntil: 'networkidle0', timeout: 10000 }).catch(() => {});
+                await page
+                    .waitForNavigation({ waitUntil: 'networkidle0', timeout: 10000 })
+                    .catch(() => {});
             } else {
                 // Strategy 3: Direct logout URL
                 console.log('[DEBUG] Trying direct logout URL...');
-                await page.goto('https://dijital.gib.gov.tr/portal/logout', {
-                    waitUntil: 'networkidle0', timeout: 10000
-                }).catch(() => {});
+                await page
+                    .goto('https://dijital.gib.gov.tr/portal/logout', {
+                        waitUntil: 'networkidle0',
+                        timeout: 10000,
+                    })
+                    .catch(() => {});
             }
         }
 
@@ -294,135 +516,60 @@ const logoutFromGIB = async (page) => {
 };
 
 // Extract tebligat data from current page
+// GİB Portal table structure:
+// [checkbox] | Gönderen Kurum | Alt Birim | Belge Türü | Belge No | Gönderme Tarihi | Tebliğ Tarihi | Mükellef
 const extractTebligatFromPage = async (page, selector) => {
     return await page.evaluate((sel) => {
         const rows = Array.from(document.querySelectorAll(sel));
-        return rows.map((row, rowIndex) => {
-            let cols = row.querySelectorAll('td');
-            if (cols.length === 0) {
-                cols = row.querySelectorAll('[role="cell"], [class*="MuiDataGrid-cell"]');
-            }
-            if (cols.length < 3) return null;
-
-            // Try to find document link/button in the row
-            const docLinkSelectors = [
-                // Direct link patterns
-                'a[href*="pdf"]',
-                'a[href*="document"]',
-                'a[href*="download"]',
-                'a[href*="indir"]',
-                'a[href*="goruntule"]',
-                'a[href*="view"]',
-                'a[href*="detay"]',
-                'a[href*="incele"]',
-                // Button patterns
-                'button[data-document]',
-                'button[data-id]',
-                'button[data-tebligat]',
-                // Icon button patterns (MUI icons)
-                'button svg[data-testid*="Visibility"]',
-                'button svg[data-testid*="Download"]',
-                'button svg[data-testid*="PictureAsPdf"]',
-                '[class*="icon"][class*="view"]',
-                '[class*="icon"][class*="pdf"]',
-                // onclick handlers
-                '[onclick*="download"]',
-                '[onclick*="indir"]',
-                '[onclick*="goruntule"]',
-                '[onclick*="view"]',
-                '[onclick*="detay"]',
-                '[onclick*="incele"]',
-                '[onclick*="openDocument"]',
-                '[onclick*="showDocument"]',
-                // Turkish action buttons by text
-                'button',
-                'a'
-            ];
-
-            let documentUrl = null;
-            let actionElement = null;
-
-            // First pass: look for specific link patterns
-            for (const s of docLinkSelectors.slice(0, -2)) { // Exclude generic button/a
-                const link = row.querySelector(s);
-                if (link) {
-                    documentUrl = link.href || link.getAttribute('data-url') ||
-                                  link.getAttribute('data-href') || link.getAttribute('data-src') || null;
-
-                    // Handle onclick attribute
-                    if (!documentUrl && link.getAttribute('onclick')) {
-                        const onclick = link.getAttribute('onclick');
-                        const urlMatch = onclick.match(/['"]([^'"]*(?:pdf|document|download|tebligat|view)[^'"]*)['"]/i);
-                        if (urlMatch) {
-                            documentUrl = urlMatch[1];
-                        }
-                        // Check for function calls with IDs
-                        const idMatch = onclick.match(/\((['"]?)(\d+)\1\)/);
-                        if (idMatch && !documentUrl) {
-                            documentUrl = `__CLICK_ACTION__:${rowIndex}`;
-                            actionElement = s;
-                        }
-                    }
-
-                    // Check data attributes
-                    if (!documentUrl) {
-                        const dataId = link.getAttribute('data-id') || link.getAttribute('data-document-id');
-                        if (dataId) {
-                            documentUrl = `__DATA_ID__:${dataId}`;
-                        }
-                    }
-
-                    if (documentUrl) break;
+        return rows
+            .map((row, rowIndex) => {
+                let cols = row.querySelectorAll('td');
+                if (cols.length === 0) {
+                    cols = row.querySelectorAll('[role="cell"], [class*="MuiDataGrid-cell"]');
                 }
-            }
+                if (cols.length < 4) return null;
 
-            // Second pass: look for action buttons/links with Turkish text
-            if (!documentUrl) {
-                const allClickables = row.querySelectorAll('button, a, [role="button"]');
-                for (const el of allClickables) {
-                    const text = (el.textContent || '').toLowerCase().trim();
-                    const title = (el.getAttribute('title') || '').toLowerCase();
-                    const ariaLabel = (el.getAttribute('aria-label') || '').toLowerCase();
+                // Skip header row if it contains th elements
+                if (row.querySelector('th')) return null;
 
-                    const actionTexts = ['görüntüle', 'incele', 'detay', 'indir', 'aç', 'bak', 'pdf', 'download', 'view'];
-                    const isActionButton = actionTexts.some(t =>
-                        text.includes(t) || title.includes(t) || ariaLabel.includes(t)
-                    );
-
-                    if (isActionButton) {
-                        documentUrl = el.href || el.getAttribute('data-url') || `__CLICK_ACTION__:${rowIndex}`;
-                        break;
-                    }
+                // Determine column offset (some tables have checkbox as first column)
+                let offset = 0;
+                const firstCell = cols[0];
+                if (firstCell) {
+                    const hasCheckbox =
+                        firstCell.querySelector('input[type="checkbox"]') ||
+                        firstCell.querySelector('[role="checkbox"]') ||
+                        firstCell.classList.contains('checkbox') ||
+                        firstCell.innerText?.trim() === '';
+                    if (hasCheckbox) offset = 1;
                 }
-            }
 
-            // Third pass: check for any anchor in the row
-            if (!documentUrl) {
-                const allLinks = row.querySelectorAll('a[href]');
-                for (const link of allLinks) {
-                    const href = link.href || '';
-                    if (href && !href.includes('#') && !href.includes('javascript:') && !href.includes('login')) {
-                        if (href.includes('pdf') || href.includes('doc') || href.includes('view') ||
-                            href.includes('indir') || href.includes('download') || href.includes('tebligat') ||
-                            href.includes('detay') || href.includes('incele')) {
-                            documentUrl = href;
-                            break;
-                        }
-                    }
-                }
-            }
+                // GİB Portal column mapping (with offset for checkbox)
+                const senderInstitution = cols[offset]?.innerText?.trim() || ''; // Gönderen Kurum
+                const subUnit = cols[offset + 1]?.innerText?.trim() || ''; // Alt Birim
+                const documentType = cols[offset + 2]?.innerText?.trim() || ''; // Belge Türü
+                const documentNo = cols[offset + 3]?.innerText?.trim() || ''; // Belge No
+                const sendDate = cols[offset + 4]?.innerText?.trim() || ''; // Gönderme Tarihi
+                const notificationDate = cols[offset + 5]?.innerText?.trim() || ''; // Tebliğ Tarihi
+                const taxpayer = cols[offset + 6]?.innerText?.trim() || ''; // Mükellef
 
-            return {
-                sender: cols[0]?.innerText?.trim(),
-                subject: cols[1]?.innerText?.trim(),
-                documentNo: cols[2]?.innerText?.trim(),
-                status: cols[3]?.innerText?.trim(),
-                date: cols[4]?.innerText?.trim(),
-                endDate: cols[5]?.innerText?.trim(),
-                documentUrl: documentUrl,
-                rowIndex: rowIndex
-            };
-        }).filter(Boolean);
+                // In GİB portal, clicking the row opens the document detail
+                // Mark all rows for click-based document access
+                const documentUrl = `__CLICK_ROW__:${rowIndex}`;
+
+                return {
+                    sender: senderInstitution || subUnit || 'GİB',
+                    subject: `${documentType} - ${subUnit}`.trim() || 'Tebligat',
+                    documentNo: documentNo,
+                    status: 'Yeni', // Will be determined by which tab we're on
+                    date: notificationDate || sendDate,
+                    sendDate: sendDate,
+                    notificationDate: notificationDate,
+                    documentUrl: documentUrl,
+                    rowIndex: rowIndex,
+                };
+            })
+            .filter(Boolean);
     }, selector);
 };
 
@@ -439,7 +586,7 @@ const goToNextPage = async (page) => {
             '[class*="next" i]',
             '[class*="sonraki" i]',
             'a[aria-label*="next" i]',
-            'a[aria-label*="sonraki" i]'
+            'a[aria-label*="sonraki" i]',
         ];
 
         for (const sel of nextButtonSelectors) {
@@ -458,9 +605,13 @@ const goToNextPage = async (page) => {
         }
 
         // Strategy 3: Look for numbered pagination and click next number
-        const paginationContainer = document.querySelector('[class*="pagination" i], nav[aria-label*="pagination" i]');
+        const paginationContainer = document.querySelector(
+            '[class*="pagination" i], nav[aria-label*="pagination" i]'
+        );
         if (paginationContainer) {
-            const currentPage = paginationContainer.querySelector('[aria-current="page"], .active, [class*="selected"]');
+            const currentPage = paginationContainer.querySelector(
+                '[aria-current="page"], .active, [class*="selected"]'
+            );
             if (currentPage) {
                 const currentPageNum = parseInt(currentPage.textContent, 10);
                 if (!isNaN(currentPageNum)) {
@@ -481,8 +632,15 @@ const goToNextPage = async (page) => {
         const arrowButtons = document.querySelectorAll('button, a');
         for (const btn of arrowButtons) {
             const text = btn.textContent?.trim();
-            if ((text === '>' || text === '»' || text === '›' || text === 'İleri' || text === 'Sonraki')
-                && !btn.disabled && !btn.classList.contains('disabled')) {
+            if (
+                (text === '>' ||
+                    text === '»' ||
+                    text === '›' ||
+                    text === 'İleri' ||
+                    text === 'Sonraki') &&
+                !btn.disabled &&
+                !btn.classList.contains('disabled')
+            ) {
                 btn.click();
                 return { clicked: true, method: 'arrow-button' };
             }
@@ -493,7 +651,7 @@ const goToNextPage = async (page) => {
 
     if (nextPageResult.clicked) {
         console.log('[DEBUG] Navigated to next page using:', nextPageResult.method);
-        await new Promise(r => setTimeout(r, 2000)); // Wait for page to load
+        await new Promise((r) => setTimeout(r, 2000)); // Wait for page to load
         return true;
     }
 
@@ -524,8 +682,10 @@ const loginAndFetch = async (page, client, password, apiKey) => {
         if (btn) {
             console.log('[DEBUG] Login button found:', selector);
             await Promise.all([
-                page.waitForNavigation({ waitUntil: 'networkidle0', timeout: 15000 }).catch(() => {}),
-                page.click(selector)
+                page
+                    .waitForNavigation({ waitUntil: 'networkidle0', timeout: 15000 })
+                    .catch(() => {}),
+                page.click(selector),
             ]);
             clicked = true;
             break;
@@ -535,21 +695,27 @@ const loginAndFetch = async (page, client, password, apiKey) => {
     if (!clicked) {
         const clickedByText = await page.evaluate(() => {
             const buttons = Array.from(document.querySelectorAll('button'));
-            const btn = buttons.find(b =>
-                b.textContent?.toLowerCase().includes('giriş') ||
-                b.textContent?.toLowerCase().includes('oturum')
+            const btn = buttons.find(
+                (b) =>
+                    b.textContent?.toLowerCase().includes('giriş') ||
+                    b.textContent?.toLowerCase().includes('oturum')
             );
-            if (btn) { btn.click(); return true; }
+            if (btn) {
+                btn.click();
+                return true;
+            }
             return false;
         });
         if (clickedByText) {
-            await page.waitForNavigation({ waitUntil: 'networkidle0', timeout: 15000 }).catch(() => {});
+            await page
+                .waitForNavigation({ waitUntil: 'networkidle0', timeout: 15000 })
+                .catch(() => {});
         } else {
             throw new Error('Giriş butonu bulunamadı.');
         }
     }
 
-    await new Promise(r => setTimeout(r, 3000));
+    await new Promise((r) => setTimeout(r, 3000));
     const postLoginUrl = page.url();
     console.log('[DEBUG] Post-login URL:', postLoginUrl);
 
@@ -560,10 +726,11 @@ const loginAndFetch = async (page, client, password, apiKey) => {
     // Navigate to E-Tebligat
     const eTebligatLink = await page.evaluate(() => {
         const links = Array.from(document.querySelectorAll('a'));
-        const link = links.find(a =>
-            a.textContent?.includes('E-Tebligat') ||
-            a.textContent?.includes('e-Tebligat') ||
-            a.href?.includes('tebligat')
+        const link = links.find(
+            (a) =>
+                a.textContent?.includes('E-Tebligat') ||
+                a.textContent?.includes('e-Tebligat') ||
+                a.href?.includes('tebligat')
         );
         return link ? { text: link.textContent?.trim(), href: link.href } : null;
     });
@@ -573,20 +740,24 @@ const loginAndFetch = async (page, client, password, apiKey) => {
             page.waitForNavigation({ waitUntil: 'networkidle0', timeout: 20000 }).catch(() => {}),
             page.evaluate(() => {
                 const links = Array.from(document.querySelectorAll('a'));
-                const link = links.find(a =>
-                    a.textContent?.includes('E-Tebligat') ||
-                    a.textContent?.includes('e-Tebligat') ||
-                    a.href?.includes('tebligat')
+                const link = links.find(
+                    (a) =>
+                        a.textContent?.includes('E-Tebligat') ||
+                        a.textContent?.includes('e-Tebligat') ||
+                        a.href?.includes('tebligat')
                 );
                 if (link) link.click();
-            })
+            }),
         ]);
-        await new Promise(r => setTimeout(r, 3000));
+        await new Promise((r) => setTimeout(r, 3000));
         console.log('[DEBUG] E-Tebligat page URL:', page.url());
     } else {
-        await page.goto('https://dijital.gib.gov.tr/portal/e-tebligat', {
-            waitUntil: 'networkidle0', timeout: 20000
-        }).catch(() => {});
+        await page
+            .goto('https://dijital.gib.gov.tr/portal/e-tebligat', {
+                waitUntil: 'networkidle0',
+                timeout: 20000,
+            })
+            .catch(() => {});
     }
 
     // Scrape tebligatlar with pagination support
@@ -594,16 +765,21 @@ const loginAndFetch = async (page, client, password, apiKey) => {
         'table tbody tr',
         '[role="row"]',
         '.MuiDataGrid-row',
-        '[class*="MuiDataGrid"] [role="row"]'
+        '[class*="MuiDataGrid"] [role="row"]',
     ];
 
     let foundSelector = null;
     for (const sel of tableSelectors) {
         try {
             await page.waitForSelector(sel, { timeout: 5000 });
-            const count = await page.evaluate(s => document.querySelectorAll(s).length, sel);
-            if (count > 0) { foundSelector = sel; break; }
-        } catch { /* try next */ }
+            const count = await page.evaluate((s) => document.querySelectorAll(s).length, sel);
+            if (count > 0) {
+                foundSelector = sel;
+                break;
+            }
+        } catch {
+            /* try next */
+        }
     }
 
     if (!foundSelector) {
@@ -611,7 +787,7 @@ const loginAndFetch = async (page, client, password, apiKey) => {
         return [];
     }
 
-    // Extract from all pages
+    // Extract from all pages and download documents while on each page
     const allTebligatlar = [];
     let pageNum = 1;
     const maxPages = 20; // Safety limit to prevent infinite loops
@@ -627,6 +803,68 @@ const loginAndFetch = async (page, client, password, apiKey) => {
             break; // No more data
         }
 
+        // Download documents for each tebligat while still on this page
+        for (let i = 0; i < pageTebligatlar.length; i++) {
+            const tebligat = pageTebligatlar[i];
+            console.log(
+                `[DEBUG] Processing tebligat ${i + 1}/${pageTebligatlar.length} on page ${pageNum}`
+            );
+
+            if (tebligat.documentUrl && tebligat.documentUrl.startsWith('__CLICK_ROW__:')) {
+                try {
+                    const docPath = await downloadDocument(
+                        page,
+                        tebligat.documentUrl,
+                        client.id,
+                        tebligat.documentNo,
+                        foundSelector
+                    );
+
+                    if (docPath) {
+                        tebligat.documentPath = docPath;
+                        console.log(`[DEBUG] Downloaded document for row ${i}: ${docPath}`);
+                    } else {
+                        console.log(`[DEBUG] No document downloaded for row ${i}`);
+                    }
+
+                    // Ensure we're back on the tebligat list page before next download
+                    const currentUrl = page.url();
+                    if (!currentUrl.includes('tebligat')) {
+                        console.log('[DEBUG] Navigating back to e-tebligat page...');
+                        await page
+                            .goto('https://dijital.gib.gov.tr/portal/e-tebligat', {
+                                waitUntil: 'networkidle0',
+                                timeout: 20000,
+                            })
+                            .catch(() => {});
+                    }
+
+                    // Wait for the table to be ready again
+                    await page.waitForSelector(foundSelector, { timeout: 10000 }).catch(() => {});
+
+                    // Small delay between document downloads
+                    await new Promise((r) => setTimeout(r, 1500));
+                } catch (err) {
+                    console.error(`[DEBUG] Error downloading document for row ${i}:`, err.message);
+
+                    // Try to get back to the tebligat page on error
+                    try {
+                        await page
+                            .goto('https://dijital.gib.gov.tr/portal/e-tebligat', {
+                                waitUntil: 'networkidle0',
+                                timeout: 20000,
+                            })
+                            .catch(() => {});
+                        await page
+                            .waitForSelector(foundSelector, { timeout: 10000 })
+                            .catch(() => {});
+                    } catch {
+                        // Ignore navigation errors
+                    }
+                }
+            }
+        }
+
         allTebligatlar.push(...pageTebligatlar);
 
         // Try to go to next page
@@ -637,7 +875,7 @@ const loginAndFetch = async (page, client, password, apiKey) => {
         }
 
         // Wait for the page content to update
-        await new Promise(r => setTimeout(r, 1500));
+        await new Promise((r) => setTimeout(r, 1500));
 
         // Verify we're on a new page with data
         const hasData = await hasDataOnPage(page, foundSelector);
@@ -649,7 +887,9 @@ const loginAndFetch = async (page, client, password, apiKey) => {
         pageNum++;
     }
 
-    console.log(`[DEBUG] Total tebligatlar scraped: ${allTebligatlar.length} from ${pageNum} page(s)`);
+    console.log(
+        `[DEBUG] Total tebligatlar scraped: ${allTebligatlar.length} from ${pageNum} page(s)`
+    );
     return allTebligatlar;
 };
 
@@ -659,14 +899,15 @@ function cancelScan() {
 
 function getScanState() {
     return {
-        canResume: lastScanState.processedClientIds.size > 0 &&
-                   (lastScanState.wasCancelled || lastScanState.wasError) &&
-                   lastScanState.processedClientIds.size < lastScanState.total,
+        canResume:
+            lastScanState.processedClientIds.size > 0 &&
+            (lastScanState.wasCancelled || lastScanState.wasError) &&
+            lastScanState.processedClientIds.size < lastScanState.total,
         processedCount: lastScanState.processedClientIds.size,
         total: lastScanState.total,
         errors: lastScanState.errors,
         successes: lastScanState.successes,
-        wasCancelled: lastScanState.wasCancelled
+        wasCancelled: lastScanState.wasCancelled,
     };
 }
 
@@ -677,7 +918,7 @@ function clearScanState() {
         wasError: false,
         errors: 0,
         successes: 0,
-        total: 0
+        total: 0,
     };
 }
 
@@ -705,10 +946,10 @@ async function run(onStatusUpdate, apiKey, scanConfig = {}, options = {}, deduct
         batchPauseMin: 120,
         batchPauseMax: 300,
         maxCaptchaRetries: 3,
-        ...scanConfig
+        ...scanConfig,
     };
 
-    const allClients = database.getClients().filter(c => c.status === 'active');
+    const allClients = database.getClients().filter((c) => c.status === 'active');
 
     if (allClients.length === 0) {
         onStatusUpdate({ message: 'Tanımlı aktif mükellef bulunamadı.', type: 'info' });
@@ -723,9 +964,7 @@ async function run(onStatusUpdate, apiKey, scanConfig = {}, options = {}, deduct
     }
 
     // Filter out already-processed clients when resuming
-    const clients = isResume
-        ? allClients.filter(c => !skipClientIds.has(c.id))
-        : allClients;
+    const clients = isResume ? allClients.filter((c) => !skipClientIds.has(c.id)) : allClients;
 
     const totalAll = allClients.length;
     const totalRemaining = clients.length;
@@ -742,10 +981,13 @@ async function run(onStatusUpdate, apiKey, scanConfig = {}, options = {}, deduct
     if (isResume) {
         onStatusUpdate({
             message: `Tarama devam ediyor: ${skipClientIds.size} mükellef atlanıyor, kalan ${totalRemaining} mükellef taranacak.`,
-            type: 'info'
+            type: 'info',
         });
     } else {
-        onStatusUpdate({ message: `${totalAll} aktif mükellef için tarama başlatılıyor...`, type: 'info' });
+        onStatusUpdate({
+            message: `${totalAll} aktif mükellef için tarama başlatılıyor...`,
+            type: 'info',
+        });
     }
 
     const alreadyDone = isResume ? skipClientIds.size : 0;
@@ -754,7 +996,13 @@ async function run(onStatusUpdate, apiKey, scanConfig = {}, options = {}, deduct
 
     onStatusUpdate({
         type: 'progress',
-        progress: { current: alreadyDone, total: totalAll, currentClient: null, errors: errorCount, successes: successCount }
+        progress: {
+            current: alreadyDone,
+            total: totalAll,
+            currentClient: null,
+            errors: errorCount,
+            successes: successCount,
+        },
     });
 
     let browser;
@@ -762,7 +1010,7 @@ async function run(onStatusUpdate, apiKey, scanConfig = {}, options = {}, deduct
     try {
         browser = await puppeteer.launch({
             headless: 'new',
-            args: ['--no-sandbox', '--disable-setuid-sandbox']
+            args: ['--no-sandbox', '--disable-setuid-sandbox'],
         });
 
         for (let i = 0; i < totalRemaining; i++) {
@@ -771,7 +1019,10 @@ async function run(onStatusUpdate, apiKey, scanConfig = {}, options = {}, deduct
                 lastScanState.wasError = false;
                 lastScanState.errors = errorCount;
                 lastScanState.successes = successCount;
-                onStatusUpdate({ message: `Tarama durduruldu. (${alreadyDone + i}/${totalAll})`, type: 'info' });
+                onStatusUpdate({
+                    message: `Tarama durduruldu. (${alreadyDone + i}/${totalAll})`,
+                    type: 'info',
+                });
                 break;
             }
 
@@ -784,10 +1035,20 @@ async function run(onStatusUpdate, apiKey, scanConfig = {}, options = {}, deduct
                     lastScanState.wasCancelled = true;
                     lastScanState.errors = errorCount;
                     lastScanState.successes = successCount;
-                    onStatusUpdate({ message: 'Kredi yetersiz. Tarama durduruldu.', type: 'error' });
+                    onStatusUpdate({
+                        message: 'Kredi yetersiz. Tarama durduruldu.',
+                        type: 'error',
+                    });
                     onStatusUpdate({
                         type: 'progress',
-                        progress: { current: alreadyDone + i, total: totalAll, currentClient: null, errors: errorCount, successes: successCount, insufficientCredits: true }
+                        progress: {
+                            current: alreadyDone + i,
+                            total: totalAll,
+                            currentClient: null,
+                            errors: errorCount,
+                            successes: successCount,
+                            insufficientCredits: true,
+                        },
                     });
                     break;
                 }
@@ -796,7 +1057,11 @@ async function run(onStatusUpdate, apiKey, scanConfig = {}, options = {}, deduct
             const password = database.getClientPassword(client.id);
 
             if (!password) {
-                onStatusUpdate({ message: `${client.firm_name}: Şifre bulunamadı.`, type: 'error', firmId: client.id });
+                onStatusUpdate({
+                    message: `${client.firm_name}: Şifre bulunamadı.`,
+                    type: 'error',
+                    firmId: client.id,
+                });
                 errorCount++;
                 continue;
             }
@@ -804,7 +1069,10 @@ async function run(onStatusUpdate, apiKey, scanConfig = {}, options = {}, deduct
             // Batch pause (based on processed count in this session)
             if (i > 0 && i % config.batchSize === 0) {
                 const batchNum = Math.floor(i / config.batchSize);
-                onStatusUpdate({ message: `Grup ${batchNum} tamamlandı. Sunucu yükünü azaltmak için bekleniyor...`, type: 'info' });
+                onStatusUpdate({
+                    message: `Grup ${batchNum} tamamlandı. Sunucu yükünü azaltmak için bekleniyor...`,
+                    type: 'info',
+                });
                 await randomDelay(config.batchPauseMin, config.batchPauseMax);
                 if (scanCancelled) {
                     lastScanState.wasCancelled = true;
@@ -816,8 +1084,13 @@ async function run(onStatusUpdate, apiKey, scanConfig = {}, options = {}, deduct
 
             // Inter-client delay
             if (i > 0) {
-                const delaySec = Math.floor(Math.random() * (config.delayMax - config.delayMin + 1)) + config.delayMin;
-                onStatusUpdate({ message: `Sonraki mükellef için ${delaySec}s bekleniyor...`, type: 'info' });
+                const delaySec =
+                    Math.floor(Math.random() * (config.delayMax - config.delayMin + 1)) +
+                    config.delayMin;
+                onStatusUpdate({
+                    message: `Sonraki mükellef için ${delaySec}s bekleniyor...`,
+                    type: 'info',
+                });
                 await randomDelay(config.delayMin, config.delayMax);
                 if (scanCancelled) {
                     lastScanState.wasCancelled = true;
@@ -832,12 +1105,18 @@ async function run(onStatusUpdate, apiKey, scanConfig = {}, options = {}, deduct
             onStatusUpdate({
                 message: `[${globalIndex}/${totalAll}] ${client.firm_name} sorgulanıyor...`,
                 type: 'process',
-                firmId: client.id
+                firmId: client.id,
             });
 
             onStatusUpdate({
                 type: 'progress',
-                progress: { current: alreadyDone + i, total: totalAll, currentClient: client.firm_name, errors: errorCount, successes: successCount }
+                progress: {
+                    current: alreadyDone + i,
+                    total: totalAll,
+                    currentClient: client.firm_name,
+                    errors: errorCount,
+                    successes: successCount,
+                },
             });
 
             let succeeded = false;
@@ -857,85 +1136,42 @@ async function run(onStatusUpdate, apiKey, scanConfig = {}, options = {}, deduct
 
                     const count = tebligatlar.length;
                     let savedCount = 0;
-                    let downloadedCount = 0;
 
                     if (count === 0) {
                         // Tebligat bulunamadı - "Tebligat yok" kaydı oluştur
-                        const noNotificationRecord = [{
-                            sender: '-',
-                            subject: '-',
-                            documentNo: '-',
-                            status: 'Tebligat yok',
-                            date: new Date().toLocaleDateString('tr-TR'),
-                            endDate: null,
-                            documentUrl: null,
-                            documentPath: null
-                        }];
+                        const noNotificationRecord = [
+                            {
+                                sender: '-',
+                                subject: '-',
+                                documentNo: '-',
+                                status: 'Tebligat yok',
+                                date: new Date().toLocaleDateString('tr-TR'),
+                                endDate: null,
+                                documentUrl: null,
+                                documentPath: null,
+                            },
+                        ];
                         savedCount = database.saveTebligatlar(client.id, noNotificationRecord);
                         onStatusUpdate({
                             message: `${client.firm_name}: Tebligat bulunamadı.`,
                             type: 'success',
-                            firmId: client.id
+                            firmId: client.id,
                         });
                     } else {
-                        // Log found tebligatlar and their document URLs
-                        console.log(`[DEBUG] Found ${count} tebligatlar for ${client.firm_name}:`);
-                        tebligatlar.forEach((t, i) => {
-                            console.log(`[DEBUG] ${i + 1}. documentUrl: ${t.documentUrl || 'NULL'}, documentNo: ${t.documentNo}`);
-                        });
-
-                        // Count how many have document URLs
-                        const withUrls = tebligatlar.filter(t => t.documentUrl).length;
-                        console.log(`[DEBUG] ${withUrls}/${count} tebligatlar have document URLs`);
-
-                        // Download documents for each tebligat
-                        for (const tebligat of tebligatlar) {
-                            if (tebligat.documentUrl) {
-                                console.log(`[DEBUG] Attempting to download: ${tebligat.documentUrl}`);
-                                try {
-                                    const docPath = await downloadDocument(
-                                        page,
-                                        tebligat.documentUrl,
-                                        client.id,
-                                        tebligat.documentNo
-                                    );
-                                    if (docPath) {
-                                        tebligat.documentPath = docPath;
-                                        downloadedCount++;
-                                        console.log(`[DEBUG] Document saved to: ${docPath}`);
-                                    } else {
-                                        console.log(`[DEBUG] downloadDocument returned null`);
-                                    }
-                                } catch (downloadErr) {
-                                    console.error('[DEBUG] Failed to download document:', downloadErr.message);
-                                }
-
-                                // Navigate back to tebligat list after each download
-                                try {
-                                    await page.goBack({ waitUntil: 'networkidle0', timeout: 10000 });
-                                    await new Promise(r => setTimeout(r, 1000));
-                                } catch {
-                                    // If goBack fails, try to navigate to e-tebligat page directly
-                                    await page.goto('https://dijital.gib.gov.tr/portal/e-tebligat', {
-                                        waitUntil: 'networkidle0',
-                                        timeout: 20000
-                                    }).catch(() => {});
-                                }
-                            }
-                        }
+                        // Documents are already downloaded in loginAndFetch
+                        // Count downloaded documents
+                        const downloadedCount = tebligatlar.filter((t) => t.documentPath).length;
 
                         savedCount = database.saveTebligatlar(client.id, tebligatlar);
 
                         let message = `${client.firm_name}: ${count} tebligat bulundu, ${savedCount} yeni kayıt eklendi.`;
-                        if (withUrls > 0) {
-                            message += ` (${withUrls} döküman linki bulundu, ${downloadedCount} indirildi)`;
-                        } else {
-                            message += ` (döküman linki bulunamadı)`;
+                        if (downloadedCount > 0) {
+                            message += ` (${downloadedCount} döküman indirildi)`;
                         }
                         onStatusUpdate({
                             message,
                             type: 'success',
-                            firmId: client.id
+                            firmId: client.id,
                         });
                     }
 
@@ -948,9 +1184,13 @@ async function run(onStatusUpdate, apiKey, scanConfig = {}, options = {}, deduct
                     break;
                 } catch (err) {
                     lastError = err;
-                    console.error(`[${client.firm_name}] Deneme ${attempt}/${config.maxCaptchaRetries}:`, err.message);
+                    console.error(
+                        `[${client.firm_name}] Deneme ${attempt}/${config.maxCaptchaRetries}:`,
+                        err.message
+                    );
 
-                    const isCaptchaError = err.message.includes('Captcha') ||
+                    const isCaptchaError =
+                        err.message.includes('Captcha') ||
                         err.message.includes('captcha') ||
                         err.message.includes('login sayfasında') ||
                         err.message.includes('Giriş başarısız');
@@ -959,9 +1199,10 @@ async function run(onStatusUpdate, apiKey, scanConfig = {}, options = {}, deduct
                         const backoffSec = 5 * Math.pow(2, attempt - 1);
                         onStatusUpdate({
                             message: `${client.firm_name}: CAPTCHA hatası, ${backoffSec}s sonra tekrar (${attempt}/${config.maxCaptchaRetries})`,
-                            type: 'info', firmId: client.id
+                            type: 'info',
+                            firmId: client.id,
                         });
-                        await new Promise(r => setTimeout(r, backoffSec * 1000));
+                        await new Promise((r) => setTimeout(r, backoffSec * 1000));
                     } else {
                         break;
                     }
@@ -980,7 +1221,8 @@ async function run(onStatusUpdate, apiKey, scanConfig = {}, options = {}, deduct
                 if (lastError) {
                     onStatusUpdate({
                         message: `${client.firm_name}: Başarısız - ${lastError.message}`,
-                        type: 'error', firmId: client.id
+                        type: 'error',
+                        firmId: client.id,
                     });
                 }
             }
@@ -1013,21 +1255,21 @@ async function run(onStatusUpdate, apiKey, scanConfig = {}, options = {}, deduct
             currentClient: null,
             errors: errorCount,
             successes: successCount,
-            completed: allProcessed
-        }
+            completed: allProcessed,
+        },
     });
 
     onStatusUpdate({
         message: allProcessed
             ? `Tarama tamamlandı: ${successCount} başarılı, ${errorCount} hatalı.`
             : `Tarama durdu: ${successCount} başarılı, ${errorCount} hatalı. (${totalAll - lastScanState.processedClientIds.size} mükellef kaldı)`,
-        type: successCount > 0 ? 'success' : 'info'
+        type: successCount > 0 ? 'success' : 'info',
     });
 
     // Send scan state for UI
     onStatusUpdate({
         type: 'scan-state',
-        scanState: getScanState()
+        scanState: getScanState(),
     });
 }
 
