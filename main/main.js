@@ -362,14 +362,15 @@ ipcMain.handle('purchase-credits', async () => {
 
     // Build URL with parameters
     const params = new URLSearchParams();
+    params.set('source', 'desktop'); // Enable compact mode
     params.set('package', 'credit-1000');
     if (userInfo?.email) params.set('email', userInfo.email);
 
     const url = `${billingUrl}?${params.toString()}`;
 
     const billingWindow = new BrowserWindow({
-        width: 800,
-        height: 700,
+        width: 450,
+        height: 550,
         parent: mainWindow,
         modal: true,
         title: 'Kredi Satın Al',
@@ -486,14 +487,15 @@ ipcMain.handle('open-billing-portal', async (event, packageId) => {
 
     // Build URL with parameters
     const params = new URLSearchParams();
+    params.set('source', 'desktop'); // Enable compact mode
     if (packageId) params.set('package', packageId);
     if (userInfo?.email) params.set('email', userInfo.email);
 
-    const url = params.toString() ? `${billingUrl}?${params.toString()}` : billingUrl;
+    const url = `${billingUrl}?${params.toString()}`;
 
     const billingWindow = new BrowserWindow({
-        width: 800,
-        height: 700,
+        width: 450,
+        height: 550,
         parent: mainWindow,
         modal: true,
         title: 'Abonelik Satın Al',
