@@ -3,7 +3,7 @@ const fs = require('fs');
 const XLSX = require('xlsx');
 const path = require('path');
 require('dotenv').config({
-    path: path.join(__dirname, '../.env')
+    path: path.join(__dirname, '../.env'),
 });
 
 // Global error handlers
@@ -52,7 +52,7 @@ const createWindow = () => {
             preload: path.join(__dirname, 'preload.js'),
             nodeIntegration: false,
             contextIsolation: true,
-            sandbox: true
+            sandbox: true,
         },
     });
 
@@ -99,11 +99,17 @@ const runScanWithUpdates = async () => {
     };
 
     try {
-        await gibScraper.run((status) => {
-            if (mainWindow && !mainWindow.isDestroyed()) {
-                mainWindow.webContents.send('scan-update', status);
-            }
-        }, apiKey, scanConfig, {}, deductCredit);
+        await gibScraper.run(
+            (status) => {
+                if (mainWindow && !mainWindow.isDestroyed()) {
+                    mainWindow.webContents.send('scan-update', status);
+                }
+            },
+            apiKey,
+            scanConfig,
+            {},
+            deductCredit
+        );
 
         settings.updateSettings({ scan: { lastScanAt: new Date().toISOString() } });
 
@@ -146,13 +152,28 @@ app.whenReady().then(() => {
     );
     tray = new Tray(trayIcon);
     const trayMenu = Menu.buildFromTemplate([
-        { label: 'Aç', click: () => { mainWindow.show(); mainWindow.focus(); } },
+        {
+            label: 'Aç',
+            click: () => {
+                mainWindow.show();
+                mainWindow.focus();
+            },
+        },
         { type: 'separator' },
-        { label: 'Çıkış', click: () => { isQuitting = true; app.quit(); } }
+        {
+            label: 'Çıkış',
+            click: () => {
+                isQuitting = true;
+                app.quit();
+            },
+        },
     ]);
     tray.setToolTip('Muhasebe Asistanı');
     tray.setContextMenu(trayMenu);
-    tray.on('double-click', () => { mainWindow.show(); mainWindow.focus(); });
+    tray.on('double-click', () => {
+        mainWindow.show();
+        mainWindow.focus();
+    });
 
     app.on('activate', () => {
         if (BrowserWindow.getAllWindows().length === 0) {
@@ -171,7 +192,6 @@ app.on('before-quit', () => {
 app.on('window-all-closed', () => {
     // Don't quit - stay in tray for scheduled scans
 });
-
 
 // --- IPC HANDLERS ---
 
@@ -221,16 +241,22 @@ ipcMain.on('start-scan', async (event) => {
     };
 
     try {
-        await gibScraper.run((status) => {
-            if (!mainWindow.isDestroyed()) {
-                mainWindow.webContents.send('scan-update', status);
-            }
-        }, apiKey, scanConfig, {}, deductCredit);
+        await gibScraper.run(
+            (status) => {
+                if (!mainWindow.isDestroyed()) {
+                    mainWindow.webContents.send('scan-update', status);
+                }
+            },
+            apiKey,
+            scanConfig,
+            {},
+            deductCredit
+        );
 
         settings.updateSettings({ scan: { lastScanAt: new Date().toISOString() } });
         event.reply('scan-complete', 'Taramalar tamamlandı.');
     } catch (error) {
-        console.error("Scan error:", error);
+        console.error('Scan error:', error);
         event.reply('scan-error', 'Tarama sırasında hata oluştu: ' + error.message);
     }
 });
@@ -260,16 +286,22 @@ ipcMain.on('resume-scan', async (event) => {
     };
 
     try {
-        await gibScraper.run((status) => {
-            if (!mainWindow.isDestroyed()) {
-                mainWindow.webContents.send('scan-update', status);
-            }
-        }, apiKey, scanConfig, { resume: true }, deductCredit);
+        await gibScraper.run(
+            (status) => {
+                if (!mainWindow.isDestroyed()) {
+                    mainWindow.webContents.send('scan-update', status);
+                }
+            },
+            apiKey,
+            scanConfig,
+            { resume: true },
+            deductCredit
+        );
 
         settings.updateSettings({ scan: { lastScanAt: new Date().toISOString() } });
         event.reply('scan-complete', 'Taramalar tamamlandı.');
     } catch (error) {
-        console.error("Resume scan error:", error);
+        console.error('Resume scan error:', error);
         event.reply('scan-error', 'Tarama sırasında hata oluştu: ' + error.message);
     }
 });
@@ -326,17 +358,25 @@ ipcMain.handle('sync-credits', async () => {
 
 ipcMain.handle('purchase-credits', async () => {
     const billingUrl = licenseManager.getBillingUrl();
-    const url = `${billingUrl}?package=credit-1000`;
+    const userInfo = licenseManager.getUserInfo();
+
+    // Build URL with parameters
+    const params = new URLSearchParams();
+    params.set('package', 'credit-1000');
+    if (userInfo?.email) params.set('email', userInfo.email);
+
+    const url = `${billingUrl}?${params.toString()}`;
 
     const billingWindow = new BrowserWindow({
-        width: 900,
-        height: 800,
+        width: 800,
+        height: 700,
         parent: mainWindow,
         modal: true,
+        title: 'Kredi Satın Al',
         webPreferences: {
             nodeIntegration: false,
-            contextIsolation: true
-        }
+            contextIsolation: true,
+        },
     });
 
     billingWindow.loadURL(url);
@@ -408,13 +448,20 @@ ipcMain.handle('convert-statement', async (event, data) => {
     const creditResult = await licenseManager.deductCredits(5, 'statement_convert');
     if (!creditResult.success) {
         if (creditResult.error === 'insufficient_credits') {
-            throw new Error(`Yetersiz kredi. Bu işlem 5 kredi gerektirir. Kalan krediniz: ${creditResult.totalRemaining || 0}`);
+            throw new Error(
+                `Yetersiz kredi. Bu işlem 5 kredi gerektirir. Kalan krediniz: ${creditResult.totalRemaining || 0}`
+            );
         }
         throw new Error('Kredi kontrolü başarısız.');
     }
 
     try {
-        const result = await statementConverter.convert(Buffer.from(fileBuffer), mimeType, prompt, apiKey);
+        const result = await statementConverter.convert(
+            Buffer.from(fileBuffer),
+            mimeType,
+            prompt,
+            apiKey
+        );
 
         // Kredi güncelleme bildirimini gönder
         if (mainWindow && !mainWindow.isDestroyed()) {
@@ -435,22 +482,34 @@ ipcMain.handle('convert-statement', async (event, data) => {
 // Billing Portal
 ipcMain.handle('open-billing-portal', async (event, packageId) => {
     const billingUrl = licenseManager.getBillingUrl();
-    const url = packageId ? `${billingUrl}?package=${encodeURIComponent(packageId)}` : billingUrl;
+    const userInfo = licenseManager.getUserInfo();
+
+    // Build URL with parameters
+    const params = new URLSearchParams();
+    if (packageId) params.set('package', packageId);
+    if (userInfo?.email) params.set('email', userInfo.email);
+
+    const url = params.toString() ? `${billingUrl}?${params.toString()}` : billingUrl;
 
     const billingWindow = new BrowserWindow({
-        width: 900,
-        height: 800,
+        width: 800,
+        height: 700,
         parent: mainWindow,
         modal: true,
+        title: 'Abonelik Satın Al',
         webPreferences: {
             nodeIntegration: false,
-            contextIsolation: true
-        }
+            contextIsolation: true,
+        },
     });
 
     billingWindow.loadURL(url);
     billingWindow.on('closed', async () => {
         await licenseManager.checkLicense();
+        // Notify renderer about potential subscription changes
+        if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('subscription-updated');
+        }
     });
 
     return { success: true };
@@ -461,7 +520,7 @@ ipcMain.handle('export-csv', async (event, { data, defaultFileName }) => {
     const { filePath, canceled } = await dialog.showSaveDialog(mainWindow, {
         title: 'CSV olarak kaydet',
         defaultPath: defaultFileName || 'export.csv',
-        filters: [{ name: 'CSV', extensions: ['csv'] }]
+        filters: [{ name: 'CSV', extensions: ['csv'] }],
     });
 
     if (canceled || !filePath) {
@@ -484,7 +543,7 @@ ipcMain.handle('export-excel', async (event, { rows, sheetName, defaultFileName 
     const { filePath, canceled } = await dialog.showSaveDialog(mainWindow, {
         title: 'Excel olarak kaydet',
         defaultPath: defaultFileName || 'export.xlsx',
-        filters: [{ name: 'Excel', extensions: ['xlsx'] }]
+        filters: [{ name: 'Excel', extensions: ['xlsx'] }],
     });
 
     if (canceled || !filePath) {
@@ -499,7 +558,7 @@ ipcMain.handle('export-excel', async (event, { rows, sheetName, defaultFileName 
             const headers = Object.keys(rows[0]);
             ws['!cols'] = headers.map((header, colIndex) => {
                 let maxWidth = header.length;
-                rows.forEach(row => {
+                rows.forEach((row) => {
                     const value = String(Object.values(row)[colIndex] || '');
                     maxWidth = Math.max(maxWidth, value.length);
                 });

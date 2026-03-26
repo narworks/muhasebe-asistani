@@ -8,7 +8,7 @@ const crypto = require('crypto');
 const settings = require('./settings');
 const supabase = require('./supabase');
 
-const BILLING_URL = process.env.BILLING_URL || 'https://muhasebeasistani.com/pricing';
+const BILLING_URL = process.env.BILLING_URL || 'https://muhasebeasistani.com/billing';
 const CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000; // 6 saat
 const GRACE_PERIOD_MS = 7 * 24 * 60 * 60 * 1000; // 7 gün
 const MAX_OFFLINE_OPERATIONS = 50; // Maksimum offline işlem sayısı
