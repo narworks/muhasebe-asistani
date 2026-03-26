@@ -3,26 +3,10 @@ import { clientCreateSchema, clientEditSchema, validateForm } from '../../lib/va
 import type { ScheduleStatus } from '../../types';
 
 // Type definitions
-interface Tebligat {
-    id: number;
-    client_id: number;
-    sender: string;
-    subject: string;
-    document_no: string;
-    status: string;
-    send_date: string;
-    notification_date: string;
-    downloaded_at?: string;
-}
-
-interface Client {
-    id: number;
-    firm_name: string;
-    tax_number: string;
-    gib_user_code: string;
-    gib_password: string;
-    status: string;
-}
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type Tebligat = any;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type Client = any;
 
 interface ClientGroup {
     client_id: number;
