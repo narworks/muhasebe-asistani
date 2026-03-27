@@ -26,6 +26,13 @@ export interface IElectronAPI {
     getSubscriptionStatus: () => Promise<Subscription>;
     getUserInfo: () => Promise<UserInfo>;
     openBillingPortal: (packageId?: string) => Promise<ApiResponse>;
+    openCheckout: (params: {
+        plan: string;
+        period: string;
+        email: string;
+        name: string;
+        phone?: string;
+    }) => Promise<ApiResponse>;
 
     // Database Operations
     getClients: () => Promise<Client[]>;
@@ -65,7 +72,11 @@ export interface IElectronAPI {
 
     // Export
     exportCsv: (data: string, defaultFileName?: string) => Promise<ExportResult>;
-    exportExcel: (rows: Record<string, unknown>[], sheetName?: string, defaultFileName?: string) => Promise<ExportResult>;
+    exportExcel: (
+        rows: Record<string, unknown>[],
+        sheetName?: string,
+        defaultFileName?: string
+    ) => Promise<ExportResult>;
 
     // Document operations
     openDocument: (documentPath: string) => Promise<ApiResponse>;

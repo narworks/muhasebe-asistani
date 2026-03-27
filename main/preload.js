@@ -8,6 +8,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getSubscriptionStatus: () => ipcRenderer.invoke('get-subscription-status'),
     getUserInfo: () => ipcRenderer.invoke('get-user-info'),
     openBillingPortal: (packageId) => ipcRenderer.invoke('open-billing-portal', packageId),
+    openCheckout: (params) => ipcRenderer.invoke('open-checkout', params),
 
     // Database Operations
     getClients: () => ipcRenderer.invoke('get-clients'),
@@ -27,7 +28,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getScanState: () => ipcRenderer.invoke('get-scan-state'),
     onScanUpdate: (callback) => ipcRenderer.on('scan-update', (_event, value) => callback(value)),
     onScanError: (callback) => ipcRenderer.on('scan-error', (_event, value) => callback(value)),
-    onScanComplete: (callback) => ipcRenderer.on('scan-complete', (_event, value) => callback(value)),
+    onScanComplete: (callback) =>
+        ipcRenderer.on('scan-complete', (_event, value) => callback(value)),
 
     // Scan Settings
     getScanSettings: () => ipcRenderer.invoke('get-scan-settings'),
@@ -41,11 +43,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getCredits: () => ipcRenderer.invoke('get-credits'),
     syncCredits: () => ipcRenderer.invoke('sync-credits'),
     purchaseCredits: () => ipcRenderer.invoke('purchase-credits'),
-    onCreditsUpdated: (callback) => ipcRenderer.on('credits-updated', (_event, value) => callback(value)),
+    onCreditsUpdated: (callback) =>
+        ipcRenderer.on('credits-updated', (_event, value) => callback(value)),
 
     // Export
-    exportCsv: (data, defaultFileName) => ipcRenderer.invoke('export-csv', { data, defaultFileName }),
-    exportExcel: (rows, sheetName, defaultFileName) => ipcRenderer.invoke('export-excel', { rows, sheetName, defaultFileName }),
+    exportCsv: (data, defaultFileName) =>
+        ipcRenderer.invoke('export-csv', { data, defaultFileName }),
+    exportExcel: (rows, sheetName, defaultFileName) =>
+        ipcRenderer.invoke('export-excel', { rows, sheetName, defaultFileName }),
 
     // Document operations
     openDocument: (documentPath) => ipcRenderer.invoke('open-document', documentPath),
@@ -54,7 +59,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getDocumentsPath: () => ipcRenderer.invoke('get-documents-path'),
 
     // Auto-update
-    onUpdateStatus: (callback) => ipcRenderer.on('update-status', (_event, value) => callback(value)),
+    onUpdateStatus: (callback) =>
+        ipcRenderer.on('update-status', (_event, value) => callback(value)),
     removeUpdateListeners: () => {
         ipcRenderer.removeAllListeners('update-status');
     },
@@ -67,5 +73,5 @@ contextBridge.exposeInMainWorld('electronAPI', {
     },
     removeCreditsListeners: () => {
         ipcRenderer.removeAllListeners('credits-updated');
-    }
+    },
 });

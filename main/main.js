@@ -480,6 +480,43 @@ ipcMain.handle('convert-statement', async (event, data) => {
     }
 });
 
+// Checkout Page - Direct payment
+ipcMain.handle('open-checkout', async (event, params) => {
+    const { plan, period, email, name, phone } = params;
+
+    const urlParams = new URLSearchParams();
+    urlParams.set('plan', plan);
+    urlParams.set('period', period);
+    urlParams.set('email', email);
+    urlParams.set('name', name);
+    if (phone) urlParams.set('phone', phone);
+
+    const checkoutUrl = `https://muhasebeasistani.com/billing/checkout?${urlParams.toString()}`;
+
+    const checkoutWindow = new BrowserWindow({
+        width: 500,
+        height: 600,
+        parent: mainWindow,
+        modal: true,
+        resizable: false,
+        title: 'Güvenli Ödeme',
+        webPreferences: {
+            nodeIntegration: false,
+            contextIsolation: true,
+        },
+    });
+
+    checkoutWindow.loadURL(checkoutUrl);
+    checkoutWindow.on('closed', async () => {
+        await licenseManager.checkLicense();
+        if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('subscription-updated');
+        }
+    });
+
+    return { success: true };
+});
+
 // Billing Portal
 ipcMain.handle('open-billing-portal', async (event, packageId) => {
     const billingUrl = licenseManager.getBillingUrl();
