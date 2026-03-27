@@ -488,16 +488,19 @@ ipcMain.handle('open-billing-portal', async (event, packageId) => {
     // Build URL with parameters
     const params = new URLSearchParams();
     params.set('source', 'desktop'); // Enable compact mode
+    params.set('v', Date.now().toString()); // Cache buster
     if (packageId) params.set('package', packageId);
     if (userInfo?.email) params.set('email', userInfo.email);
+    if (userInfo?.name) params.set('name', userInfo.name);
 
     const url = `${billingUrl}?${params.toString()}`;
 
     const billingWindow = new BrowserWindow({
-        width: 450,
-        height: 550,
+        width: 420,
+        height: 480,
         parent: mainWindow,
         modal: true,
+        resizable: false,
         title: 'Abonelik Satın Al',
         webPreferences: {
             nodeIntegration: false,
