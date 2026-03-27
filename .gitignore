@@ -36,3 +36,4 @@ out/
 # Build artifacts (except macOS entitlements)
 build/*
 !build/entitlements.mac.plist
+supabase/.temp/
