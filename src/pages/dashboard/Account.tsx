@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
-import Skeleton from '../../components/ui/Skeleton';
 import { useAuth } from '../../context/AuthContext';
 import type { Credits, Subscription } from '../../types';
 
@@ -10,40 +9,21 @@ const Account: React.FC = () => {
     const [credits, setCredits] = useState<Credits | null>(null);
     const [subscription, setSubscription] = useState<Subscription | null>(null);
     const [loading, setLoading] = useState(false);
-    const [syncing, setSyncing] = useState(false);
 
     useEffect(() => {
-        fetchCredits();
-        fetchSubscription();
+        fetchData();
     }, []);
 
-    const fetchSubscription = async () => {
+    const fetchData = async () => {
         try {
-            const status = await window.electronAPI.getSubscriptionStatus();
+            const [status, creditData] = await Promise.all([
+                window.electronAPI.getSubscriptionStatus(),
+                window.electronAPI.getCredits(),
+            ]);
             setSubscription(status);
+            setCredits(creditData);
         } catch (err) {
-            console.error('Failed to fetch subscription:', err);
-        }
-    };
-
-    const fetchCredits = async () => {
-        try {
-            const data = await window.electronAPI.getCredits();
-            setCredits(data);
-        } catch (err) {
-            console.error('Failed to fetch credits:', err);
-        }
-    };
-
-    const handleSyncCredits = async () => {
-        setSyncing(true);
-        try {
-            await window.electronAPI.syncCredits();
-            await fetchCredits();
-        } catch (err) {
-            console.error('Failed to sync credits:', err);
-        } finally {
-            setSyncing(false);
+            console.error('Failed to fetch data:', err);
         }
     };
 
@@ -70,214 +50,146 @@ const Account: React.FC = () => {
     };
 
     const formatDate = (dateStr: string | null) => {
-        if (!dateStr) return 'N/A';
+        if (!dateStr) return '—';
         return new Date(dateStr).toLocaleDateString('tr-TR', {
             year: 'numeric',
-            month: 'long',
+            month: 'short',
             day: 'numeric',
         });
     };
 
-    const getPlanDisplayName = (plan: string | null) => {
-        const plans: Record<string, string> = {
-            free: 'Ücretsiz',
-            basic: 'Temel',
-            pro: 'Profesyonel',
-            enterprise: 'Kurumsal',
-        };
-        return plan ? plans[plan] || plan : 'N/A';
-    };
-
-    const getStatusBadge = (isActive: boolean) => {
-        return isActive ? (
-            <span className="px-2 py-1 text-xs font-semibold rounded-full bg-green-500/20 text-green-400">
-                Aktif
-            </span>
-        ) : (
-            <span className="px-2 py-1 text-xs font-semibold rounded-full bg-red-500/20 text-red-400">
-                Pasif
-            </span>
-        );
-    };
+    const usagePercent = credits
+        ? Math.round((credits.monthlyUsed / credits.monthlyLimit) * 100)
+        : 0;
 
     return (
-        <div className="space-y-6">
-            <h1 className="text-3xl md:text-4xl font-bold text-white">Hesap Ayarları</h1>
+        <div className="space-y-4 max-w-2xl">
+            <h1 className="text-2xl font-bold text-white">Hesap</h1>
 
             {/* User Info */}
-            <Card>
-                <h2 className="text-xl font-semibold text-white mb-4">Kullanıcı Bilgileri</h2>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <Card className="p-4">
+                <div className="flex items-center justify-between">
                     <div>
-                        <h3 className="text-slate-400 text-sm font-medium">Görünen Ad</h3>
-                        <p className="text-white text-lg">{currentUser?.displayName || 'N/A'}</p>
-                    </div>
-                    <div>
-                        <h3 className="text-slate-400 text-sm font-medium">E-posta</h3>
-                        <p className="text-white text-lg">{currentUser?.email}</p>
-                    </div>
-                    <div className="md:col-span-2">
-                        <h3 className="text-slate-400 text-sm font-medium">Kullanıcı ID</h3>
-                        <p className="text-white text-sm font-mono bg-slate-800 px-3 py-2 rounded mt-1">
-                            {currentUser?.uid}
+                        <p className="text-white font-medium">
+                            {currentUser?.displayName || currentUser?.email}
                         </p>
+                        <p className="text-slate-400 text-sm">{currentUser?.email}</p>
                     </div>
-                </div>
-            </Card>
-
-            {/* Subscription Info */}
-            <Card>
-                <div className="flex items-center justify-between mb-4">
-                    <h2 className="text-xl font-semibold text-white">Abonelik Durumu</h2>
-                    {subscription && getStatusBadge(subscription.isActive)}
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-                    <div>
-                        <h3 className="text-slate-400 text-sm font-medium">Plan</h3>
-                        <p className="text-white text-lg">
-                            {getPlanDisplayName(subscription?.plan || null)}
-                        </p>
-                    </div>
-                    <div>
-                        <h3 className="text-slate-400 text-sm font-medium">Bitiş Tarihi</h3>
-                        <p className="text-white text-lg">
-                            {formatDate(subscription?.expiresAt || null)}
-                        </p>
-                    </div>
-                    <div>
-                        <h3 className="text-slate-400 text-sm font-medium">Durum</h3>
-                        <p className="text-white text-lg capitalize">
-                            {subscription?.status || 'N/A'}
-                        </p>
-                    </div>
-                </div>
-                <div className="flex gap-3">
                     <Button
-                        onClick={() => handleOpenBilling()}
+                        onClick={handleLogout}
                         disabled={loading}
-                        variant="primary"
-                    >
-                        Abonelik Yönetimi
-                    </Button>
-                    <Button
-                        onClick={() => handleOpenBilling('pro')}
-                        disabled={loading}
-                        variant="secondary"
-                    >
-                        Plan Yükselt
-                    </Button>
-                </div>
-            </Card>
-
-            {/* Credits Info */}
-            <Card>
-                <div className="flex items-center justify-between mb-4">
-                    <h2 className="text-xl font-semibold text-white">Kredi Durumu</h2>
-                    <Button
-                        onClick={handleSyncCredits}
-                        disabled={syncing}
                         variant="ghost"
                         className="text-sm"
                     >
-                        {syncing ? 'Senkronize ediliyor...' : 'Senkronize Et'}
+                        Çıkış Yap
                     </Button>
                 </div>
-                {credits ? (
-                    <>
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-                            <div className="bg-slate-800 rounded-lg p-4">
-                                <h3 className="text-slate-400 text-sm font-medium">Toplam Kalan</h3>
-                                <p className="text-2xl font-bold text-white">
-                                    {credits.totalRemaining}
-                                </p>
-                            </div>
-                            <div className="bg-slate-800 rounded-lg p-4">
-                                <h3 className="text-slate-400 text-sm font-medium">Aylık Kalan</h3>
-                                <p className="text-2xl font-bold text-blue-400">
-                                    {credits.monthlyRemaining}/{credits.monthlyLimit}
-                                </p>
-                            </div>
-                            <div className="bg-slate-800 rounded-lg p-4">
-                                <h3 className="text-slate-400 text-sm font-medium">Satın Alınan</h3>
-                                <p className="text-2xl font-bold text-green-400">
-                                    {credits.purchasedRemaining}
-                                </p>
-                            </div>
-                            <div className="bg-slate-800 rounded-lg p-4">
-                                <h3 className="text-slate-400 text-sm font-medium">
-                                    Bu Ay Kullanılan
-                                </h3>
-                                <p className="text-2xl font-bold text-orange-400">
-                                    {credits.monthlyUsed}
-                                </p>
-                            </div>
-                        </div>
+            </Card>
 
-                        {/* Progress bar */}
-                        <div className="mb-4">
-                            <div className="flex justify-between text-sm text-slate-400 mb-1">
-                                <span>Aylık Kullanım</span>
-                                <span>
-                                    {credits.monthlyUsed} / {credits.monthlyLimit}
+            {/* Subscription & Credits */}
+            <Card className="p-4 space-y-4">
+                <div className="flex items-center justify-between">
+                    <h2 className="text-base font-semibold text-white">Abonelik</h2>
+                    {subscription && (
+                        <span
+                            className={`px-2 py-0.5 text-xs font-medium rounded ${
+                                subscription.isActive
+                                    ? 'bg-emerald-500/20 text-emerald-400'
+                                    : 'bg-red-500/20 text-red-400'
+                            }`}
+                        >
+                            {subscription.isActive ? 'Pro' : 'Pasif'}
+                        </span>
+                    )}
+                </div>
+
+                {subscription?.isActive && credits && (
+                    <>
+                        {/* Credit Progress */}
+                        <div>
+                            <div className="flex justify-between text-sm mb-1">
+                                <span className="text-slate-400">Aylık Kredi</span>
+                                <span className="text-white">
+                                    {credits.monthlyRemaining.toLocaleString('tr-TR')} /{' '}
+                                    {credits.monthlyLimit.toLocaleString('tr-TR')}
                                 </span>
                             </div>
-                            <div className="h-2 bg-slate-700 rounded-full overflow-hidden">
+                            <div className="h-2 bg-slate-700 rounded-full">
                                 <div
-                                    className="h-full bg-blue-500 transition-all duration-300"
-                                    style={{
-                                        width: `${Math.min((credits.monthlyUsed / credits.monthlyLimit) * 100, 100)}%`,
-                                    }}
+                                    className={`h-full rounded-full transition-all ${
+                                        usagePercent > 80
+                                            ? 'bg-red-500'
+                                            : usagePercent > 60
+                                              ? 'bg-amber-500'
+                                              : 'bg-emerald-500'
+                                    }`}
+                                    style={{ width: `${100 - usagePercent}%` }}
                                 />
                             </div>
                         </div>
 
-                        <div className="flex items-center justify-between text-sm text-slate-400 mb-4">
-                            <span>Yenileme: {formatDate(credits.resetAt)}</span>
-                            <span>
-                                Son Senkronizasyon:{' '}
-                                {credits.lastSyncAt
-                                    ? new Date(credits.lastSyncAt).toLocaleString('tr-TR')
-                                    : 'N/A'}
-                            </span>
+                        {/* Stats Row */}
+                        <div className="flex justify-between text-sm">
+                            <div>
+                                <span className="text-slate-400">Ek Kredi: </span>
+                                <span className="text-white">
+                                    {credits.purchasedRemaining.toLocaleString('tr-TR')}
+                                </span>
+                            </div>
+                            <div>
+                                <span className="text-slate-400">Toplam: </span>
+                                <span
+                                    className={`font-medium ${
+                                        credits.totalRemaining < 500
+                                            ? 'text-amber-400'
+                                            : 'text-emerald-400'
+                                    }`}
+                                >
+                                    {credits.totalRemaining.toLocaleString('tr-TR')}
+                                </span>
+                            </div>
                         </div>
 
+                        {/* Dates */}
+                        <div className="flex justify-between text-xs text-slate-500">
+                            <span>Yenileme: {formatDate(credits.resetAt)}</span>
+                            <span>Bitiş: {formatDate(subscription.expiresAt)}</span>
+                        </div>
+                    </>
+                )}
+
+                {/* Actions */}
+                <div className="flex gap-2 pt-2 border-t border-slate-700">
+                    {subscription?.isActive ? (
+                        <>
+                            <Button
+                                onClick={() => handleOpenBilling('credit-1000')}
+                                disabled={loading}
+                                variant="secondary"
+                                className="flex-1 text-sm"
+                            >
+                                Kredi Satın Al
+                            </Button>
+                            <Button
+                                onClick={() => handleOpenBilling()}
+                                disabled={loading}
+                                variant="primary"
+                                className="flex-1 text-sm"
+                            >
+                                Yönetim
+                            </Button>
+                        </>
+                    ) : (
                         <Button
-                            onClick={() => handleOpenBilling('credit-1000')}
+                            onClick={() => handleOpenBilling('plan-pro')}
                             disabled={loading}
                             variant="primary"
+                            className="flex-1"
                         >
-                            Kredi Satın Al
+                            Abone Ol
                         </Button>
-                    </>
-                ) : (
-                    <div className="space-y-4">
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                            {[1, 2, 3, 4].map((i) => (
-                                <div key={i} className="bg-slate-800 rounded-lg p-4">
-                                    <Skeleton
-                                        variant="text"
-                                        height="0.875rem"
-                                        width="60%"
-                                        className="mb-2"
-                                    />
-                                    <Skeleton variant="text" height="2rem" width="50%" />
-                                </div>
-                            ))}
-                        </div>
-                        <Skeleton variant="rectangular" height="0.5rem" className="rounded-full" />
-                    </div>
-                )}
-            </Card>
-
-            {/* Logout */}
-            <Card>
-                <h2 className="text-xl font-semibold text-white mb-4">Oturum</h2>
-                <p className="text-slate-400 mb-4">
-                    Hesabınızdan çıkış yaparak tüm oturumlarınızı sonlandırabilirsiniz.
-                </p>
-                <Button onClick={handleLogout} disabled={loading} variant="danger">
-                    {loading ? 'Çıkış yapılıyor...' : 'Çıkış Yap'}
-                </Button>
+                    )}
+                </div>
             </Card>
         </div>
     );
