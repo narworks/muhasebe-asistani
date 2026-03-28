@@ -98,16 +98,21 @@ const downloadDocument = async (
             page.on('response', responseHandler);
 
             // Click the row
-            const rowFound = await page.evaluate(
-                (sel, rowIdx) => {
-                    const row = Array.from(document.querySelectorAll(sel))[rowIdx];
-                    if (!row) return false;
-                    row.click();
-                    return true;
-                },
-                tableSelector || 'table tbody tr',
-                targetRowIndex
-            );
+            let rowFound = false;
+            try {
+                rowFound = await page.evaluate(
+                    (sel, rowIdx) => {
+                        const row = Array.from(document.querySelectorAll(sel))[rowIdx];
+                        if (!row) return false;
+                        row.click();
+                        return true;
+                    },
+                    tableSelector || 'table tbody tr',
+                    targetRowIndex
+                );
+            } catch (clickErr) {
+                console.log('[DEBUG] Row click error:', clickErr.message);
+            }
 
             if (rowFound) {
                 // Wait up to 6 seconds for a PDF response from the network
@@ -124,18 +129,29 @@ const downloadDocument = async (
 
                 // If no PDF yet, try clicking download/view buttons inside the modal
                 if (!pdfBuffer) {
-                    await page.evaluate(() => {
-                        const keywords = ['indir', 'pdf', 'görüntüle', 'belge', 'aç', 'download'];
-                        const els = document.querySelectorAll('button, [role="button"], a');
-                        for (const el of els) {
-                            const t = (el.textContent || '').toLowerCase();
-                            const title = (el.getAttribute('title') || '').toLowerCase();
-                            if (keywords.some((k) => t.includes(k) || title.includes(k))) {
-                                el.click();
-                                return;
+                    try {
+                        await page.evaluate(() => {
+                            const keywords = [
+                                'indir',
+                                'pdf',
+                                'görüntüle',
+                                'belge',
+                                'aç',
+                                'download',
+                            ];
+                            const els = document.querySelectorAll('button, [role="button"], a');
+                            for (const el of els) {
+                                const t = (el.textContent || '').toLowerCase();
+                                const title = (el.getAttribute('title') || '').toLowerCase();
+                                if (keywords.some((k) => t.includes(k) || title.includes(k))) {
+                                    el.click();
+                                    return;
+                                }
                             }
-                        }
-                    });
+                        });
+                    } catch (_modalErr) {
+                        // page may have navigated away
+                    }
 
                     // Wait up to 8 more seconds after button click
                     await new Promise((resolve) => {
@@ -763,7 +779,12 @@ const loginAndFetch = async (page, client, password, apiKey) => {
                     }
 
                     // Ensure we're back on the tebligat list page before next download
-                    const currentUrl = page.url();
+                    let currentUrl = '';
+                    try {
+                        currentUrl = page.url();
+                    } catch (_urlErr) {
+                        // page target lost
+                    }
                     if (!currentUrl.includes('tebligat')) {
                         console.log('[DEBUG] Navigating back to e-tebligat page...');
                         await page
@@ -1143,8 +1164,16 @@ async function run(onStatusUpdate, apiKey, scanConfig = {}, options = {}, deduct
                     }
                 } finally {
                     if (page) {
-                        await logoutFromGIB(page);
-                        await page.close();
+                        try {
+                            await logoutFromGIB(page);
+                        } catch (logoutErr) {
+                            console.log('[DEBUG] Logout error (ignored):', logoutErr.message);
+                        }
+                        try {
+                            await page.close();
+                        } catch (closeErr) {
+                            console.log('[DEBUG] Page close error (ignored):', closeErr.message);
+                        }
                     }
                 }
             }
