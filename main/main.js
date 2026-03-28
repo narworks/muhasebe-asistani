@@ -65,6 +65,12 @@ const createWindow = () => {
         mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
     }
 
+    // Open all external links in system browser instead of new Electron window
+    mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+        shell.openExternal(url);
+        return { action: 'deny' };
+    });
+
     // Minimize to tray instead of closing
     mainWindow.on('close', (event) => {
         if (!isQuitting) {

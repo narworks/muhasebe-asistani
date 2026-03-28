@@ -12,7 +12,7 @@ const Register: React.FC = () => {
                     </p>
 
                     <a
-                        href="https://muhasebeasistani.com/#contact"
+                        href="https://muhasebeasistani.com/billing"
                         target="_blank"
                         rel="noreferrer"
                         className="inline-block w-full bg-sky-600 hover:bg-sky-700 text-white font-bold py-3 px-4 rounded-lg transition-colors mb-6"
