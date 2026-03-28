@@ -557,6 +557,24 @@ ipcMain.handle('open-billing-portal', async (event, packageId) => {
     return { success: true };
 });
 
+ipcMain.handle('open-forgot-password', async () => {
+    const forgotPasswordUrl = 'https://muhasebeasistani.com/forgot-password';
+    const forgotWindow = new BrowserWindow({
+        width: 480,
+        height: 420,
+        parent: mainWindow,
+        modal: true,
+        resizable: false,
+        title: 'Şifremi Unuttum',
+        webPreferences: {
+            nodeIntegration: false,
+            contextIsolation: true,
+        },
+    });
+    forgotWindow.loadURL(forgotPasswordUrl);
+    return { success: true };
+});
+
 // Export to CSV
 ipcMain.handle('export-csv', async (event, { data, defaultFileName }) => {
     const { filePath, canceled } = await dialog.showSaveDialog(mainWindow, {

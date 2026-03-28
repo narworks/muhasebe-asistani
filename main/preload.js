@@ -8,6 +8,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getSubscriptionStatus: () => ipcRenderer.invoke('get-subscription-status'),
     getUserInfo: () => ipcRenderer.invoke('get-user-info'),
     openBillingPortal: (packageId) => ipcRenderer.invoke('open-billing-portal', packageId),
+    openForgotPassword: () => ipcRenderer.invoke('open-forgot-password'),
     openCheckout: (params) => ipcRenderer.invoke('open-checkout', params),
 
     // Database Operations

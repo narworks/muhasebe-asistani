@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
@@ -62,7 +61,10 @@ const Login: React.FC = () => {
                     <p className="text-center text-slate-400 mb-8">Hesabınıza erişim sağlayın</p>
 
                     {submitError && (
-                        <div className="bg-red-500/20 text-red-400 text-sm text-center p-3 rounded-lg mb-6" role="alert">
+                        <div
+                            className="bg-red-500/20 text-red-400 text-sm text-center p-3 rounded-lg mb-6"
+                            role="alert"
+                        >
                             {submitError}
                         </div>
                     )}
@@ -92,16 +94,28 @@ const Login: React.FC = () => {
                         />
 
                         <Button type="submit" variant="primary" disabled={isSubmitting}>
-                           {isSubmitting ? 'Giriş yapılıyor...' : 'Giriş Yap'}
+                            {isSubmitting ? 'Giriş yapılıyor...' : 'Giriş Yap'}
                         </Button>
                     </form>
 
-                    <p className="text-center text-sm text-slate-400 mt-8">
-                        Hesabınız yok mu?{' '}
-                        <Link to="/register" className="font-medium text-sky-400 hover:text-sky-300">
-                            Kayıt Olun
-                        </Link>
-                    </p>
+                    <div className="flex flex-col items-center gap-3 mt-8">
+                        <button
+                            type="button"
+                            onClick={() => window.electronAPI?.openForgotPassword()}
+                            className="text-sm text-slate-400 hover:text-sky-400 transition-colors"
+                        >
+                            Şifremi Unuttum
+                        </button>
+                        <p className="text-sm text-slate-400">
+                            Hesabınız yok mu?{' '}
+                            <Link
+                                to="/register"
+                                className="font-medium text-sky-400 hover:text-sky-300"
+                            >
+                                Kayıt Olun
+                            </Link>
+                        </p>
+                    </div>
                 </div>
             </div>
         </div>
