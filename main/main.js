@@ -683,8 +683,8 @@ ipcMain.handle('share-document', async (event, documentPath) => {
 
 // Open documents folder
 ipcMain.handle('open-documents-folder', async () => {
-    const userDataPath = app.getPath('userData');
-    const documentsPath = path.join(userDataPath, 'documents');
+    const s = settings.readSettings();
+    const documentsPath = s.documentsFolder || path.join(app.getPath('userData'), 'documents');
 
     // Create folder if it doesn't exist
     if (!fs.existsSync(documentsPath)) {
@@ -702,8 +702,30 @@ ipcMain.handle('open-documents-folder', async () => {
 
 // Get documents folder path
 ipcMain.handle('get-documents-path', () => {
-    const userDataPath = app.getPath('userData');
-    return path.join(userDataPath, 'documents');
+    const s = settings.readSettings();
+    return s.documentsFolder || path.join(app.getPath('userData'), 'documents');
+});
+
+// Select documents folder via native dialog
+ipcMain.handle('select-documents-folder', async () => {
+    const result = await dialog.showOpenDialog(mainWindow, {
+        title: 'Döküman Klasörünü Seçin',
+        properties: ['openDirectory', 'createDirectory'],
+    });
+
+    if (result.canceled || !result.filePaths[0]) {
+        return { success: false };
+    }
+
+    const folderPath = result.filePaths[0];
+    settings.updateSettings({ documentsFolder: folderPath });
+    return { success: true, path: folderPath };
+});
+
+// Get documents folder setting
+ipcMain.handle('get-documents-folder', () => {
+    const s = settings.readSettings();
+    return s.documentsFolder || null;
 });
 
 // Fetch a single tebligat document on-demand

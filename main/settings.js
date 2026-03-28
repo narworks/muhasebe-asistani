@@ -6,148 +6,149 @@ const crypto = require('crypto');
 const SETTINGS_FILENAME = 'settings.json';
 
 const defaultSettings = {
-  deviceId: null,
-  license: {
-    subscriptionStatus: 'inactive',
-    plan: null,
-    expiresAt: null,
-    lastCheckAt: null,
-    billingUrl: null,
-    email: null
-  },
-  encrypted: {
-    token: null
-  },
-  scan: {
-    delayMin: 15,
-    delayMax: 45,
-    batchSize: 20,
-    batchPauseMin: 120,
-    batchPauseMax: 300,
-    maxCaptchaRetries: 3,
-    lastScanAt: null
-  },
-  schedule: {
-    enabled: false,
-    time: '08:00',
-    lastScheduledScanAt: null,
-    nextScheduledScanAt: null
-  }
+    deviceId: null,
+    license: {
+        subscriptionStatus: 'inactive',
+        plan: null,
+        expiresAt: null,
+        lastCheckAt: null,
+        billingUrl: null,
+        email: null,
+    },
+    encrypted: {
+        token: null,
+    },
+    scan: {
+        delayMin: 15,
+        delayMax: 45,
+        batchSize: 20,
+        batchPauseMin: 120,
+        batchPauseMax: 300,
+        maxCaptchaRetries: 3,
+        lastScanAt: null,
+    },
+    schedule: {
+        enabled: false,
+        time: '08:00',
+        lastScheduledScanAt: null,
+        nextScheduledScanAt: null,
+    },
+    documentsFolder: null,
 };
 
 const getSettingsPath = () => {
-  const userDataPath = app.getPath('userData');
-  return path.join(userDataPath, SETTINGS_FILENAME);
+    const userDataPath = app.getPath('userData');
+    return path.join(userDataPath, SETTINGS_FILENAME);
 };
 
 const readSettings = () => {
-  const settingsPath = getSettingsPath();
-  if (!fs.existsSync(settingsPath)) {
-    return { ...defaultSettings };
-  }
+    const settingsPath = getSettingsPath();
+    if (!fs.existsSync(settingsPath)) {
+        return { ...defaultSettings };
+    }
 
-  try {
-    const raw = fs.readFileSync(settingsPath, 'utf8');
-    const parsed = JSON.parse(raw);
-    return {
-      ...defaultSettings,
-      ...parsed,
-      license: {
-        ...defaultSettings.license,
-        ...(parsed.license || {})
-      },
-      encrypted: {
-        ...defaultSettings.encrypted,
-        ...(parsed.encrypted || {})
-      },
-      scan: {
-        ...defaultSettings.scan,
-        ...(parsed.scan || {})
-      },
-      schedule: {
-        ...defaultSettings.schedule,
-        ...(parsed.schedule || {})
-      }
-    };
-  } catch (error) {
-    console.error('Failed to read settings:', error);
-    return { ...defaultSettings };
-  }
+    try {
+        const raw = fs.readFileSync(settingsPath, 'utf8');
+        const parsed = JSON.parse(raw);
+        return {
+            ...defaultSettings,
+            ...parsed,
+            license: {
+                ...defaultSettings.license,
+                ...(parsed.license || {}),
+            },
+            encrypted: {
+                ...defaultSettings.encrypted,
+                ...(parsed.encrypted || {}),
+            },
+            scan: {
+                ...defaultSettings.scan,
+                ...(parsed.scan || {}),
+            },
+            schedule: {
+                ...defaultSettings.schedule,
+                ...(parsed.schedule || {}),
+            },
+        };
+    } catch (error) {
+        console.error('Failed to read settings:', error);
+        return { ...defaultSettings };
+    }
 };
 
 const writeSettings = (settings) => {
-  const settingsPath = getSettingsPath();
-  try {
-    fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
-  } catch (error) {
-    console.error('Failed to write settings:', error);
-  }
+    const settingsPath = getSettingsPath();
+    try {
+        fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
+    } catch (error) {
+        console.error('Failed to write settings:', error);
+    }
 };
 
 const updateSettings = (patch) => {
-  const current = readSettings();
-  const updated = {
-    ...current,
-    ...patch,
-    license: {
-      ...current.license,
-      ...(patch.license || {})
-    },
-    encrypted: {
-      ...current.encrypted,
-      ...(patch.encrypted || {})
-    },
-    scan: {
-      ...current.scan,
-      ...(patch.scan || {})
-    },
-    schedule: {
-      ...current.schedule,
-      ...(patch.schedule || {})
-    }
-  };
-  writeSettings(updated);
-  return updated;
+    const current = readSettings();
+    const updated = {
+        ...current,
+        ...patch,
+        license: {
+            ...current.license,
+            ...(patch.license || {}),
+        },
+        encrypted: {
+            ...current.encrypted,
+            ...(patch.encrypted || {}),
+        },
+        scan: {
+            ...current.scan,
+            ...(patch.scan || {}),
+        },
+        schedule: {
+            ...current.schedule,
+            ...(patch.schedule || {}),
+        },
+    };
+    writeSettings(updated);
+    return updated;
 };
 
 const ensureEncryptionAvailable = () => {
-  if (!safeStorage.isEncryptionAvailable()) {
-    throw new Error('Şifreleme sistemi bu cihazda kullanılamıyor.');
-  }
+    if (!safeStorage.isEncryptionAvailable()) {
+        throw new Error('Şifreleme sistemi bu cihazda kullanılamıyor.');
+    }
 };
 
 const setEncryptedValue = (key, value) => {
-  ensureEncryptionAvailable();
-  const settings = readSettings();
-  settings.encrypted[key] = safeStorage.encryptString(value).toString('base64');
-  writeSettings(settings);
+    ensureEncryptionAvailable();
+    const settings = readSettings();
+    settings.encrypted[key] = safeStorage.encryptString(value).toString('base64');
+    writeSettings(settings);
 };
 
 const getEncryptedValue = (key) => {
-  const settings = readSettings();
-  const encrypted = settings.encrypted[key];
-  if (!encrypted) return null;
-  try {
-    return safeStorage.decryptString(Buffer.from(encrypted, 'base64'));
-  } catch (error) {
-    console.error('Failed to decrypt value:', error);
-    return null;
-  }
+    const settings = readSettings();
+    const encrypted = settings.encrypted[key];
+    if (!encrypted) return null;
+    try {
+        return safeStorage.decryptString(Buffer.from(encrypted, 'base64'));
+    } catch (error) {
+        console.error('Failed to decrypt value:', error);
+        return null;
+    }
 };
 
 const getDeviceId = () => {
-  const settings = readSettings();
-  if (settings.deviceId) return settings.deviceId;
+    const settings = readSettings();
+    if (settings.deviceId) return settings.deviceId;
 
-  const deviceId = crypto.randomUUID();
-  updateSettings({ deviceId });
-  return deviceId;
+    const deviceId = crypto.randomUUID();
+    updateSettings({ deviceId });
+    return deviceId;
 };
 
 module.exports = {
-  readSettings,
-  updateSettings,
-  setEncryptedValue,
-  getEncryptedValue,
-  getDeviceId
+    readSettings,
+    updateSettings,
+    setEncryptedValue,
+    getEncryptedValue,
+    getDeviceId,
 };

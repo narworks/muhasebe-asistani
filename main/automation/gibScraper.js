@@ -9,10 +9,36 @@ const USER_AGENT =
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 const GIB_LOGIN_URL = 'https://dijital.gib.gov.tr/portal/login';
 
-// Get documents directory
-const getDocumentsDir = (clientId) => {
-    const userDataPath = app.getPath('userData');
-    const docsDir = path.join(userDataPath, 'documents', String(clientId));
+const settings = require('../settings');
+
+// Get documents directory: basePath/firmName/YYYY-MM-DD/
+const getDocumentsDir = (clientId, firmName, dateStr) => {
+    const s = settings.readSettings();
+    const basePath = s.documentsFolder || path.join(app.getPath('userData'), 'documents');
+
+    // Sanitize firm name for filesystem
+    const safeFirmName = (firmName || String(clientId)).replace(/[<>:"/\\|?*]/g, '_').trim();
+
+    // Parse date or use today
+    let dateFolder;
+    if (dateStr) {
+        // Try to extract YYYY-MM-DD from various date formats
+        const match = dateStr.match(/(\d{4})[.-](\d{2})[.-](\d{2})/);
+        if (match) {
+            dateFolder = `${match[1]}-${match[2]}-${match[3]}`;
+        } else {
+            const match2 = dateStr.match(/(\d{2})[./](\d{2})[./](\d{4})/);
+            if (match2) {
+                dateFolder = `${match2[3]}-${match2[2]}-${match2[1]}`;
+            } else {
+                dateFolder = new Date().toISOString().split('T')[0];
+            }
+        }
+    } else {
+        dateFolder = new Date().toISOString().split('T')[0];
+    }
+
+    const docsDir = path.join(basePath, safeFirmName, dateFolder);
     if (!fs.existsSync(docsDir)) {
         fs.mkdirSync(docsDir, { recursive: true });
     }
@@ -20,12 +46,26 @@ const getDocumentsDir = (clientId) => {
 };
 
 // Download a document from GIB portal
-const downloadDocument = async (page, documentUrl, clientId, documentNo, tableSelector = null) => {
+const downloadDocument = async (
+    page,
+    documentUrl,
+    clientId,
+    documentNo,
+    tableSelector = null,
+    firmName = null,
+    dateStr = null
+) => {
     try {
-        const docsDir = getDocumentsDir(clientId);
+        const docsDir = getDocumentsDir(clientId, firmName, dateStr);
         const safeDocNo = (documentNo || 'doc').replace(/[^a-zA-Z0-9-_]/g, '_');
-        const fileName = `tebligat_${safeDocNo}_${Date.now()}.pdf`;
+        const fileName = `tebligat_${safeDocNo}.pdf`;
         const filePath = path.join(docsDir, fileName);
+
+        // Skip if already downloaded
+        if (fs.existsSync(filePath)) {
+            console.log('[DEBUG] Document already exists, skipping:', filePath);
+            return filePath;
+        }
 
         console.log('[DEBUG] Processing document:', documentUrl);
 
@@ -710,7 +750,9 @@ const loginAndFetch = async (page, client, password, apiKey) => {
                         tebligat.documentUrl,
                         client.id,
                         tebligat.documentNo,
-                        foundSelector
+                        foundSelector,
+                        client.firm_name,
+                        tebligat.date || tebligat.notificationDate || tebligat.sendDate
                     );
 
                     if (docPath) {
@@ -1176,10 +1218,16 @@ async function fetchSingleDocument(tebligat, apiKey) {
     const client = allClients.find((c) => c.id === clientId);
     if (!client) throw new Error('Müşteri bulunamadı');
 
-    const docsDir = getDocumentsDir(clientId);
+    const dateStr = tebligat.tebligat_date || null;
+    const docsDir = getDocumentsDir(clientId, client.firm_name, dateStr);
     const safeDocNo = (tebligat.document_no || String(tebligat.id)).replace(/[^a-zA-Z0-9-_]/g, '_');
-    const fileName = `tebligat_${safeDocNo}_${Date.now()}.pdf`;
+    const fileName = `tebligat_${safeDocNo}.pdf`;
     const filePath = path.join(docsDir, fileName);
+
+    // Skip if already downloaded
+    if (fs.existsSync(filePath)) {
+        return filePath;
+    }
 
     let browser;
     try {

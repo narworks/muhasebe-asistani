@@ -34,6 +34,7 @@ const ETebligat: React.FC = () => {
     const [editingClientId, setEditingClientId] = useState<number | null>(null);
     const [selectedTebligat, setSelectedTebligat] = useState<Tebligat | null>(null);
     const [fetchingDocumentId, setFetchingDocumentId] = useState<number | null>(null);
+    const [documentsFolder, setDocumentsFolder] = useState<string | null>(null);
     const [filterClientId, setFilterClientId] = useState('all');
     const [filterStatus, setFilterStatus] = useState('all');
     const [searchTerm, setSearchTerm] = useState('');
@@ -157,6 +158,14 @@ const ETebligat: React.FC = () => {
     }, []);
     useEffect(() => {
         fetchClients();
+    }, []);
+    useEffect(() => {
+        window.electronAPI
+            .getDocumentsFolder()
+            .then((folder: string | null) => {
+                setDocumentsFolder(folder);
+            })
+            .catch(() => {});
     }, []);
 
     // Check subscription status
@@ -495,6 +504,18 @@ const ETebligat: React.FC = () => {
             }
         } catch (err: any) {
             addLog(`Klasör açılamadı: ${err.message}`, 'error');
+        }
+    };
+
+    const handleSelectDocumentsFolder = async () => {
+        try {
+            const result = await window.electronAPI.selectDocumentsFolder();
+            if (result.success) {
+                setDocumentsFolder(result.path);
+                addLog(`Döküman klasörü değiştirildi: ${result.path}`, 'success');
+            }
+        } catch (err: any) {
+            addLog(`Klasör seçilemedi: ${err.message}`, 'error');
         }
     };
 
@@ -1607,13 +1628,22 @@ const ETebligat: React.FC = () => {
                     <div className="flex items-center justify-between mb-3">
                         <h2 className="text-lg font-semibold">Son Tebligatlar</h2>
                         <div className="flex items-center space-x-3">
-                            <button
-                                onClick={handleOpenDocumentsFolder}
-                                className="text-xs font-semibold text-amber-600 hover:text-amber-700"
-                                title="Döküman klasörünü aç"
-                            >
-                                Döküman Klasörü
-                            </button>
+                            <div className="flex items-center gap-1">
+                                <button
+                                    onClick={handleOpenDocumentsFolder}
+                                    className="text-xs font-semibold text-amber-600 hover:text-amber-700"
+                                    title={documentsFolder || 'Varsayılan klasör'}
+                                >
+                                    Döküman Klasörü
+                                </button>
+                                <button
+                                    onClick={handleSelectDocumentsFolder}
+                                    className="text-xs text-gray-400 hover:text-gray-600"
+                                    title="Döküman klasörünü değiştir"
+                                >
+                                    (Değiştir)
+                                </button>
+                            </div>
                             <button
                                 onClick={handleExportExcel}
                                 className="text-xs font-semibold text-emerald-600 hover:text-emerald-700 disabled:text-emerald-300"
