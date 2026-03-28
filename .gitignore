@@ -37,3 +37,7 @@ out/
 build/*
 !build/entitlements.mac.plist
 supabase/.temp/
+
+# Next.js build output
+.next/
+next-env.d.ts
