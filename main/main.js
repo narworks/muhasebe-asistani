@@ -705,3 +705,31 @@ ipcMain.handle('get-documents-path', () => {
     const userDataPath = app.getPath('userData');
     return path.join(userDataPath, 'documents');
 });
+
+// Fetch a single tebligat document on-demand
+ipcMain.handle('fetch-tebligat-document', async (event, tebligatId) => {
+    const tebligat = database.getTebligatById(tebligatId);
+    if (!tebligat) {
+        return { success: false, error: 'Tebligat bulunamadı' };
+    }
+
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+        return { success: false, error: 'Sistem yapılandırma hatası' };
+    }
+
+    try {
+        const docPath = await gibScraper.fetchSingleDocument(tebligat, apiKey);
+        if (docPath) {
+            database.updateTebligatDocument(tebligatId, docPath);
+            return { success: true, path: docPath };
+        }
+        return {
+            success: false,
+            error: 'Döküman bulunamadı. GIB portalında bu belgeyi mevcut olmayabilir.',
+        };
+    } catch (err) {
+        console.error('fetch-tebligat-document error:', err);
+        return { success: false, error: err.message };
+    }
+});

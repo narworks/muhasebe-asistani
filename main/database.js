@@ -7,7 +7,7 @@ let db;
 function init() {
     const userDataPath = app.getPath('userData');
     const dbPath = path.join(userDataPath, 'local_data.db');
-    console.log("Database path:", dbPath);
+    console.log('Database path:', dbPath);
 
     db = new Database(dbPath);
 
@@ -43,7 +43,7 @@ function init() {
 
     // Migration: Add document columns if they don't exist
     const tableInfo = db.pragma('table_info(tebligatlar)');
-    const columns = tableInfo.map(col => col.name);
+    const columns = tableInfo.map((col) => col.name);
 
     if (!columns.includes('document_no')) {
         db.exec('ALTER TABLE tebligatlar ADD COLUMN document_no TEXT');
@@ -66,8 +66,8 @@ function saveClient(clientData) {
     if (gib_password && safeStorage.isEncryptionAvailable()) {
         encryptedPassword = safeStorage.encryptString(gib_password);
     } else if (gib_password) {
-        console.warn("SafeStorage not available, cannot securely save password.");
-        throw new Error("Şifreleme sistemi (SafeStorage) bu sistemde kullanılamıyor.");
+        console.warn('SafeStorage not available, cannot securely save password.');
+        throw new Error('Şifreleme sistemi (SafeStorage) bu sistemde kullanılamıyor.');
     }
 
     const stmt = db.prepare(`
@@ -79,7 +79,7 @@ function saveClient(clientData) {
         firm_name,
         tax_number,
         gib_user_code,
-        encryptedPassword
+        encryptedPassword,
     });
 }
 
@@ -93,7 +93,7 @@ function updateClient(id, clientData) {
         if (safeStorage.isEncryptionAvailable()) {
             encryptedPassword = safeStorage.encryptString(gib_password);
         } else {
-            throw new Error("Şifreleme sistemi (SafeStorage) bu sistemde kullanılamıyor.");
+            throw new Error('Şifreleme sistemi (SafeStorage) bu sistemde kullanılamıyor.');
         }
     }
 
@@ -111,7 +111,7 @@ function updateClient(id, clientData) {
             firm_name,
             tax_number,
             gib_user_code,
-            encryptedPassword
+            encryptedPassword,
         });
     }
 
@@ -127,7 +127,7 @@ function updateClient(id, clientData) {
         id,
         firm_name,
         tax_number,
-        gib_user_code
+        gib_user_code,
     });
 }
 
@@ -172,7 +172,7 @@ function saveTebligatlar(clientId, tebligatlar) {
                 status: item.status || null,
                 document_no: item.documentNo || null,
                 document_url: item.documentUrl || null,
-                document_path: item.documentPath || null
+                document_path: item.documentPath || null,
             });
             inserted += result.changes || 0;
         }
@@ -204,6 +204,28 @@ function getTebligatlar(limit = 200) {
     return stmt.all(limit);
 }
 
+// Get a single tebligat by id (includes client info for on-demand fetching)
+function getTebligatById(id) {
+    if (!db) init();
+    const stmt = db.prepare(`
+    SELECT t.id,
+           t.tebligat_date,
+           t.sender,
+           t.subject,
+           t.status,
+           t.document_no,
+           t.document_url,
+           t.document_path,
+           t.created_at,
+           t.client_id,
+           c.firm_name
+    FROM tebligatlar t
+    JOIN clients c ON c.id = t.client_id
+    WHERE t.id = ?
+  `);
+    return stmt.get(id);
+}
+
 // Update document path for a tebligat
 function updateTebligatDocument(tebligatId, documentPath) {
     if (!db) init();
@@ -232,5 +254,6 @@ module.exports = {
     getClientPassword,
     saveTebligatlar,
     getTebligatlar,
-    updateTebligatDocument
+    getTebligatById,
+    updateTebligatDocument,
 };

@@ -30,227 +30,97 @@ const downloadDocument = async (page, documentUrl, clientId, documentNo, tableSe
         console.log('[DEBUG] Processing document:', documentUrl);
 
         // Handle row-click based document access (GİB portal style)
-        // User clicks a row to open detail modal, then downloads PDF from there
         if (documentUrl && documentUrl.startsWith('__CLICK_ROW__:')) {
             const targetRowIndex = parseInt(documentUrl.split(':')[1], 10);
-            console.log('[DEBUG] Attempting row-click document access for row:', targetRowIndex);
+            console.log('[DEBUG] Fetching document for row:', targetRowIndex);
 
-            // Click on the table row to open detail modal
-            const clicked = await page.evaluate(
-                (sel, rowIdx) => {
-                    const rows = Array.from(document.querySelectorAll(sel));
-                    const row = rows[rowIdx];
-                    if (!row) {
-                        console.log('[DEBUG] Row not found at index:', rowIdx);
-                        return { success: false, reason: 'row_not_found' };
+            // Intercept network responses BEFORE clicking — any PDF served will be captured
+            let pdfBuffer = null;
+            const responseHandler = async (response) => {
+                if (pdfBuffer) return;
+                try {
+                    const ct = response.headers()['content-type'] || '';
+                    if (
+                        ct.includes('application/pdf') ||
+                        ct.includes('application/octet-stream') ||
+                        response.url().includes('.pdf')
+                    ) {
+                        const buf = await response.buffer();
+                        if (buf && buf.length > 500) {
+                            pdfBuffer = buf;
+                            console.log('[DEBUG] PDF captured via network:', response.url());
+                        }
                     }
+                } catch {
+                    // buffer already consumed or response gone
+                }
+            };
+            page.on('response', responseHandler);
 
-                    // Try clicking the row itself first
+            // Click the row
+            const rowFound = await page.evaluate(
+                (sel, rowIdx) => {
+                    const row = Array.from(document.querySelectorAll(sel))[rowIdx];
+                    if (!row) return false;
                     row.click();
-                    return { success: true, method: 'row_click' };
+                    return true;
                 },
                 tableSelector || 'table tbody tr',
                 targetRowIndex
             );
 
-            console.log('[DEBUG] Row click result:', JSON.stringify(clicked));
-
-            if (clicked.success) {
-                // Wait for modal/detail view to appear
-                await new Promise((r) => setTimeout(r, 3000));
-
-                // Take screenshot for debugging
-                const screenshotPath = path.join(docsDir, `debug_modal_${Date.now()}.png`);
-                await page.screenshot({ path: screenshotPath, fullPage: true });
-                console.log('[DEBUG] Modal screenshot saved:', screenshotPath);
-
-                // Try multiple strategies to find and download the PDF
-                const pdfInfo = await page.evaluate(() => {
-                    const result = { found: false, url: null, method: null, debugInfo: [] };
-
-                    // Strategy 1: Check for PDF viewer iframe
-                    const iframes = document.querySelectorAll('iframe');
-                    for (const iframe of iframes) {
-                        const src = iframe.src || '';
-                        if (
-                            src.includes('pdf') ||
-                            src.includes('document') ||
-                            src.includes('viewer')
-                        ) {
-                            result.found = true;
-                            result.url = src;
-                            result.method = 'iframe';
-                            return result;
+            if (rowFound) {
+                // Wait up to 6 seconds for a PDF response from the network
+                await new Promise((resolve) => {
+                    let elapsed = 0;
+                    const check = setInterval(() => {
+                        elapsed += 300;
+                        if (pdfBuffer || elapsed >= 6000) {
+                            clearInterval(check);
+                            resolve();
                         }
-                    }
-                    result.debugInfo.push(`Found ${iframes.length} iframes`);
-
-                    // Strategy 2: Look for download/view buttons in modal
-                    const modalSelectors = [
-                        '.modal',
-                        '.MuiDialog-root',
-                        '[role="dialog"]',
-                        '.MuiModal-root',
-                        '.popup',
-                        '.overlay',
-                        '[class*="modal" i]',
-                        '[class*="dialog" i]',
-                        '[class*="detay" i]',
-                    ];
-
-                    let modalElement = null;
-                    for (const sel of modalSelectors) {
-                        const el = document.querySelector(sel);
-                        if (el) {
-                            modalElement = el;
-                            result.debugInfo.push(`Found modal: ${sel}`);
-                            break;
-                        }
-                    }
-
-                    if (!modalElement) {
-                        result.debugInfo.push('No modal found, searching entire document');
-                        modalElement = document.body;
-                    }
-
-                    // Strategy 3: Find PDF/download links
-                    const downloadKeywords = [
-                        'pdf',
-                        'indir',
-                        'download',
-                        'görüntüle',
-                        'belge',
-                        'document',
-                        'dosya',
-                    ];
-                    const links = modalElement.querySelectorAll('a[href], button[onclick]');
-
-                    for (const link of links) {
-                        const href = link.href || link.getAttribute('onclick') || '';
-                        const text = (link.textContent || '').toLowerCase();
-
-                        if (
-                            downloadKeywords.some(
-                                (kw) => href.toLowerCase().includes(kw) || text.includes(kw)
-                            )
-                        ) {
-                            if (link.href && link.href.startsWith('http')) {
-                                result.found = true;
-                                result.url = link.href;
-                                result.method = 'download_link';
-                                return result;
-                            }
-                        }
-                    }
-                    result.debugInfo.push(`Checked ${links.length} links/buttons`);
-
-                    // Strategy 4: Check for embedded PDF object
-                    const embedElements = document.querySelectorAll('object[data], embed[src]');
-                    for (const el of embedElements) {
-                        const src = el.data || el.src || '';
-                        if (src.includes('pdf') || src.includes('document')) {
-                            result.found = true;
-                            result.url = src;
-                            result.method = 'embed';
-                            return result;
-                        }
-                    }
-                    result.debugInfo.push(`Checked ${embedElements.length} embed elements`);
-
-                    // Strategy 5: Look for any button that might trigger download
-                    const allButtons = modalElement.querySelectorAll('button, [role="button"]');
-                    for (const btn of allButtons) {
-                        const text = (btn.textContent || '').toLowerCase();
-                        const title = (btn.getAttribute('title') || '').toLowerCase();
-
-                        if (
-                            ['indir', 'download', 'pdf', 'görüntüle', 'aç'].some(
-                                (kw) => text.includes(kw) || title.includes(kw)
-                            )
-                        ) {
-                            result.debugInfo.push(
-                                `Found potential download button: "${btn.textContent?.trim()}"`
-                            );
-                            // Click the button
-                            btn.click();
-                            result.method = 'button_click';
-                            result.found = true;
-                            return result;
-                        }
-                    }
-                    result.debugInfo.push(`Checked ${allButtons.length} buttons in modal`);
-
-                    return result;
+                    }, 300);
                 });
 
-                console.log('[DEBUG] PDF search result:', JSON.stringify(pdfInfo));
-
-                if (pdfInfo.found && pdfInfo.url) {
-                    console.log('[DEBUG] Found PDF URL:', pdfInfo.url, 'via', pdfInfo.method);
-
-                    // Navigate to PDF and download
-                    const response = await page.goto(pdfInfo.url, {
-                        waitUntil: 'networkidle0',
-                        timeout: 30000,
+                // If no PDF yet, try clicking download/view buttons inside the modal
+                if (!pdfBuffer) {
+                    await page.evaluate(() => {
+                        const keywords = ['indir', 'pdf', 'görüntüle', 'belge', 'aç', 'download'];
+                        const els = document.querySelectorAll('button, [role="button"], a');
+                        for (const el of els) {
+                            const t = (el.textContent || '').toLowerCase();
+                            const title = (el.getAttribute('title') || '').toLowerCase();
+                            if (keywords.some((k) => t.includes(k) || title.includes(k))) {
+                                el.click();
+                                return;
+                            }
+                        }
                     });
-                    if (response) {
-                        const buffer = await response.buffer();
-                        fs.writeFileSync(filePath, buffer);
-                        console.log('[DEBUG] Document saved to:', filePath);
 
-                        // Navigate back
-                        await page
-                            .goBack({ waitUntil: 'networkidle0', timeout: 10000 })
-                            .catch(() => {});
-                        return filePath;
-                    }
-                } else if (pdfInfo.found && pdfInfo.method === 'button_click') {
-                    // Button was clicked, wait for download or new content
-                    await new Promise((r) => setTimeout(r, 2000));
-
-                    // Check if a new tab/window opened with PDF
-                    const pages = await page.browser().pages();
-                    if (pages.length > 1) {
-                        const newPage = pages[pages.length - 1];
-                        const newUrl = newPage.url();
-                        console.log('[DEBUG] New page opened:', newUrl);
-
-                        if (newUrl.includes('pdf') || newUrl.includes('document')) {
-                            const response = await newPage.goto(newUrl, {
-                                waitUntil: 'networkidle0',
-                            });
-                            if (response) {
-                                const buffer = await response.buffer();
-                                fs.writeFileSync(filePath, buffer);
-                                console.log('[DEBUG] Document saved from new page:', filePath);
-                                await newPage.close();
-                                return filePath;
+                    // Wait up to 8 more seconds after button click
+                    await new Promise((resolve) => {
+                        let elapsed = 0;
+                        const check = setInterval(() => {
+                            elapsed += 300;
+                            if (pdfBuffer || elapsed >= 8000) {
+                                clearInterval(check);
+                                resolve();
                             }
-                        }
-                        await newPage.close();
-                    }
+                        }, 300);
+                    });
                 }
+            }
 
-                // Close modal by pressing Escape or clicking close button
-                await page.keyboard.press('Escape');
-                await new Promise((r) => setTimeout(r, 500));
-                await page.evaluate(() => {
-                    const closeSelectors = [
-                        '[class*="close" i]',
-                        'button[aria-label*="close" i]',
-                        'button[aria-label*="kapat" i]',
-                        '.MuiIconButton-root',
-                        '[class*="modal"] button:first-child',
-                    ];
-                    for (const sel of closeSelectors) {
-                        const btn = document.querySelector(sel);
-                        if (btn) {
-                            btn.click();
-                            break;
-                        }
-                    }
-                });
-                await new Promise((r) => setTimeout(r, 500));
+            page.off('response', responseHandler);
+
+            // Close modal
+            await page.keyboard.press('Escape').catch(() => {});
+            await new Promise((r) => setTimeout(r, 500));
+
+            if (pdfBuffer) {
+                fs.writeFileSync(filePath, pdfBuffer);
+                console.log('[DEBUG] Document saved to:', filePath);
+                return filePath;
             }
 
             return null;
@@ -259,19 +129,32 @@ const downloadDocument = async (page, documentUrl, clientId, documentNo, tableSe
         // Handle click-action based document access (button click in row)
         if (documentUrl && documentUrl.startsWith('__CLICK_ACTION__:')) {
             const targetRowIndex = parseInt(documentUrl.split(':')[1], 10);
-            console.log(
-                '[DEBUG] Attempting action-button document access for row:',
-                targetRowIndex
-            );
 
-            // Click on the action button in the row
+            let pdfBuffer = null;
+            const responseHandler = async (response) => {
+                if (pdfBuffer) return;
+                try {
+                    const ct = response.headers()['content-type'] || '';
+                    if (
+                        ct.includes('application/pdf') ||
+                        ct.includes('application/octet-stream') ||
+                        response.url().includes('.pdf')
+                    ) {
+                        const buf = await response.buffer();
+                        if (buf && buf.length > 500) pdfBuffer = buf;
+                    }
+                } catch (_err) {
+                    // buffer already consumed or response gone
+                }
+            };
+            page.on('response', responseHandler);
+
             const clicked = await page.evaluate(
                 (sel, rowIdx) => {
                     const rows = Array.from(document.querySelectorAll(sel));
                     const row = rows[rowIdx];
                     if (!row) return false;
 
-                    // Find and click the action button
                     const actionTexts = [
                         'görüntüle',
                         'incele',
@@ -283,23 +166,20 @@ const downloadDocument = async (page, documentUrl, clientId, documentNo, tableSe
                         'view',
                     ];
                     const allClickables = row.querySelectorAll('button, a, [role="button"]');
-
                     for (const el of allClickables) {
                         const text = (el.textContent || '').toLowerCase().trim();
                         const title = (el.getAttribute('title') || '').toLowerCase();
                         const ariaLabel = (el.getAttribute('aria-label') || '').toLowerCase();
-
-                        const isActionButton = actionTexts.some(
-                            (t) => text.includes(t) || title.includes(t) || ariaLabel.includes(t)
-                        );
-
-                        if (isActionButton) {
+                        if (
+                            actionTexts.some(
+                                (t) =>
+                                    text.includes(t) || title.includes(t) || ariaLabel.includes(t)
+                            )
+                        ) {
                             el.click();
                             return true;
                         }
                     }
-
-                    // If no text match, try clicking the last button/link in the row
                     const lastCell = row.querySelector('td:last-child, [role="cell"]:last-child');
                     if (lastCell) {
                         const actionEl = lastCell.querySelector('button, a');
@@ -308,7 +188,6 @@ const downloadDocument = async (page, documentUrl, clientId, documentNo, tableSe
                             return true;
                         }
                     }
-
                     return false;
                 },
                 tableSelector || 'table tbody tr',
@@ -316,10 +195,24 @@ const downloadDocument = async (page, documentUrl, clientId, documentNo, tableSe
             );
 
             if (clicked) {
-                await new Promise((r) => setTimeout(r, 3000));
-                // Same PDF detection logic as above...
+                await new Promise((resolve) => {
+                    let elapsed = 0;
+                    const check = setInterval(() => {
+                        elapsed += 300;
+                        if (pdfBuffer || elapsed >= 8000) {
+                            clearInterval(check);
+                            resolve();
+                        }
+                    }, 300);
+                });
             }
 
+            page.off('response', responseHandler);
+
+            if (pdfBuffer) {
+                fs.writeFileSync(filePath, pdfBuffer);
+                return filePath;
+            }
             return null;
         }
 
@@ -1273,4 +1166,205 @@ async function run(onStatusUpdate, apiKey, scanConfig = {}, options = {}, deduct
     });
 }
 
-module.exports = { run, cancelScan, getScanState, clearScanState };
+// Fetch a single tebligat document on-demand (used when user clicks "Dökümanı Getir")
+async function fetchSingleDocument(tebligat, apiKey) {
+    const clientId = tebligat.client_id;
+    const password = database.getClientPassword(clientId);
+    if (!password) throw new Error('Müşteri şifresi bulunamadı');
+
+    const allClients = database.getClients();
+    const client = allClients.find((c) => c.id === clientId);
+    if (!client) throw new Error('Müşteri bulunamadı');
+
+    const docsDir = getDocumentsDir(clientId);
+    const safeDocNo = (tebligat.document_no || String(tebligat.id)).replace(/[^a-zA-Z0-9-_]/g, '_');
+    const fileName = `tebligat_${safeDocNo}_${Date.now()}.pdf`;
+    const filePath = path.join(docsDir, fileName);
+
+    let browser;
+    try {
+        browser = await puppeteer.launch({
+            headless: 'new',
+            args: ['--no-sandbox', '--disable-setuid-sandbox'],
+        });
+        const page = await browser.newPage();
+        await page.setUserAgent(USER_AGENT);
+
+        // Intercept network responses to capture PDF before any click
+        let pdfBuffer = null;
+        const responseHandler = async (response) => {
+            if (pdfBuffer) return;
+            try {
+                const ct = response.headers()['content-type'] || '';
+                const url = response.url();
+                if (
+                    ct.includes('application/pdf') ||
+                    ct.includes('application/octet-stream') ||
+                    url.includes('.pdf')
+                ) {
+                    const buf = await response.buffer();
+                    if (buf && buf.length > 500) {
+                        pdfBuffer = buf;
+                        console.log(
+                            '[fetchSingleDocument] PDF captured:',
+                            url,
+                            buf.length,
+                            'bytes'
+                        );
+                    }
+                }
+            } catch {
+                // buffer already consumed
+            }
+        };
+        page.on('response', responseHandler);
+
+        // Login
+        await ensureLoginForm(page);
+        await page.type('#userid', client.gib_user_code);
+        await page.type('#sifre', password);
+        const captchaCode = await solveCaptcha(page, apiKey);
+        await page.type('#dk', captchaCode);
+
+        const loginSelectors = [
+            'button[type="submit"]',
+            '#giris',
+            'button.MuiButton-containedPrimary',
+        ];
+        let loggedIn = false;
+        for (const selector of loginSelectors) {
+            const btn = await page.$(selector);
+            if (btn) {
+                await Promise.all([
+                    page
+                        .waitForNavigation({ waitUntil: 'networkidle0', timeout: 15000 })
+                        .catch(() => {}),
+                    page.click(selector),
+                ]);
+                loggedIn = true;
+                break;
+            }
+        }
+        if (!loggedIn) throw new Error('Giriş butonu bulunamadı');
+
+        await new Promise((r) => setTimeout(r, 2000));
+        if (page.url().includes('/login')) throw new Error('GIB girişi başarısız');
+
+        // Navigate to e-tebligat
+        await page
+            .goto('https://dijital.gib.gov.tr/portal/e-tebligat', {
+                waitUntil: 'networkidle0',
+                timeout: 20000,
+            })
+            .catch(() => {});
+        await new Promise((r) => setTimeout(r, 2000));
+
+        // Find table selector
+        const tableSelectors = [
+            'table tbody tr',
+            '[role="row"]',
+            '.MuiDataGrid-row',
+            '[class*="MuiDataGrid"] [role="row"]',
+        ];
+        let foundSelector = null;
+        for (const sel of tableSelectors) {
+            try {
+                await page.waitForSelector(sel, { timeout: 5000 });
+                const count = await page.evaluate((s) => document.querySelectorAll(s).length, sel);
+                if (count > 0) {
+                    foundSelector = sel;
+                    break;
+                }
+            } catch {
+                /* try next */
+            }
+        }
+        if (!foundSelector) throw new Error('Tebligat tablosu bulunamadı');
+
+        // Find matching row across pages
+        let found = false;
+        for (let pageNum = 0; pageNum < 20 && !found; pageNum++) {
+            const matchIndex = await page.evaluate(
+                (sel, docNo, sender, subject) => {
+                    const rows = Array.from(document.querySelectorAll(sel));
+                    for (let i = 0; i < rows.length; i++) {
+                        const text = rows[i].innerText || '';
+                        if (docNo && text.includes(docNo)) return i;
+                        if (sender && subject && text.includes(sender) && text.includes(subject))
+                            return i;
+                    }
+                    return -1;
+                },
+                foundSelector,
+                tebligat.document_no || '',
+                tebligat.sender || '',
+                tebligat.subject || ''
+            );
+
+            if (matchIndex !== -1) {
+                found = true;
+                console.log('[fetchSingleDocument] Found matching row at index:', matchIndex);
+
+                // Click the row
+                await page.evaluate(
+                    (sel, idx) => {
+                        const rows = Array.from(document.querySelectorAll(sel));
+                        if (rows[idx]) rows[idx].click();
+                    },
+                    foundSelector,
+                    matchIndex
+                );
+
+                // Wait for modal/detail to appear
+                await new Promise((r) => setTimeout(r, 4000));
+
+                // If no PDF captured yet, try clicking download/view button in modal
+                if (!pdfBuffer) {
+                    await page.evaluate(() => {
+                        const keywords = ['indir', 'pdf', 'görüntüle', 'belge', 'aç', 'download'];
+                        const els = document.querySelectorAll('button, [role="button"], a');
+                        for (const el of els) {
+                            const t = (el.textContent || '').toLowerCase();
+                            const title = (el.getAttribute('title') || '').toLowerCase();
+                            if (keywords.some((k) => t.includes(k) || title.includes(k))) {
+                                el.click();
+                                return;
+                            }
+                        }
+                    });
+
+                    // Wait up to 10 seconds for PDF response
+                    await new Promise((resolve) => {
+                        let elapsed = 0;
+                        const check = setInterval(() => {
+                            elapsed += 300;
+                            if (pdfBuffer || elapsed >= 10000) {
+                                clearInterval(check);
+                                resolve();
+                            }
+                        }, 300);
+                    });
+                }
+            } else {
+                const hasNext = await goToNextPage(page);
+                if (!hasNext) break;
+                await new Promise((r) => setTimeout(r, 2000));
+                await page.waitForSelector(foundSelector, { timeout: 5000 }).catch(() => {});
+            }
+        }
+
+        page.off('response', responseHandler);
+
+        if (pdfBuffer) {
+            fs.writeFileSync(filePath, pdfBuffer);
+            console.log('[fetchSingleDocument] Document saved to:', filePath);
+            return filePath;
+        }
+
+        return null;
+    } finally {
+        if (browser) await browser.close();
+    }
+}
+
+module.exports = { run, cancelScan, getScanState, clearScanState, fetchSingleDocument };

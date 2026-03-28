@@ -58,6 +58,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     shareDocument: (documentPath) => ipcRenderer.invoke('share-document', documentPath),
     openDocumentsFolder: () => ipcRenderer.invoke('open-documents-folder'),
     getDocumentsPath: () => ipcRenderer.invoke('get-documents-path'),
+    fetchTebligatDocument: (tebligatId) =>
+        ipcRenderer.invoke('fetch-tebligat-document', tebligatId),
 
     // Auto-update
     onUpdateStatus: (callback) =>

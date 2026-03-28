@@ -33,6 +33,7 @@ const ETebligat: React.FC = () => {
     const [savingClient, setSavingClient] = useState(false);
     const [editingClientId, setEditingClientId] = useState<number | null>(null);
     const [selectedTebligat, setSelectedTebligat] = useState<Tebligat | null>(null);
+    const [fetchingDocumentId, setFetchingDocumentId] = useState<number | null>(null);
     const [filterClientId, setFilterClientId] = useState('all');
     const [filterStatus, setFilterStatus] = useState('all');
     const [searchTerm, setSearchTerm] = useState('');
@@ -465,6 +466,27 @@ const ETebligat: React.FC = () => {
         }
     };
 
+    const handleFetchDocument = async (tebligatId: number) => {
+        setFetchingDocumentId(tebligatId);
+        try {
+            const result = await window.electronAPI.fetchTebligatDocument(tebligatId);
+            if (result.success) {
+                await fetchTebligatlar();
+                // Update selected tebligat in the modal if it's open
+                setSelectedTebligat((prev: Tebligat | null) =>
+                    prev?.id === tebligatId ? { ...prev, document_path: result.path } : prev
+                );
+                addLog('Döküman başarıyla indirildi.', 'success');
+            } else {
+                addLog(`Döküman indirilemedi: ${result.error}`, 'error');
+            }
+        } catch (err: any) {
+            addLog(`Döküman indirilemedi: ${err.message}`, 'error');
+        } finally {
+            setFetchingDocumentId(null);
+        }
+    };
+
     const handleShareDocument = async (documentPath: string) => {
         try {
             const result = await window.electronAPI.shareDocument(documentPath);
@@ -787,7 +809,55 @@ const ETebligat: React.FC = () => {
                                         </button>
                                     </div>
                                 ) : (
-                                    <p className="text-gray-400 text-sm">Döküman bulunamadı</p>
+                                    <button
+                                        onClick={() => handleFetchDocument(selectedTebligat.id)}
+                                        disabled={fetchingDocumentId === selectedTebligat.id}
+                                        className="flex items-center gap-2 px-3 py-2 bg-amber-50 text-amber-700 rounded-lg hover:bg-amber-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                    >
+                                        {fetchingDocumentId === selectedTebligat.id ? (
+                                            <>
+                                                <svg
+                                                    className="animate-spin h-4 w-4"
+                                                    xmlns="http://www.w3.org/2000/svg"
+                                                    fill="none"
+                                                    viewBox="0 0 24 24"
+                                                >
+                                                    <circle
+                                                        className="opacity-25"
+                                                        cx="12"
+                                                        cy="12"
+                                                        r="10"
+                                                        stroke="currentColor"
+                                                        strokeWidth="4"
+                                                    />
+                                                    <path
+                                                        className="opacity-75"
+                                                        fill="currentColor"
+                                                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                                                    />
+                                                </svg>
+                                                GIB&apos;den getiriliyor...
+                                            </>
+                                        ) : (
+                                            <>
+                                                <svg
+                                                    xmlns="http://www.w3.org/2000/svg"
+                                                    className="h-4 w-4"
+                                                    fill="none"
+                                                    viewBox="0 0 24 24"
+                                                    stroke="currentColor"
+                                                >
+                                                    <path
+                                                        strokeLinecap="round"
+                                                        strokeLinejoin="round"
+                                                        strokeWidth={2}
+                                                        d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
+                                                    />
+                                                </svg>
+                                                Dökümanı Getir
+                                            </>
+                                        )}
+                                    </button>
                                 )}
                             </div>
                         </div>
@@ -1836,9 +1906,60 @@ const ETebligat: React.FC = () => {
                                                                                         </button>
                                                                                     </div>
                                                                                 ) : (
-                                                                                    <span className="text-gray-400 text-xs">
-                                                                                        -
-                                                                                    </span>
+                                                                                    <button
+                                                                                        onClick={() =>
+                                                                                            handleFetchDocument(
+                                                                                                row.id
+                                                                                            )
+                                                                                        }
+                                                                                        disabled={
+                                                                                            fetchingDocumentId ===
+                                                                                            row.id
+                                                                                        }
+                                                                                        className="text-amber-500 hover:text-amber-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                                                                                        title="Dökümanı GIB'den getir"
+                                                                                    >
+                                                                                        {fetchingDocumentId ===
+                                                                                        row.id ? (
+                                                                                            <svg
+                                                                                                className="animate-spin h-4 w-4"
+                                                                                                xmlns="http://www.w3.org/2000/svg"
+                                                                                                fill="none"
+                                                                                                viewBox="0 0 24 24"
+                                                                                            >
+                                                                                                <circle
+                                                                                                    className="opacity-25"
+                                                                                                    cx="12"
+                                                                                                    cy="12"
+                                                                                                    r="10"
+                                                                                                    stroke="currentColor"
+                                                                                                    strokeWidth="4"
+                                                                                                />
+                                                                                                <path
+                                                                                                    className="opacity-75"
+                                                                                                    fill="currentColor"
+                                                                                                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                                                                                                />
+                                                                                            </svg>
+                                                                                        ) : (
+                                                                                            <svg
+                                                                                                xmlns="http://www.w3.org/2000/svg"
+                                                                                                className="h-4 w-4"
+                                                                                                fill="none"
+                                                                                                viewBox="0 0 24 24"
+                                                                                                stroke="currentColor"
+                                                                                            >
+                                                                                                <path
+                                                                                                    strokeLinecap="round"
+                                                                                                    strokeLinejoin="round"
+                                                                                                    strokeWidth={
+                                                                                                        2
+                                                                                                    }
+                                                                                                    d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
+                                                                                                />
+                                                                                            </svg>
+                                                                                        )}
+                                                                                    </button>
                                                                                 )}
                                                                             </td>
                                                                         </tr>
