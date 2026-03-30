@@ -93,13 +93,11 @@ function startDownload() {
 }
 
 function quitAndInstall() {
-    // Force quit all windows first, then install
-    autoUpdater.quitAndInstall(false, true);
-
-    // Fallback: if quitAndInstall doesn't exit the app (macOS Squirrel issue)
-    setTimeout(() => {
-        app.exit(0);
-    }, 3000);
+    // On macOS, Squirrel applies the update on normal app quit.
+    // autoUpdater.quitAndInstall() is unreliable on macOS,
+    // so we relaunch + quit instead.
+    app.relaunch();
+    app.quit();
 }
 
 module.exports = {
