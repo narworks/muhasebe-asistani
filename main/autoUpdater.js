@@ -1,5 +1,5 @@
 const { autoUpdater } = require('electron-updater');
-const { app, dialog } = require('electron');
+const { app } = require('electron');
 const logger = require('./logger');
 
 let mainWindow = null;
@@ -30,23 +30,6 @@ function init(win) {
     autoUpdater.on('update-available', (info) => {
         logger.debug('[AutoUpdater] Update available:', info.version);
         sendStatusToWindow('update-available', info);
-
-        // Show dialog to user
-        dialog
-            .showMessageBox(mainWindow, {
-                type: 'info',
-                title: 'Güncelleme Mevcut',
-                message: `Yeni bir sürüm mevcut: v${info.version}`,
-                detail: 'Güncellemek ister misiniz? Uygulama kapanacak ve güncelleme yüklenecek.',
-                buttons: ['Güncelle', 'Daha Sonra'],
-                defaultId: 0,
-                cancelId: 1,
-            })
-            .then(({ response }) => {
-                if (response === 0) {
-                    autoUpdater.downloadUpdate();
-                }
-            });
     });
 
     autoUpdater.on('update-not-available', (info) => {
@@ -105,6 +88,10 @@ function sendStatusToWindow(status, data = {}) {
     }
 }
 
+function startDownload() {
+    autoUpdater.downloadUpdate();
+}
+
 function quitAndInstall() {
     autoUpdater.quitAndInstall(false, true);
 }
@@ -112,5 +99,6 @@ function quitAndInstall() {
 module.exports = {
     init,
     checkForUpdates,
+    startDownload,
     quitAndInstall,
 };

@@ -165,6 +165,11 @@ app.whenReady().then(() => {
     // Initialize auto-updater
     autoUpdater.init(mainWindow);
 
+    // IPC: start downloading update
+    ipcMain.handle('start-update-download', () => {
+        autoUpdater.startDownload();
+    });
+
     // IPC: restart and install update
     ipcMain.handle('restart-and-update', () => {
         autoUpdater.quitAndInstall();

@@ -69,6 +69,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     removeUpdateListeners: () => {
         ipcRenderer.removeAllListeners('update-status');
     },
+    startUpdateDownload: () => ipcRenderer.invoke('start-update-download'),
     restartAndUpdate: () => ipcRenderer.invoke('restart-and-update'),
 
     // Cleanup listeners
