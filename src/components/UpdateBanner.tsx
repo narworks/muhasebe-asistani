@@ -51,7 +51,7 @@ const UpdateBanner: React.FC = () => {
 
     if (state === 'hidden') return null;
 
-    // "Güncelleme mevcut" banner
+    // "Güncelleme mevcut" banner — no overlay, user can still interact
     if (state === 'available') {
         return (
             <div className="fixed bottom-0 left-0 right-0 z-50 bg-slate-900/95 border-t border-slate-700 px-4 py-3 flex items-center justify-between text-sm">
@@ -80,23 +80,26 @@ const UpdateBanner: React.FC = () => {
         );
     }
 
-    // "İndiriliyor" banner — progress bar (Windows) veya indeterminate spinner (macOS)
-    if (state === 'downloading') {
-        const hasProgress = percent > 0;
+    // Hata banner — no overlay
+    if (state === 'error') {
         return (
-            <div className="fixed bottom-0 left-0 right-0 z-50">
-                {hasProgress && (
-                    <div className="h-1 bg-slate-700">
-                        <div
-                            className="h-full bg-indigo-500 transition-all duration-300"
-                            style={{ width: `${percent}%` }}
-                        />
-                    </div>
-                )}
-                <div className="bg-slate-900/95 border-t border-slate-700 px-4 py-2.5 flex items-center justify-between text-sm">
-                    <div className="flex items-center gap-3">
+            <div className="fixed bottom-0 left-0 right-0 z-50 bg-red-900/90 border-t border-red-700 px-4 py-2.5 flex items-center justify-between text-sm">
+                <span className="text-red-200">Güncelleme hatası: {errorMsg}</span>
+                <button onClick={handleDismiss} className="text-red-400 hover:text-red-200 text-xs">
+                    Kapat
+                </button>
+            </div>
+        );
+    }
+
+    // Downloading / Downloaded — full screen overlay blocks all interaction
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/80 backdrop-blur-sm">
+            <div className="bg-slate-800 border border-slate-700 rounded-2xl p-8 w-[420px] shadow-2xl text-center">
+                {state === 'downloading' ? (
+                    <>
                         <svg
-                            className="animate-spin h-4 w-4 text-indigo-400"
+                            className="animate-spin h-10 w-10 text-indigo-400 mx-auto mb-4"
                             viewBox="0 0 24 24"
                             fill="none"
                         >
@@ -114,69 +117,63 @@ const UpdateBanner: React.FC = () => {
                                 d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
                             />
                         </svg>
-                        <span className="text-slate-300">
-                            {hasProgress ? (
-                                <>
-                                    Güncelleme indiriliyor...{' '}
-                                    <span className="text-white font-medium">%{percent}</span>
-                                </>
-                            ) : (
-                                <>Güncelleme indiriliyor...</>
-                            )}
-                        </span>
-                    </div>
-                    {hasProgress && <span className="text-slate-500 text-xs">{speedMB} MB/s</span>}
-                </div>
+                        <h3 className="text-white text-lg font-semibold mb-2">
+                            Güncelleme İndiriliyor
+                        </h3>
+                        <p className="text-slate-400 text-sm mb-4">
+                            Lütfen bekleyin, uygulama güncellenecek...
+                        </p>
+                        {percent > 0 ? (
+                            <>
+                                <div className="h-2 bg-slate-700 rounded-full overflow-hidden mb-2">
+                                    <div
+                                        className="h-full bg-indigo-500 rounded-full transition-all duration-300"
+                                        style={{ width: `${percent}%` }}
+                                    />
+                                </div>
+                                <div className="flex justify-between text-xs text-slate-500">
+                                    <span>%{percent}</span>
+                                    <span>{speedMB} MB/s</span>
+                                </div>
+                            </>
+                        ) : (
+                            <div className="h-2 bg-slate-700 rounded-full overflow-hidden">
+                                <div className="h-full bg-indigo-500 rounded-full animate-pulse w-2/3" />
+                            </div>
+                        )}
+                    </>
+                ) : (
+                    <>
+                        <div className="w-12 h-12 bg-indigo-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                            <svg
+                                className="h-6 w-6 text-white"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                stroke="currentColor"
+                            >
+                                <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth={2}
+                                    d="M5 13l4 4L19 7"
+                                />
+                            </svg>
+                        </div>
+                        <h3 className="text-white text-lg font-semibold mb-2">Güncelleme Hazır</h3>
+                        <p className="text-slate-400 text-sm mb-6">
+                            v{version} indirildi. Uygulamayı yeniden başlatarak güncelleyin.
+                        </p>
+                        <button
+                            onClick={handleRestart}
+                            className="bg-indigo-600 text-white px-6 py-2.5 rounded-xl text-sm font-medium hover:bg-indigo-500 transition-colors w-full"
+                        >
+                            Yeniden Başlat
+                        </button>
+                    </>
+                )}
             </div>
-        );
-    }
-
-    // "İndirme tamamlandı" banner
-    if (state === 'downloaded') {
-        return (
-            <div className="fixed bottom-0 left-0 right-0 z-50 bg-indigo-600 px-4 py-3 flex items-center justify-between text-sm">
-                <div className="flex items-center gap-3">
-                    <svg
-                        className="h-5 w-5 text-white"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
-                    >
-                        <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M5 13l4 4L19 7"
-                        />
-                    </svg>
-                    <span className="text-white">
-                        Güncelleme hazır{version ? ` (v${version})` : ''}. Yeniden başlatarak
-                        yükleyin.
-                    </span>
-                </div>
-                <button
-                    onClick={handleRestart}
-                    className="bg-white text-indigo-700 px-4 py-1.5 rounded-lg text-sm font-medium hover:bg-indigo-50 transition-colors"
-                >
-                    Yeniden Başlat
-                </button>
-            </div>
-        );
-    }
-
-    // Hata banner
-    if (state === 'error') {
-        return (
-            <div className="fixed bottom-0 left-0 right-0 z-50 bg-red-900/90 border-t border-red-700 px-4 py-2.5 flex items-center justify-between text-sm">
-                <span className="text-red-200">Güncelleme hatası: {errorMsg}</span>
-                <button onClick={handleDismiss} className="text-red-400 hover:text-red-200 text-xs">
-                    Kapat
-                </button>
-            </div>
-        );
-    }
-
-    return null;
+        </div>
+    );
 };
 
 export default UpdateBanner;
