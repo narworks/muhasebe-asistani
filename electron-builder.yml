@@ -18,7 +18,9 @@ asarUnpack:
   - "**/*.node"
 
 mac:
-  target: dmg
+  target:
+    - dmg
+    - zip
   artifactName: "Muhasebe-Asistani-${arch}.${ext}"
   hardenedRuntime: true
   gatekeeperAssess: false
