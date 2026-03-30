@@ -47,12 +47,14 @@ const ensureDir = (dir) => {
     }
 };
 
-// Download a single document by clicking its row and capturing PDF via network interception
+// Download a document via GIB portal's 3-step flow:
+// 1. Click "İşlem" dropdown on the row → select "Zarf içeriğini gör"
+// 2. Navigate to /e-tebligat/tebligat-detay page
+// 3. Click "Belge Görüntüle" button to download the actual PDF
 const downloadDocumentByClick = async (page, rowIndex, tableSelector, filePath) => {
     let pdfBuffer = null;
     let lastPdfTime = 0;
 
-    // Collect ALL PDF responses — keep the largest (first is often blank template)
     const handler = async (response) => {
         try {
             const ct = response.headers()['content-type'] || '';
@@ -78,17 +80,100 @@ const downloadDocumentByClick = async (page, rowIndex, tableSelector, filePath) 
     page.on('response', handler);
 
     try {
-        // Click the row
-        await page.evaluate(
+        // Step 1: Click the action dropdown button on this row
+        const dropdownOpened = await page.evaluate(
             (sel, idx) => {
                 const rows = Array.from(document.querySelectorAll(sel));
-                if (rows[idx]) rows[idx].click();
+                const row = rows[idx];
+                if (!row) return false;
+                // Find action/dropdown button (typically last column with icon button)
+                const btns = row.querySelectorAll('button, [role="button"], [aria-haspopup]');
+                for (const btn of btns) {
+                    const text = (btn.textContent || '').toLowerCase();
+                    const aria = (btn.getAttribute('aria-label') || '').toLowerCase();
+                    if (
+                        text.includes('işlem') ||
+                        aria.includes('işlem') ||
+                        btn.querySelector('svg') ||
+                        btn.classList.contains('MuiIconButton-root')
+                    ) {
+                        btn.click();
+                        return true;
+                    }
+                }
+                // Fallback: last button in row
+                const last =
+                    row.querySelector('td:last-child button') ||
+                    row.querySelector('[role="cell"]:last-child button');
+                if (last) {
+                    last.click();
+                    return true;
+                }
+                return false;
             },
             tableSelector,
             rowIndex
         );
 
-        // Wait with debounce: settle 3s after last PDF, max 15s
+        if (!dropdownOpened) {
+            logger.debug(`[DL] No action dropdown for row ${rowIndex}`);
+            return null;
+        }
+        await new Promise((r) => setTimeout(r, 1000));
+
+        // Step 2: Click "Zarf içeriğini gör" in the dropdown menu
+        const detailClicked = await page.evaluate(() => {
+            const items = document.querySelectorAll(
+                '[role="menuitem"], .MuiMenuItem-root, [role="menu"] li, .MuiMenu-list li, .MuiList-root li'
+            );
+            for (const item of items) {
+                const text = (item.textContent || '').toLowerCase();
+                if (
+                    text.includes('zarf içeriğini gör') ||
+                    text.includes('zarf içeriği') ||
+                    text.includes('içeriğini gör')
+                ) {
+                    item.click();
+                    return true;
+                }
+            }
+            return false;
+        });
+
+        if (!detailClicked) {
+            logger.debug('[DL] "Zarf içeriğini gör" not found in menu');
+            await page.keyboard.press('Escape').catch(() => {});
+            return null;
+        }
+
+        // Wait for navigation to detail page
+        await page.waitForNavigation({ waitUntil: 'networkidle0', timeout: 15000 }).catch(() => {});
+        await new Promise((r) => setTimeout(r, 2000));
+
+        logger.debug(`[DL] Detail page: ${page.url()}`);
+
+        // Step 3: Click "Belge Görüntüle" button
+        const viewClicked = await page.evaluate(() => {
+            const btns = document.querySelectorAll('button, [role="button"], a');
+            for (const btn of btns) {
+                const text = (btn.textContent || '').toLowerCase();
+                if (
+                    text.includes('belge görüntüle') ||
+                    text.includes('belgeyi görüntüle') ||
+                    text.includes('belge göster')
+                ) {
+                    btn.click();
+                    return true;
+                }
+            }
+            return false;
+        });
+
+        if (!viewClicked) {
+            logger.debug('[DL] "Belge Görüntüle" button not found');
+        }
+
+        // Wait for PDF with debounce: settle 3s after last PDF, max 15s
         const startTime = Date.now();
         await new Promise((resolve) => {
             const check = setInterval(() => {
@@ -102,41 +187,6 @@ const downloadDocumentByClick = async (page, rowIndex, tableSelector, filePath) 
                 }
             }, 300);
         });
-
-        // If no PDF captured, try clicking download/view buttons in the detail view
-        if (!pdfBuffer) {
-            try {
-                await page.evaluate(() => {
-                    const keywords = ['indir', 'pdf', 'görüntüle', 'belge', 'download'];
-                    const els = document.querySelectorAll('button, [role="button"], a');
-                    for (const el of els) {
-                        const t = (el.textContent || '').toLowerCase();
-                        if (keywords.some((k) => t.includes(k))) {
-                            el.click();
-                            return;
-                        }
-                    }
-                });
-            } catch {
-                /* page may have navigated */
-            }
-
-            // Wait for PDF after button click
-            await new Promise((resolve) => {
-                let elapsed = 0;
-                const check = setInterval(() => {
-                    elapsed += 300;
-                    if (pdfBuffer || elapsed >= 10000) {
-                        clearInterval(check);
-                        resolve();
-                    }
-                }, 300);
-            });
-        }
-
-        // Close modal/overlay
-        await page.keyboard.press('Escape').catch(() => {});
-        await new Promise((r) => setTimeout(r, 500));
     } finally {
         page.off('response', handler);
     }
@@ -667,10 +717,13 @@ const loginAndFetch = async (page, client, password, apiKey, onStatus = null) =>
                         tebligat.documentPath = docPath;
                     }
 
-                    // Ensure we're still on the tebligat list
+                    // Navigate back to the list page (download goes to detail page)
                     if (!isPageUsable()) break;
                     const currentUrl = page.url();
-                    if (!currentUrl.includes('tebligat')) {
+                    if (
+                        currentUrl.includes('tebligat-detay') ||
+                        !currentUrl.endsWith('/e-tebligat')
+                    ) {
                         await page
                             .goto('https://dijital.gib.gov.tr/portal/e-tebligat', {
                                 waitUntil: 'networkidle0',
