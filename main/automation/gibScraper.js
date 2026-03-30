@@ -902,11 +902,7 @@ async function run(onStatusUpdate, apiKey, scanConfig = {}, options = {}, deduct
 
             // Batch pause (based on processed count in this session)
             if (i > 0 && i % config.batchSize === 0) {
-                const batchNum = Math.floor(i / config.batchSize);
-                onStatusUpdate({
-                    message: `Grup ${batchNum} tamamlandı. Sunucu yükünü azaltmak için bekleniyor...`,
-                    type: 'info',
-                });
+                // Silent batch pause
                 await randomDelay(config.batchPauseMin, config.batchPauseMax);
                 if (scanCancelled) {
                     lastScanState.wasCancelled = true;
@@ -918,13 +914,6 @@ async function run(onStatusUpdate, apiKey, scanConfig = {}, options = {}, deduct
 
             // Inter-client delay
             if (i > 0) {
-                const delaySec =
-                    Math.floor(Math.random() * (config.delayMax - config.delayMin + 1)) +
-                    config.delayMin;
-                onStatusUpdate({
-                    message: `Sonraki mükellef için ${delaySec}s bekleniyor...`,
-                    type: 'info',
-                });
                 await randomDelay(config.delayMin, config.delayMax);
                 if (scanCancelled) {
                     lastScanState.wasCancelled = true;
@@ -954,7 +943,6 @@ async function run(onStatusUpdate, apiKey, scanConfig = {}, options = {}, deduct
             });
 
             let succeeded = false;
-            let lastError = null;
 
             for (let attempt = 1; attempt <= config.maxCaptchaRetries; attempt++) {
                 if (scanCancelled) break;
@@ -1020,7 +1008,6 @@ async function run(onStatusUpdate, apiKey, scanConfig = {}, options = {}, deduct
 
                     break;
                 } catch (err) {
-                    lastError = err;
                     logger.error(
                         `[${client.firm_name}] Deneme ${attempt}/${config.maxCaptchaRetries}:`,
                         err.message
@@ -1034,11 +1021,7 @@ async function run(onStatusUpdate, apiKey, scanConfig = {}, options = {}, deduct
 
                     if (isCaptchaError && attempt < config.maxCaptchaRetries) {
                         const backoffSec = 5 * Math.pow(2, attempt - 1);
-                        onStatusUpdate({
-                            message: `${client.firm_name}: CAPTCHA hatası, ${backoffSec}s sonra tekrar (${attempt}/${config.maxCaptchaRetries})`,
-                            type: 'info',
-                            firmId: client.id,
-                        });
+                        // Silent retry — don't expose CAPTCHA details to user
                         await new Promise((r) => setTimeout(r, backoffSec * 1000));
                     } else {
                         break;
@@ -1061,22 +1044,22 @@ async function run(onStatusUpdate, apiKey, scanConfig = {}, options = {}, deduct
 
             if (!succeeded) {
                 errorCount++;
-                // Still mark as processed so we don't retry failed ones on resume
                 lastScanState.processedClientIds.add(client.id);
-                if (lastError) {
-                    onStatusUpdate({
-                        message: `${client.firm_name}: Başarısız - ${lastError.message}`,
-                        type: 'error',
-                        firmId: client.id,
-                    });
-                }
+                onStatusUpdate({
+                    message: `${client.firm_name}: Sorgulanamadı. Lütfen kimlik bilgilerini kontrol edin.`,
+                    type: 'error',
+                    firmId: client.id,
+                });
             }
         }
     } catch (error) {
         lastScanState.wasError = true;
         lastScanState.errors = errorCount;
         lastScanState.successes = successCount;
-        onStatusUpdate({ message: `Genel Hata: ${error.message}`, type: 'error' });
+        onStatusUpdate({
+            message: 'Tarama sırasında bir hata oluştu. Lütfen tekrar deneyin.',
+            type: 'error',
+        });
     } finally {
         if (browser) {
             try {

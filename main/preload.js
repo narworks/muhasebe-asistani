@@ -18,6 +18,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     updateClientStatus: (id, status) => ipcRenderer.invoke('update-client-status', id, status),
     deleteClient: (id) => ipcRenderer.invoke('delete-client', id),
     getTebligatlar: () => ipcRenderer.invoke('get-tebligatlar'),
+    deleteTebligat: (id) => ipcRenderer.invoke('delete-tebligat', id),
+    deleteClientHistory: (clientId) => ipcRenderer.invoke('delete-client-history', clientId),
 
     // Statement Converter
     convertStatement: (data) => ipcRenderer.invoke('convert-statement', data),

@@ -468,6 +468,70 @@ ipcMain.handle('get-tebligatlar', () => {
     return database.getTebligatlar();
 });
 
+// Delete a single tebligat and its downloaded document
+ipcMain.handle('delete-tebligat', async (event, tebligatId) => {
+    try {
+        const tebligat = database.getTebligatById(tebligatId);
+        if (tebligat && tebligat.document_path && fs.existsSync(tebligat.document_path)) {
+            fs.unlinkSync(tebligat.document_path);
+        }
+        database.deleteTebligat(tebligatId);
+        return { success: true };
+    } catch (error) {
+        return { success: false, error: error.message };
+    }
+});
+
+// Delete all tebligatlar and documents for a specific client
+ipcMain.handle('delete-client-history', async (event, clientId) => {
+    try {
+        // Get all tebligatlar for this client to find document paths
+        const tebligatlar = database.getTebligatlarByClient(clientId);
+
+        // Delete downloaded documents
+        const docPaths = new Set();
+        for (const t of tebligatlar) {
+            if (t.document_path && fs.existsSync(t.document_path)) {
+                fs.unlinkSync(t.document_path);
+                docPaths.add(path.dirname(t.document_path));
+            }
+        }
+
+        // Clean up empty directories
+        for (const dir of docPaths) {
+            try {
+                if (fs.existsSync(dir) && fs.readdirSync(dir).length === 0) {
+                    fs.rmdirSync(dir);
+                }
+            } catch {
+                /* ignore */
+            }
+        }
+
+        // Also clean up the firm's documents folder
+        const clients = database.getClients();
+        const client = clients.find((c) => c.id === clientId);
+        if (client) {
+            const settings = require('./settings');
+            const s = settings.readSettings();
+            const basePath = s.documentsFolder || path.join(app.getPath('userData'), 'documents');
+            const safeFirmName = (client.firm_name || String(clientId))
+                .replace(/[<>:"/\\|?*]/g, '_')
+                .trim();
+            const firmDir = path.join(basePath, safeFirmName);
+            if (fs.existsSync(firmDir)) {
+                fs.rmSync(firmDir, { recursive: true, force: true });
+            }
+        }
+
+        // Delete tebligat records from database
+        database.deleteTebligatlarByClient(clientId);
+        return { success: true, deletedCount: tebligatlar.length };
+    } catch (error) {
+        return { success: false, error: error.message };
+    }
+});
+
 // Statement Converter
 ipcMain.handle('convert-statement', async (event, data) => {
     const { fileBuffer, mimeType, prompt } = data;

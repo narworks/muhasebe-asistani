@@ -36,9 +36,11 @@ main/env-config.js
 release/
 out/
 
-# Build artifacts (except macOS entitlements)
+# Build artifacts (except macOS entitlements and icon)
 build/*
 !build/entitlements.mac.plist
+!build/icon.png
+!build/icon.svg
 supabase/.temp/
 
 # Next.js build output

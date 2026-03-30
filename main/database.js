@@ -245,6 +245,24 @@ function getClientPassword(id) {
     return null;
 }
 
+function deleteTebligat(id) {
+    if (!db) init();
+    const stmt = db.prepare('DELETE FROM tebligatlar WHERE id = ?');
+    return stmt.run(id);
+}
+
+function deleteTebligatlarByClient(clientId) {
+    if (!db) init();
+    const stmt = db.prepare('DELETE FROM tebligatlar WHERE client_id = ?');
+    return stmt.run(clientId);
+}
+
+function getTebligatlarByClient(clientId) {
+    if (!db) init();
+    const stmt = db.prepare('SELECT * FROM tebligatlar WHERE client_id = ?');
+    return stmt.all(clientId);
+}
+
 module.exports = {
     init,
     saveClient,
@@ -257,4 +275,7 @@ module.exports = {
     getTebligatlar,
     getTebligatById,
     updateTebligatDocument,
+    deleteTebligat,
+    deleteTebligatlarByClient,
+    getTebligatlarByClient,
 };

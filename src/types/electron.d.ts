@@ -42,6 +42,8 @@ export interface IElectronAPI {
     updateClientStatus: (id: number, status: Client['status']) => Promise<ApiResponse>;
     deleteClient: (id: number) => Promise<ApiResponse>;
     getTebligatlar: () => Promise<Tebligat[]>;
+    deleteTebligat: (id: number) => Promise<ApiResponse>;
+    deleteClientHistory: (clientId: number) => Promise<ApiResponse & { deletedCount?: number }>;
 
     // Automation
     startScan: () => void;
