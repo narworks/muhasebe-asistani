@@ -12,7 +12,7 @@ const GIB_LOGIN_URL = 'https://dijital.gib.gov.tr/portal/login';
 const settings = require('../settings');
 const logger = require('../logger');
 
-// Get documents directory: basePath/firmName/YYYY-MM-DD/
+// Get documents directory path (does NOT create it — call ensureDir before saving)
 const getDocumentsDir = (clientId, firmName, dateStr) => {
     const s = settings.readSettings();
     const basePath = s.documentsFolder || path.join(app.getPath('userData'), 'documents');
@@ -23,7 +23,6 @@ const getDocumentsDir = (clientId, firmName, dateStr) => {
     // Parse date or use today
     let dateFolder;
     if (dateStr) {
-        // Try to extract YYYY-MM-DD from various date formats
         const match = dateStr.match(/(\d{4})[.-](\d{2})[.-](\d{2})/);
         if (match) {
             dateFolder = `${match[1]}-${match[2]}-${match[3]}`;
@@ -39,11 +38,13 @@ const getDocumentsDir = (clientId, firmName, dateStr) => {
         dateFolder = new Date().toISOString().split('T')[0];
     }
 
-    const docsDir = path.join(basePath, safeFirmName, dateFolder);
-    if (!fs.existsSync(docsDir)) {
-        fs.mkdirSync(docsDir, { recursive: true });
+    return path.join(basePath, safeFirmName, dateFolder);
+};
+
+const ensureDir = (dir) => {
+    if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
     }
-    return docsDir;
 };
 
 // Download a document from GIB portal
@@ -74,6 +75,13 @@ const downloadDocument = async (
         if (documentUrl && documentUrl.startsWith('__CLICK_ROW__:')) {
             const targetRowIndex = parseInt(documentUrl.split(':')[1], 10);
             logger.debug('[DEBUG] Fetching document for row:', targetRowIndex);
+
+            // Configure Chrome to download files to our documents directory
+            const cdpSession = await page.createCDPSession();
+            await cdpSession.send('Page.setDownloadBehavior', {
+                behavior: 'allow',
+                downloadPath: docsDir,
+            });
 
             // Intercept network responses BEFORE clicking — any PDF served will be captured
             let pdfBuffer = null;
@@ -169,15 +177,32 @@ const downloadDocument = async (
             }
 
             page.off('response', responseHandler);
+            await cdpSession.detach().catch(() => {});
 
             // Close modal
             await page.keyboard.press('Escape').catch(() => {});
             await new Promise((r) => setTimeout(r, 500));
 
             if (pdfBuffer) {
+                ensureDir(docsDir);
                 fs.writeFileSync(filePath, pdfBuffer);
                 logger.debug('[DEBUG] Document saved to:', filePath);
                 return filePath;
+            }
+
+            // Check if Chrome downloaded a file to docsDir via download behavior
+            if (fs.existsSync(docsDir)) {
+                const files = fs.readdirSync(docsDir).filter((f) => f.endsWith('.pdf'));
+                if (files.length > 0) {
+                    // Rename the downloaded file to our naming convention
+                    const downloadedFile = path.join(docsDir, files[files.length - 1]);
+                    if (downloadedFile !== filePath) {
+                        ensureDir(docsDir);
+                        fs.renameSync(downloadedFile, filePath);
+                    }
+                    logger.debug('[DEBUG] Chrome-downloaded document moved to:', filePath);
+                    return filePath;
+                }
             }
 
             return null;
@@ -186,6 +211,12 @@ const downloadDocument = async (
         // Handle click-action based document access (button click in row)
         if (documentUrl && documentUrl.startsWith('__CLICK_ACTION__:')) {
             const targetRowIndex = parseInt(documentUrl.split(':')[1], 10);
+
+            const cdpSession2 = await page.createCDPSession();
+            await cdpSession2.send('Page.setDownloadBehavior', {
+                behavior: 'allow',
+                downloadPath: docsDir,
+            });
 
             let pdfBuffer = null;
             const responseHandler = async (response) => {
@@ -265,8 +296,10 @@ const downloadDocument = async (
             }
 
             page.off('response', responseHandler);
+            await cdpSession2.detach().catch(() => {});
 
             if (pdfBuffer) {
+                ensureDir(docsDir);
                 fs.writeFileSync(filePath, pdfBuffer);
                 return filePath;
             }
@@ -290,6 +323,7 @@ const downloadDocument = async (
             const contentType = response.headers()['content-type'] || '';
             if (contentType.includes('pdf') || contentType.includes('application/octet-stream')) {
                 const buffer = await response.buffer();
+                ensureDir(docsDir);
                 fs.writeFileSync(filePath, buffer);
                 logger.debug('[DEBUG] Document saved to:', filePath);
                 return filePath;
@@ -917,6 +951,31 @@ const loginAndFetch = async (page, client, password, apiKey, onStatus = null) =>
         }
 
         pageNum++;
+    }
+
+    // Clean up empty directories created during download attempts
+    const s = settings.readSettings();
+    const basePath = s.documentsFolder || path.join(app.getPath('userData'), 'documents');
+    const safeFirmName = (client.firm_name || String(client.id))
+        .replace(/[<>:"/\\|?*]/g, '_')
+        .trim();
+    const firmDir = path.join(basePath, safeFirmName);
+    if (fs.existsSync(firmDir)) {
+        try {
+            const dateFolders = fs.readdirSync(firmDir);
+            for (const df of dateFolders) {
+                const dfPath = path.join(firmDir, df);
+                if (fs.statSync(dfPath).isDirectory() && fs.readdirSync(dfPath).length === 0) {
+                    fs.rmdirSync(dfPath);
+                }
+            }
+            // Remove firm folder too if empty
+            if (fs.readdirSync(firmDir).length === 0) {
+                fs.rmdirSync(firmDir);
+            }
+        } catch {
+            // ignore cleanup errors
+        }
     }
 
     status(`Tarama tamamlandı: ${allTebligatlar.length} tebligat (${pageNum} sayfa).`);
