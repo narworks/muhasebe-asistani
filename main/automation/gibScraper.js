@@ -621,15 +621,12 @@ const loginAndFetch = async (page, client, password, apiKey, onStatus = null) =>
         if (onStatus) onStatus({ message: `  → ${msg}`, type: 'process', firmId: client.id });
     };
 
-    status('Kimlik bilgileri giriliyor...');
     await page.type('#userid', client.gib_user_code);
     await page.type('#sifre', password);
 
-    status('CAPTCHA çözülüyor (Gemini AI)...');
     const captchaCode = await solveCaptcha(page, apiKey);
     await page.type('#dk', captchaCode);
 
-    status('GİB portalına giriş yapılıyor...');
     // Find and click login button
     const loginSelectors = ['button[type="submit"]', '#giris', 'button.MuiButton-containedPrimary'];
     let clicked = false;
@@ -680,7 +677,6 @@ const loginAndFetch = async (page, client, password, apiKey, onStatus = null) =>
         throw new Error('Giriş başarısız - CAPTCHA veya kimlik bilgileri yanlış olabilir.');
     }
 
-    status('Giriş başarılı, e-Tebligat sayfasına yönlendiriliyor...');
     // Navigate to E-Tebligat
     const eTebligatLink = await page.evaluate(() => {
         const links = Array.from(document.querySelectorAll('a'));
@@ -744,8 +740,6 @@ const loginAndFetch = async (page, client, password, apiKey, onStatus = null) =>
         status('Tebligat tablosu bulunamadı.');
         return [];
     }
-
-    status('Tebligat tablosu bulundu, veriler taranıyor...');
 
     // Extract from all pages and download documents while on each page
     const allTebligatlar = [];
