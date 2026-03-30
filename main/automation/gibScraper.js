@@ -300,7 +300,7 @@ const downloadDocument = async (
 
         return null;
     } catch (err) {
-        console.error('[DEBUG] Document download failed:', err.message);
+        logger.error('[DEBUG] Document download failed:', err.message);
         return null;
     }
 };
@@ -461,7 +461,7 @@ const logoutFromGIB = async (page) => {
 
         logger.debug('[DEBUG] Logout completed. URL:', page.url());
     } catch (err) {
-        console.error('[DEBUG] Logout failed (non-critical):', err.message);
+        logger.error('[DEBUG] Logout failed (non-critical):', err.message);
     }
 };
 
@@ -742,90 +742,144 @@ const loginAndFetch = async (page, client, password, apiKey) => {
     let pageNum = 1;
     const maxPages = 20; // Safety limit to prevent infinite loops
 
+    // Helper: check if the page target is still alive
+    const isPageUsable = () => {
+        try {
+            return !page.isClosed();
+        } catch {
+            return false;
+        }
+    };
+
     while (pageNum <= maxPages) {
         logger.debug(`[DEBUG] Scraping page ${pageNum}...`);
 
         // Extract data from current page
-        const pageTebligatlar = await extractTebligatFromPage(page, foundSelector);
+        let pageTebligatlar;
+        try {
+            pageTebligatlar = await extractTebligatFromPage(page, foundSelector);
+        } catch (extractErr) {
+            logger.debug(
+                `[DEBUG] Failed to extract tebligatlar on page ${pageNum}:`,
+                extractErr.message
+            );
+            break;
+        }
         logger.debug(`[DEBUG] Found ${pageTebligatlar.length} tebligatlar on page ${pageNum}`);
 
         if (pageTebligatlar.length === 0) {
             break; // No more data
         }
 
-        // Download documents for each tebligat while still on this page
-        for (let i = 0; i < pageTebligatlar.length; i++) {
-            const tebligat = pageTebligatlar[i];
-            logger.debug(
-                `[DEBUG] Processing tebligat ${i + 1}/${pageTebligatlar.length} on page ${pageNum}`
-            );
+        // Add scraped data FIRST — even if downloads fail, records are preserved
+        allTebligatlar.push(...pageTebligatlar);
 
-            if (tebligat.documentUrl && tebligat.documentUrl.startsWith('__CLICK_ROW__:')) {
-                try {
-                    const docPath = await downloadDocument(
-                        page,
-                        tebligat.documentUrl,
-                        client.id,
-                        tebligat.documentNo,
-                        foundSelector,
-                        client.firm_name,
-                        tebligat.date || tebligat.notificationDate || tebligat.sendDate
-                    );
+        // Download documents — wrapped in a protective try-catch so that
+        // page target loss does NOT discard the already-scraped tebligat data
+        try {
+            for (let i = 0; i < pageTebligatlar.length; i++) {
+                // Bail out early if page target was destroyed
+                if (!isPageUsable()) {
+                    logger.debug('[DEBUG] Page target lost, stopping document downloads.');
+                    break;
+                }
 
-                    if (docPath) {
-                        tebligat.documentPath = docPath;
-                        logger.debug(`[DEBUG] Downloaded document for row ${i}: ${docPath}`);
-                    } else {
-                        logger.debug(`[DEBUG] No document downloaded for row ${i}`);
-                    }
+                const tebligat = pageTebligatlar[i];
+                logger.debug(
+                    `[DEBUG] Processing tebligat ${i + 1}/${pageTebligatlar.length} on page ${pageNum}`
+                );
 
-                    // Ensure we're back on the tebligat list page before next download
-                    let currentUrl = '';
+                if (tebligat.documentUrl && tebligat.documentUrl.startsWith('__CLICK_ROW__:')) {
                     try {
-                        currentUrl = page.url();
-                    } catch (_urlErr) {
-                        // page target lost
-                    }
-                    if (!currentUrl.includes('tebligat')) {
-                        logger.debug('[DEBUG] Navigating back to e-tebligat page...');
-                        await page
-                            .goto('https://dijital.gib.gov.tr/portal/e-tebligat', {
-                                waitUntil: 'networkidle0',
-                                timeout: 20000,
-                            })
-                            .catch(() => {});
-                    }
+                        const docPath = await downloadDocument(
+                            page,
+                            tebligat.documentUrl,
+                            client.id,
+                            tebligat.documentNo,
+                            foundSelector,
+                            client.firm_name,
+                            tebligat.date || tebligat.notificationDate || tebligat.sendDate
+                        );
 
-                    // Wait for the table to be ready again
-                    await page.waitForSelector(foundSelector, { timeout: 10000 }).catch(() => {});
+                        if (docPath) {
+                            tebligat.documentPath = docPath;
+                            logger.debug(`[DEBUG] Downloaded document for row ${i}: ${docPath}`);
+                        } else {
+                            logger.debug(`[DEBUG] No document downloaded for row ${i}`);
+                        }
 
-                    // Small delay between document downloads
-                    await new Promise((r) => setTimeout(r, 1500));
-                } catch (err) {
-                    console.error(`[DEBUG] Error downloading document for row ${i}:`, err.message);
+                        // Ensure we're back on the tebligat list page before next download
+                        if (!isPageUsable()) break;
 
-                    // Try to get back to the tebligat page on error
-                    try {
-                        await page
-                            .goto('https://dijital.gib.gov.tr/portal/e-tebligat', {
-                                waitUntil: 'networkidle0',
-                                timeout: 20000,
-                            })
-                            .catch(() => {});
+                        let currentUrl = '';
+                        try {
+                            currentUrl = page.url();
+                        } catch (_urlErr) {
+                            break; // page target lost — stop downloads
+                        }
+                        if (!currentUrl.includes('tebligat')) {
+                            logger.debug('[DEBUG] Navigating back to e-tebligat page...');
+                            await page
+                                .goto('https://dijital.gib.gov.tr/portal/e-tebligat', {
+                                    waitUntil: 'networkidle0',
+                                    timeout: 20000,
+                                })
+                                .catch(() => {});
+                        }
+
+                        // Wait for the table to be ready again
                         await page
                             .waitForSelector(foundSelector, { timeout: 10000 })
                             .catch(() => {});
-                    } catch {
-                        // Ignore navigation errors
+
+                        // Small delay between document downloads
+                        await new Promise((r) => setTimeout(r, 1500));
+                    } catch (err) {
+                        logger.debug(
+                            `[DEBUG] Error downloading document for row ${i}:`,
+                            err.message
+                        );
+
+                        // If page target is dead, stop trying
+                        if (!isPageUsable()) break;
+
+                        // Try to get back to the tebligat page on error
+                        try {
+                            await page
+                                .goto('https://dijital.gib.gov.tr/portal/e-tebligat', {
+                                    waitUntil: 'networkidle0',
+                                    timeout: 20000,
+                                })
+                                .catch(() => {});
+                            await page
+                                .waitForSelector(foundSelector, { timeout: 10000 })
+                                .catch(() => {});
+                        } catch {
+                            break; // navigation failed — page is likely dead
+                        }
                     }
                 }
             }
+        } catch (downloadLoopErr) {
+            // Protective catch: page target loss during download loop should NOT
+            // discard the already-scraped tebligat data
+            logger.debug('[DEBUG] Download loop error (data preserved):', downloadLoopErr.message);
         }
 
-        allTebligatlar.push(...pageTebligatlar);
+        // If page is dead, stop pagination but keep the data we have
+        if (!isPageUsable()) {
+            logger.debug('[DEBUG] Page target lost after downloads, stopping pagination.');
+            break;
+        }
 
         // Try to go to next page
-        const hasNextPage = await goToNextPage(page);
+        let hasNextPage = false;
+        try {
+            hasNextPage = await goToNextPage(page);
+        } catch (navErr) {
+            logger.debug('[DEBUG] Pagination error:', navErr.message);
+            break;
+        }
         if (!hasNextPage) {
             logger.debug('[DEBUG] No more pages to scrape.');
             break;
@@ -835,7 +889,12 @@ const loginAndFetch = async (page, client, password, apiKey) => {
         await new Promise((r) => setTimeout(r, 1500));
 
         // Verify we're on a new page with data
-        const hasData = await hasDataOnPage(page, foundSelector);
+        let hasData = false;
+        try {
+            hasData = await hasDataOnPage(page, foundSelector);
+        } catch {
+            break;
+        }
         if (!hasData) {
             logger.debug('[DEBUG] Next page has no data, stopping pagination.');
             break;
@@ -1141,7 +1200,7 @@ async function run(onStatusUpdate, apiKey, scanConfig = {}, options = {}, deduct
                     break;
                 } catch (err) {
                     lastError = err;
-                    console.error(
+                    logger.error(
                         `[${client.firm_name}] Deneme ${attempt}/${config.maxCaptchaRetries}:`,
                         err.message
                     );
@@ -1198,7 +1257,13 @@ async function run(onStatusUpdate, apiKey, scanConfig = {}, options = {}, deduct
         lastScanState.successes = successCount;
         onStatusUpdate({ message: `Genel Hata: ${error.message}`, type: 'error' });
     } finally {
-        if (browser) await browser.close();
+        if (browser) {
+            try {
+                await browser.close();
+            } catch (browserCloseErr) {
+                logger.debug('[DEBUG] Browser close error (ignored):', browserCloseErr.message);
+            }
+        }
         isRunning = false;
     }
 
