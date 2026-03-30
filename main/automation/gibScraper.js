@@ -616,13 +616,20 @@ const hasDataOnPage = async (page, selector) => {
     return count > 0;
 };
 
-const loginAndFetch = async (page, client, password, apiKey) => {
+const loginAndFetch = async (page, client, password, apiKey, onStatus = null) => {
+    const status = (msg) => {
+        if (onStatus) onStatus({ message: `  → ${msg}`, type: 'process', firmId: client.id });
+    };
+
+    status('Kimlik bilgileri giriliyor...');
     await page.type('#userid', client.gib_user_code);
     await page.type('#sifre', password);
 
+    status('CAPTCHA çözülüyor (Gemini AI)...');
     const captchaCode = await solveCaptcha(page, apiKey);
     await page.type('#dk', captchaCode);
 
+    status('GİB portalına giriş yapılıyor...');
     // Find and click login button
     const loginSelectors = ['button[type="submit"]', '#giris', 'button.MuiButton-containedPrimary'];
     let clicked = false;
@@ -673,6 +680,7 @@ const loginAndFetch = async (page, client, password, apiKey) => {
         throw new Error('Giriş başarısız - CAPTCHA veya kimlik bilgileri yanlış olabilir.');
     }
 
+    status('Giriş başarılı, e-Tebligat sayfasına yönlendiriliyor...');
     // Navigate to E-Tebligat
     const eTebligatLink = await page.evaluate(() => {
         const links = Array.from(document.querySelectorAll('a'));
@@ -733,9 +741,11 @@ const loginAndFetch = async (page, client, password, apiKey) => {
     }
 
     if (!foundSelector) {
-        logger.debug('[DEBUG] No tebligat rows found.');
+        status('Tebligat tablosu bulunamadı.');
         return [];
     }
+
+    status('Tebligat tablosu bulundu, veriler taranıyor...');
 
     // Extract from all pages and download documents while on each page
     const allTebligatlar = [];
@@ -771,6 +781,14 @@ const loginAndFetch = async (page, client, password, apiKey) => {
             break; // No more data
         }
 
+        if (pageNum === 1) {
+            status(
+                `${pageTebligatlar.length} tebligat bulundu (sayfa ${pageNum}), dökümanlar indiriliyor...`
+            );
+        } else {
+            status(`Sayfa ${pageNum}: ${pageTebligatlar.length} tebligat daha bulundu.`);
+        }
+
         // Add scraped data FIRST — even if downloads fail, records are preserved
         allTebligatlar.push(...pageTebligatlar);
 
@@ -780,7 +798,7 @@ const loginAndFetch = async (page, client, password, apiKey) => {
             for (let i = 0; i < pageTebligatlar.length; i++) {
                 // Bail out early if page target was destroyed
                 if (!isPageUsable()) {
-                    logger.debug('[DEBUG] Page target lost, stopping document downloads.');
+                    status('Sayfa bağlantısı kesildi, indirmeler durduruluyor (veriler korundu).');
                     break;
                 }
 
@@ -790,6 +808,9 @@ const loginAndFetch = async (page, client, password, apiKey) => {
                 );
 
                 if (tebligat.documentUrl && tebligat.documentUrl.startsWith('__CLICK_ROW__:')) {
+                    status(
+                        `Döküman indiriliyor (${i + 1}/${pageTebligatlar.length}): ${tebligat.documentNo || '?'}...`
+                    );
                     try {
                         const docPath = await downloadDocument(
                             page,
@@ -873,6 +894,7 @@ const loginAndFetch = async (page, client, password, apiKey) => {
         }
 
         // Try to go to next page
+        status('Sonraki sayfa kontrol ediliyor...');
         let hasNextPage = false;
         try {
             hasNextPage = await goToNextPage(page);
@@ -903,9 +925,7 @@ const loginAndFetch = async (page, client, password, apiKey) => {
         pageNum++;
     }
 
-    logger.debug(
-        `[DEBUG] Total tebligatlar scraped: ${allTebligatlar.length} from ${pageNum} page(s)`
-    );
+    status(`Tarama tamamlandı: ${allTebligatlar.length} tebligat (${pageNum} sayfa).`);
     return allTebligatlar;
 };
 
@@ -1148,7 +1168,13 @@ async function run(onStatusUpdate, apiKey, scanConfig = {}, options = {}, deduct
                     await page.setViewport({ width: 1280, height: 800 });
 
                     await ensureLoginForm(page);
-                    const tebligatlar = await loginAndFetch(page, client, password, apiKey);
+                    const tebligatlar = await loginAndFetch(
+                        page,
+                        client,
+                        password,
+                        apiKey,
+                        onStatusUpdate
+                    );
 
                     const count = tebligatlar.length;
                     let savedCount = 0;
