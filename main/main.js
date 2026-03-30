@@ -1,10 +1,23 @@
 const { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, dialog, shell } = require('electron');
 const fs = require('fs');
-const XLSX = require('xlsx');
+const ExcelJS = require('exceljs');
 const path = require('path');
-require('dotenv').config({
-    path: path.join(__dirname, '../.env'),
-});
+// In production: use build-time generated config. In dev: use .env via dotenv.
+if (app.isPackaged) {
+    try {
+        const envConfig = require('./env-config');
+        Object.entries(envConfig).forEach(([key, value]) => {
+            if (value && !process.env[key]) process.env[key] = value;
+        });
+    } catch {
+        console.error('env-config.js not found — run "node scripts/build-env.js" before building.');
+    }
+} else {
+    require('dotenv').config({
+        path: path.join(__dirname, '../.env'),
+    });
+}
+const logger = require('./logger');
 
 // Global error handlers
 process.on('uncaughtException', (error) => {
@@ -83,13 +96,13 @@ const createWindow = () => {
 // Helper: run scan with status updates
 const runScanWithUpdates = async () => {
     if (!licenseManager.hasActiveSubscription()) {
-        console.log('[Scheduler] Skipping scan - no active subscription');
+        logger.debug('[Scheduler] Skipping scan - no active subscription');
         return;
     }
 
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
-        console.log('[Scheduler] Skipping scan - no API key');
+        logger.debug('[Scheduler] Skipping scan - no API key');
         return;
     }
 
@@ -617,24 +630,23 @@ ipcMain.handle('export-excel', async (event, { rows, sheetName, defaultFileName 
     }
 
     try {
-        const ws = XLSX.utils.json_to_sheet(rows);
+        const workbook = new ExcelJS.Workbook();
+        const ws = workbook.addWorksheet(sheetName || 'Sheet1');
 
-        // Auto-width columns
         if (rows.length > 0) {
             const headers = Object.keys(rows[0]);
-            ws['!cols'] = headers.map((header, colIndex) => {
+            ws.columns = headers.map((header) => {
                 let maxWidth = header.length;
                 rows.forEach((row) => {
-                    const value = String(Object.values(row)[colIndex] || '');
+                    const value = String(row[header] || '');
                     maxWidth = Math.max(maxWidth, value.length);
                 });
-                return { wch: Math.min(maxWidth + 2, 50) };
+                return { header, key: header, width: Math.min(maxWidth + 2, 50) };
             });
+            rows.forEach((row) => ws.addRow(row));
         }
 
-        const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, sheetName || 'Sheet1');
-        XLSX.writeFile(wb, filePath);
+        await workbook.xlsx.writeFile(filePath);
 
         return { success: true, filePath };
     } catch (error) {

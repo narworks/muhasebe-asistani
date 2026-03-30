@@ -26,6 +26,9 @@ dist-ssr
 .vercel
 .env*.local
 
+# Build-time generated config (contains env secrets)
+main/env-config.js
+
 # Claude Code
 .claude/
 

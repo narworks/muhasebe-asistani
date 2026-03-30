@@ -95,7 +95,9 @@ const Statistics: React.FC = () => {
 
     // Get recent tebligatlar (last 5)
     const recentTebligatlar = [...tebligatlar]
-        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+        .sort(
+            (a, b) => new Date(b.created_at ?? 0).getTime() - new Date(a.created_at ?? 0).getTime()
+        )
         .slice(0, 5);
 
     // Get top clients by tebligat count
@@ -417,12 +419,12 @@ const Statistics: React.FC = () => {
                                     </div>
                                     <div className="text-right flex-shrink-0 ml-2">
                                         <span
-                                            className={`text-xs font-bold ${getStatusColor(t.status)}`}
+                                            className={`text-xs font-bold ${getStatusColor(t.status ?? '')}`}
                                         >
-                                            {getStatusText(t.status)}
+                                            {getStatusText(t.status ?? '')}
                                         </span>
                                         <p className="text-xs text-slate-500">
-                                            {formatDate(t.created_at)}
+                                            {formatDate(t.created_at ?? '')}
                                         </p>
                                     </div>
                                 </div>

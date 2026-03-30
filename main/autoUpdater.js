@@ -1,5 +1,6 @@
 const { autoUpdater } = require('electron-updater');
 const { app, dialog } = require('electron');
+const logger = require('./logger');
 
 let mainWindow = null;
 
@@ -12,7 +13,7 @@ function init(win) {
 
     // Don't check for updates in development
     if (process.env.NODE_ENV === 'development' || !app.isPackaged) {
-        console.log('[AutoUpdater] Skipping in development mode');
+        logger.debug('[AutoUpdater] Skipping in development mode');
         return;
     }
 
@@ -22,12 +23,12 @@ function init(win) {
 
     // Event handlers
     autoUpdater.on('checking-for-update', () => {
-        console.log('[AutoUpdater] Checking for updates...');
+        logger.debug('[AutoUpdater] Checking for updates...');
         sendStatusToWindow('update-checking');
     });
 
     autoUpdater.on('update-available', (info) => {
-        console.log('[AutoUpdater] Update available:', info.version);
+        logger.debug('[AutoUpdater] Update available:', info.version);
         sendStatusToWindow('update-available', info);
 
         // Show dialog to user
@@ -49,7 +50,7 @@ function init(win) {
     });
 
     autoUpdater.on('update-not-available', (info) => {
-        console.log('[AutoUpdater] No updates available');
+        logger.debug('[AutoUpdater] No updates available');
         sendStatusToWindow('update-not-available', info);
     });
 
@@ -60,7 +61,7 @@ function init(win) {
 
     autoUpdater.on('download-progress', (progressObj) => {
         const percent = Math.round(progressObj.percent);
-        console.log(`[AutoUpdater] Download progress: ${percent}%`);
+        logger.debug(`[AutoUpdater] Download progress: ${percent}%`);
         sendStatusToWindow('update-download-progress', {
             percent,
             bytesPerSecond: progressObj.bytesPerSecond,
@@ -70,7 +71,7 @@ function init(win) {
     });
 
     autoUpdater.on('update-downloaded', (info) => {
-        console.log('[AutoUpdater] Update downloaded:', info.version);
+        logger.debug('[AutoUpdater] Update downloaded:', info.version);
         sendStatusToWindow('update-downloaded', info);
 
         // Show dialog and quit/install
@@ -102,11 +103,11 @@ function init(win) {
  */
 function checkForUpdates() {
     if (process.env.NODE_ENV === 'development' || !app.isPackaged) {
-        console.log('[AutoUpdater] Skipping update check in development');
+        logger.debug('[AutoUpdater] Skipping update check in development');
         return;
     }
 
-    console.log('[AutoUpdater] Checking for updates...');
+    logger.debug('[AutoUpdater] Checking for updates...');
     autoUpdater.checkForUpdates().catch((err) => {
         console.error('[AutoUpdater] Check failed:', err.message);
     });

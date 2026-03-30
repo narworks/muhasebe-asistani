@@ -26,6 +26,7 @@ export interface IElectronAPI {
     getSubscriptionStatus: () => Promise<Subscription>;
     getUserInfo: () => Promise<UserInfo>;
     openBillingPortal: (packageId?: string) => Promise<ApiResponse>;
+    openForgotPassword: () => Promise<ApiResponse>;
     openCheckout: (params: {
         plan: string;
         period: string;
@@ -83,6 +84,9 @@ export interface IElectronAPI {
     shareDocument: (documentPath: string) => Promise<ApiResponse>;
     openDocumentsFolder: () => Promise<ApiResponse & { path?: string }>;
     getDocumentsPath: () => Promise<string>;
+    fetchTebligatDocument: (tebligatId: number) => Promise<ApiResponse & { path?: string }>;
+    selectDocumentsFolder: () => Promise<ApiResponse & { path?: string }>;
+    getDocumentsFolder: () => Promise<string>;
 
     // Auto-update
     onUpdateStatus: (callback: (status: UpdateStatus) => void) => void;

@@ -53,15 +53,6 @@ const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
         onClose();
     };
 
-    const openBilling = async () => {
-        try {
-            const planId = billingPeriod === 'annual' ? 'plan-pro-annual' : 'plan-pro';
-            await window.electronAPI.openBillingPortal(planId);
-        } catch (error) {
-            console.error('Billing portal could not be opened', error);
-        }
-    };
-
     const purchaseCredits = async () => {
         try {
             await window.electronAPI.purchaseCredits();

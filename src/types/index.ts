@@ -9,9 +9,7 @@ export interface Client {
     tax_number?: string;
     gib_user_code?: string;
     gib_password?: string;
-    status: 'active' | 'inactive' | 'pending';
-    created_at: string;
-    updated_at?: string;
+    status: 'active' | 'inactive';
 }
 
 export interface ClientFormData {
@@ -22,21 +20,19 @@ export interface ClientFormData {
     status?: 'active' | 'inactive' | 'pending';
 }
 
-// Tebligat types
+// Tebligat types (matches SQLite query output)
 export interface Tebligat {
     id: number;
     client_id: number;
     firm_name?: string;
-    document_no?: string;
-    document_date?: string;
+    tebligat_date?: string;
+    sender?: string;
     subject?: string;
-    status: 'unread' | 'read' | 'processed';
-    content?: string;
-    summary?: string;
+    status?: string;
+    document_no?: string;
     document_url?: string;
     document_path?: string;
-    created_at: string;
-    updated_at?: string;
+    created_at?: string;
 }
 
 export interface TebligatGroup {
@@ -60,6 +56,8 @@ export interface ScanProgress {
     currentClient: string | null;
     errors: number;
     successes: number;
+    insufficientCredits?: boolean;
+    completed?: boolean;
 }
 
 export interface ScanState {
@@ -76,6 +74,12 @@ export interface ScanStatus {
     type: 'info' | 'error' | 'success' | 'process';
     progress?: ScanProgress;
 }
+
+// Discriminated union for scan updates from main process
+export type ScanUpdate =
+    | { type: 'progress'; progress: ScanProgress }
+    | { type: 'scan-state'; scanState: ScanState }
+    | ScanStatus;
 
 // Schedule types
 export interface ScheduleConfig {
@@ -135,7 +139,7 @@ export interface LoginResult {
 
 // Statement Converter types
 export interface StatementConvertRequest {
-    fileBuffer: ArrayBuffer | number[];  // ArrayBuffer or serialized byte array for IPC
+    fileBuffer: ArrayBuffer | number[]; // ArrayBuffer or serialized byte array for IPC
     mimeType: string;
     prompt?: string;
 }
@@ -149,7 +153,13 @@ export interface LogEntry {
 
 // Update status types
 export interface UpdateStatus {
-    status: 'update-checking' | 'update-available' | 'update-not-available' | 'update-error' | 'update-download-progress' | 'update-downloaded';
+    status:
+        | 'update-checking'
+        | 'update-available'
+        | 'update-not-available'
+        | 'update-error'
+        | 'update-download-progress'
+        | 'update-downloaded';
     version?: string;
     message?: string;
     percent?: number;

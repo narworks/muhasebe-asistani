@@ -1,12 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { clientCreateSchema, clientEditSchema, validateForm } from '../../lib/validations';
-import type { ScheduleStatus } from '../../types';
-
-// Type definitions
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type Tebligat = any;
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type Client = any;
+import type { ScheduleStatus, Client, Tebligat, ScanUpdate } from '../../types';
 
 interface ClientGroup {
     client_id: number;
@@ -71,7 +65,7 @@ const ETebligat: React.FC = () => {
         clientCount: 0,
     });
     const [scheduleLoading, setScheduleLoading] = useState(false);
-    const [_creditBalance, setCreditBalance] = useState<{ totalRemaining: number } | null>(null);
+    const [, setCreditBalance] = useState<{ totalRemaining: number } | null>(null);
     const [insufficientCredits, setInsufficientCredits] = useState(false);
     const [subscriptionStatus, setSubscriptionStatus] = useState<{
         isActive: boolean;
@@ -105,7 +99,7 @@ const ETebligat: React.FC = () => {
     };
 
     useEffect(() => {
-        const handleUpdate = (status: any) => {
+        const handleUpdate = (status: ScanUpdate) => {
             if (status.type === 'progress') {
                 setScanProgress(status.progress);
                 if (status.progress.insufficientCredits) {
@@ -325,10 +319,11 @@ const ETebligat: React.FC = () => {
     const handleFrequencyChange = async (
         newFrequency: 'daily' | 'weekdays' | 'weekends' | 'custom'
     ) => {
+        const currentDays = scheduleConfig.customDays ?? [];
         const newCustomDays =
-            newFrequency === 'custom' && scheduleConfig.customDays.length === 0
+            newFrequency === 'custom' && currentDays.length === 0
                 ? [1, 2, 3, 4, 5] // Default to weekdays if switching to custom with no days selected
-                : scheduleConfig.customDays;
+                : currentDays;
 
         setScheduleConfig((prev) => ({
             ...prev,
@@ -353,9 +348,10 @@ const ETebligat: React.FC = () => {
     };
 
     const handleCustomDayToggle = async (day: number) => {
-        const newDays = scheduleConfig.customDays.includes(day)
-            ? scheduleConfig.customDays.filter((d) => d !== day)
-            : [...scheduleConfig.customDays, day].sort((a, b) => a - b);
+        const days = scheduleConfig.customDays ?? [];
+        const newDays = days.includes(day)
+            ? days.filter((d) => d !== day)
+            : [...days, day].sort((a, b) => a - b);
 
         // Don't allow empty selection
         if (newDays.length === 0) return;
@@ -409,14 +405,16 @@ const ETebligat: React.FC = () => {
             setClientForm({ firm_name: '', tax_number: '', gib_user_code: '', gib_password: '' });
             setEditingClientId(null);
             await fetchClients();
-        } catch (err: any) {
-            setClientErrors({ _form: err.message || 'Mükellef kaydedilemedi.' });
+        } catch (err: unknown) {
+            setClientErrors({
+                _form: err instanceof Error ? err.message : 'Mükellef kaydedilemedi.',
+            });
         } finally {
             setSavingClient(false);
         }
     };
 
-    const handleEditClient = (client: any) => {
+    const handleEditClient = (client: Client) => {
         setEditingClientId(client.id);
         setClientForm({
             firm_name: client.firm_name || '',
@@ -441,13 +439,13 @@ const ETebligat: React.FC = () => {
         }
     };
 
-    const handleToggleClientStatus = async (client: any) => {
+    const handleToggleClientStatus = async (client: Client) => {
         const newStatus = client.status === 'active' ? 'inactive' : 'active';
         await window.electronAPI.updateClientStatus(client.id, newStatus);
         await fetchClients();
     };
 
-    const handleDeleteClient = async (client: any) => {
+    const handleDeleteClient = async (client: Client) => {
         if (!confirm(`${client.firm_name} kaydını silmek istediğinize emin misiniz?`)) {
             return;
         }
@@ -455,7 +453,7 @@ const ETebligat: React.FC = () => {
         await fetchClients();
     };
 
-    const escapeCsvValue = (value: any) => {
+    const escapeCsvValue = (value: unknown) => {
         if (value === null || value === undefined) return '';
         const str = String(value);
         if (str.includes('"') || str.includes(',') || str.includes('\n')) {
@@ -470,8 +468,11 @@ const ETebligat: React.FC = () => {
             if (!result.success) {
                 addLog(`Döküman açılamadı: ${result.error}`, 'error');
             }
-        } catch (err: any) {
-            addLog(`Döküman açılamadı: ${err.message}`, 'error');
+        } catch (err: unknown) {
+            addLog(
+                `Döküman açılamadı: ${err instanceof Error ? err.message : 'Bilinmeyen hata'}`,
+                'error'
+            );
         }
     };
 
@@ -489,8 +490,11 @@ const ETebligat: React.FC = () => {
             } else {
                 addLog(`Döküman indirilemedi: ${result.error}`, 'error');
             }
-        } catch (err: any) {
-            addLog(`Döküman indirilemedi: ${err.message}`, 'error');
+        } catch (err: unknown) {
+            addLog(
+                `Döküman indirilemedi: ${err instanceof Error ? err.message : 'Bilinmeyen hata'}`,
+                'error'
+            );
         } finally {
             setFetchingDocumentId(null);
         }
@@ -502,8 +506,11 @@ const ETebligat: React.FC = () => {
             if (!result.success) {
                 addLog(`Klasör açılamadı: ${result.error}`, 'error');
             }
-        } catch (err: any) {
-            addLog(`Klasör açılamadı: ${err.message}`, 'error');
+        } catch (err: unknown) {
+            addLog(
+                `Klasör açılamadı: ${err instanceof Error ? err.message : 'Bilinmeyen hata'}`,
+                'error'
+            );
         }
     };
 
@@ -511,11 +518,14 @@ const ETebligat: React.FC = () => {
         try {
             const result = await window.electronAPI.selectDocumentsFolder();
             if (result.success) {
-                setDocumentsFolder(result.path);
+                setDocumentsFolder(result.path ?? null);
                 addLog(`Döküman klasörü değiştirildi: ${result.path}`, 'success');
             }
-        } catch (err: any) {
-            addLog(`Klasör seçilemedi: ${err.message}`, 'error');
+        } catch (err: unknown) {
+            addLog(
+                `Klasör seçilemedi: ${err instanceof Error ? err.message : 'Bilinmeyen hata'}`,
+                'error'
+            );
         }
     };
 
@@ -525,8 +535,11 @@ const ETebligat: React.FC = () => {
             if (!result.success) {
                 addLog(`Döküman klasörü açılamadı: ${result.error}`, 'error');
             }
-        } catch (err: any) {
-            addLog(`Döküman klasörü açılamadı: ${err.message}`, 'error');
+        } catch (err: unknown) {
+            addLog(
+                `Döküman klasörü açılamadı: ${err instanceof Error ? err.message : 'Bilinmeyen hata'}`,
+                'error'
+            );
         }
     };
 
@@ -552,7 +565,7 @@ const ETebligat: React.FC = () => {
     };
 
     // Format date from document number or raw date
-    const formatDisplayDate = (row: any) => {
+    const formatDisplayDate = (row: Tebligat) => {
         // If we have created_at, use it for display
         if (row.created_at) {
             try {
@@ -590,8 +603,11 @@ const ETebligat: React.FC = () => {
             } else if (!result.canceled) {
                 addLog(`CSV kaydedilemedi: ${result.error}`, 'error');
             }
-        } catch (err: any) {
-            addLog(`CSV kaydedilemedi: ${err.message}`, 'error');
+        } catch (err: unknown) {
+            addLog(
+                `CSV kaydedilemedi: ${err instanceof Error ? err.message : 'Bilinmeyen hata'}`,
+                'error'
+            );
         }
     };
 
@@ -616,8 +632,11 @@ const ETebligat: React.FC = () => {
             } else if (!result.canceled) {
                 addLog(`Excel kaydedilemedi: ${result.error}`, 'error');
             }
-        } catch (err: any) {
-            addLog(`Excel kaydedilemedi: ${err.message}`, 'error');
+        } catch (err: unknown) {
+            addLog(
+                `Excel kaydedilemedi: ${err instanceof Error ? err.message : 'Bilinmeyen hata'}`,
+                'error'
+            );
         }
     };
 
@@ -641,7 +660,7 @@ const ETebligat: React.FC = () => {
             if (!acc[clientId]) {
                 acc[clientId] = {
                     client_id: clientId,
-                    firm_name: row.firm_name,
+                    firm_name: row.firm_name ?? '',
                     tebligatlar: [],
                 };
             }
@@ -780,7 +799,7 @@ const ETebligat: React.FC = () => {
                                     <div className="flex gap-3">
                                         <button
                                             onClick={() =>
-                                                handleOpenDocument(selectedTebligat.document_path)
+                                                handleOpenDocument(selectedTebligat.document_path!)
                                             }
                                             className="flex items-center gap-2 px-3 py-2 bg-sky-50 text-sky-700 rounded-lg hover:bg-sky-100 transition-colors"
                                         >
@@ -808,7 +827,7 @@ const ETebligat: React.FC = () => {
                                         </button>
                                         <button
                                             onClick={() =>
-                                                handleShareDocument(selectedTebligat.document_path)
+                                                handleShareDocument(selectedTebligat.document_path!)
                                             }
                                             className="flex items-center gap-2 px-3 py-2 bg-emerald-50 text-emerald-700 rounded-lg hover:bg-emerald-100 transition-colors"
                                         >
@@ -1210,7 +1229,13 @@ const ETebligat: React.FC = () => {
                                                     key={option.value}
                                                     type="button"
                                                     onClick={() =>
-                                                        handleFrequencyChange(option.value as any)
+                                                        handleFrequencyChange(
+                                                            option.value as
+                                                                | 'daily'
+                                                                | 'weekdays'
+                                                                | 'weekends'
+                                                                | 'custom'
+                                                        )
                                                     }
                                                     className={`flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all ${
                                                         scheduleConfig.frequency === option.value
@@ -1248,9 +1273,9 @@ const ETebligat: React.FC = () => {
                                                             handleCustomDayToggle(day.value)
                                                         }
                                                         className={`w-12 h-10 rounded-lg text-sm font-semibold transition-all ${
-                                                            scheduleConfig.customDays.includes(
-                                                                day.value
-                                                            )
+                                                            (
+                                                                scheduleConfig.customDays ?? []
+                                                            ).includes(day.value)
                                                                 ? 'bg-indigo-600 text-white shadow-md'
                                                                 : 'bg-gray-50 text-gray-600 hover:bg-gray-100 border border-gray-200'
                                                         }`}
@@ -1877,7 +1902,7 @@ const ETebligat: React.FC = () => {
                                                                                         <button
                                                                                             onClick={() =>
                                                                                                 handleOpenDocument(
-                                                                                                    row.document_path
+                                                                                                    row.document_path!
                                                                                                 )
                                                                                             }
                                                                                             className="text-sky-600 hover:text-sky-700"
@@ -1911,7 +1936,7 @@ const ETebligat: React.FC = () => {
                                                                                         <button
                                                                                             onClick={() =>
                                                                                                 handleShareDocument(
-                                                                                                    row.document_path
+                                                                                                    row.document_path!
                                                                                                 )
                                                                                             }
                                                                                             className="text-emerald-600 hover:text-emerald-700"

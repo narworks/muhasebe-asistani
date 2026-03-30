@@ -1,6 +1,7 @@
 const cron = require('node-cron');
 const settings = require('./settings');
 const database = require('./database');
+const logger = require('./logger');
 
 let scheduledTask = null;
 let onScanCallback = null;
@@ -26,7 +27,7 @@ function estimateScanDuration() {
     let activeClientCount = 0;
     try {
         const clients = database.getClients();
-        activeClientCount = clients.filter(c => c.status === 'active').length;
+        activeClientCount = clients.filter((c) => c.status === 'active').length;
     } catch (e) {
         console.error('[Scheduler] Could not get client count:', e.message);
     }
@@ -68,7 +69,9 @@ function estimateScanDuration() {
     // Add 20% buffer for safety
     const bufferedMinutes = Math.ceil(totalMinutes * 1.2);
 
-    console.log(`[Scheduler] Estimated duration: ${bufferedMinutes} minutes for ${activeClientCount} clients`);
+    logger.debug(
+        `[Scheduler] Estimated duration: ${bufferedMinutes} minutes for ${activeClientCount} clients`
+    );
 
     return { totalMinutes: bufferedMinutes, clientCount: activeClientCount };
 }
@@ -111,7 +114,9 @@ function calculateStartTime(finishTime, durationMinutes, frequency, customDays) 
 
         if (allowedDays.includes(dayOfWeek)) {
             // Calculate start time by subtracting duration
-            const candidateStart = new Date(candidateFinish.getTime() - durationMinutes * 60 * 1000);
+            const candidateStart = new Date(
+                candidateFinish.getTime() - durationMinutes * 60 * 1000
+            );
 
             // If it's today, check if the start time hasn't passed yet
             if (candidateStart > now) {
@@ -187,14 +192,19 @@ function startSchedule(finishByTime, frequency = 'daily', customDays = []) {
                 customDays: customDays,
                 estimatedDurationMinutes: 0,
                 estimatedStartTime: null,
-                nextScheduledScanAt: null
-            }
+                nextScheduledScanAt: null,
+            },
         });
         return false;
     }
 
     // Calculate when to start
-    const { startTime, finishTime } = calculateStartTime(finishByTime, totalMinutes, frequency, customDays);
+    const { startTime, finishTime } = calculateStartTime(
+        finishByTime,
+        totalMinutes,
+        frequency,
+        customDays
+    );
     const cronExpression = buildCronExpression(startTime, frequency, customDays);
 
     if (!cron.validate(cronExpression)) {
@@ -206,26 +216,35 @@ function startSchedule(finishByTime, frequency = 'daily', customDays = []) {
         daily: 'Her gün',
         weekdays: 'Hafta içi',
         weekends: 'Hafta sonu',
-        custom: `Özel günler (${customDays.join(',')})`
+        custom: `Özel günler (${customDays.join(',')})`,
     }[frequency];
 
-    console.log(`[Scheduler] Scan scheduled: ${frequencyLabel}, finish by ${finishByTime}, start at ${startTime.toLocaleTimeString('tr-TR')} (cron: ${cronExpression})`);
-    console.log(`[Scheduler] Estimated duration: ${totalMinutes} minutes for ${clientCount} clients`);
+    logger.debug(
+        `[Scheduler] Scan scheduled: ${frequencyLabel}, finish by ${finishByTime}, start at ${startTime.toLocaleTimeString('tr-TR')} (cron: ${cronExpression})`
+    );
+    logger.debug(
+        `[Scheduler] Estimated duration: ${totalMinutes} minutes for ${clientCount} clients`
+    );
 
     scheduledTask = cron.schedule(cronExpression, () => {
-        console.log(`[Scheduler] Triggered scheduled scan at ${new Date().toISOString()}`);
+        logger.debug(`[Scheduler] Triggered scheduled scan at ${new Date().toISOString()}`);
 
         // Recalculate next run
         const { totalMinutes: newDuration } = estimateScanDuration();
-        const { startTime: nextStart, finishTime: nextFinish } = calculateStartTime(finishByTime, newDuration, frequency, customDays);
+        const { startTime: nextStart, finishTime: nextFinish } = calculateStartTime(
+            finishByTime,
+            newDuration,
+            frequency,
+            customDays
+        );
 
         settings.updateSettings({
             schedule: {
                 lastScheduledScanAt: new Date().toISOString(),
                 estimatedStartTime: nextStart.toISOString(),
                 nextScheduledScanAt: nextFinish.toISOString(),
-                estimatedDurationMinutes: newDuration
-            }
+                estimatedDurationMinutes: newDuration,
+            },
         });
 
         if (onScanCallback) onScanCallback();
@@ -240,8 +259,8 @@ function startSchedule(finishByTime, frequency = 'daily', customDays = []) {
             customDays: customDays,
             estimatedDurationMinutes: totalMinutes,
             estimatedStartTime: startTime.toISOString(),
-            nextScheduledScanAt: finishTime.toISOString()
-        }
+            nextScheduledScanAt: finishTime.toISOString(),
+        },
     });
 
     return true;
@@ -256,8 +275,8 @@ function stopSchedule() {
         schedule: {
             enabled: false,
             estimatedStartTime: null,
-            nextScheduledScanAt: null
-        }
+            nextScheduledScanAt: null,
+        },
     });
 }
 
@@ -285,7 +304,7 @@ function getStatus() {
         nextScheduledScanAt: current.schedule?.nextScheduledScanAt || null,
         estimatedStartTime: current.schedule?.estimatedStartTime || null,
         estimatedDurationMinutes: estimatedDurationMinutes,
-        clientCount: clientCount
+        clientCount: clientCount,
     };
 }
 
@@ -303,4 +322,11 @@ function refreshSchedule() {
     }
 }
 
-module.exports = { init, startSchedule, stopSchedule, getStatus, refreshSchedule, estimateScanDuration };
+module.exports = {
+    init,
+    startSchedule,
+    stopSchedule,
+    getStatus,
+    refreshSchedule,
+    estimateScanDuration,
+};

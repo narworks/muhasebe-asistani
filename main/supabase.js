@@ -4,6 +4,7 @@
  */
 
 const { createClient } = require('@supabase/supabase-js');
+const logger = require('./logger');
 
 let supabase = null;
 
@@ -17,7 +18,7 @@ const init = () => {
 
     if (!supabaseUrl || !supabaseAnonKey) {
         throw new Error(
-            'SUPABASE_URL ve SUPABASE_ANON_KEY environment variable\'ları .env dosyasında tanımlanmalıdır.'
+            "SUPABASE_URL ve SUPABASE_ANON_KEY environment variable'ları .env dosyasında tanımlanmalıdır."
         );
     }
 
@@ -25,11 +26,11 @@ const init = () => {
         auth: {
             autoRefreshToken: true,
             persistSession: false, // Electron'da session'ı kendimiz yönetiyoruz
-            detectSessionInUrl: false
-        }
+            detectSessionInUrl: false,
+        },
     });
 
-    console.log('✅ Supabase client initialized');
+    logger.debug('✅ Supabase client initialized');
 };
 
 /**
@@ -54,7 +55,7 @@ const signInWithEmail = async (email, password) => {
     const client = getClient();
     const { data, error } = await client.auth.signInWithPassword({
         email,
-        password
+        password,
     });
 
     if (error) {
@@ -75,7 +76,7 @@ const signUpWithEmail = async (email, password) => {
     const client = getClient();
     const { data, error } = await client.auth.signUp({
         email,
-        password
+        password,
     });
 
     if (error) {
@@ -117,7 +118,8 @@ const getSubscription = async (userId) => {
         .eq('user_id', userId)
         .single();
 
-    if (error && error.code !== 'PGRST116') { // PGRST116 = no rows found
+    if (error && error.code !== 'PGRST116') {
+        // PGRST116 = no rows found
         console.error('Supabase get subscription error:', error.message);
         return { subscription: null, error };
     }
@@ -129,7 +131,7 @@ const getSubscription = async (userId) => {
             .insert({
                 user_id: userId,
                 status: 'inactive',
-                plan: 'pro'
+                plan: 'pro',
             })
             .select()
             .single();
@@ -158,7 +160,7 @@ const updateSubscription = async (userId, updates) => {
         .from('subscriptions')
         .update({
             ...updates,
-            last_check_at: new Date().toISOString()
+            last_check_at: new Date().toISOString(),
         })
         .eq('user_id', userId)
         .select()
@@ -187,7 +189,7 @@ const updateDeviceInfo = async (userId, deviceId, appVersion) => {
         .update({
             device_id: deviceId,
             app_version: appVersion,
-            last_check_at: new Date().toISOString()
+            last_check_at: new Date().toISOString(),
         })
         .eq('user_id', userId);
 
@@ -204,21 +206,28 @@ const updateDeviceInfo = async (userId, deviceId, appVersion) => {
  * @param {Object} logData - Log verileri
  * @returns {Promise<{success, error}>}
  */
-const logUsage = async ({ userId, subscriptionId, operationType, tokensUsed, costUsd, deviceId, success, errorMessage }) => {
+const logUsage = async ({
+    userId,
+    subscriptionId,
+    operationType,
+    tokensUsed,
+    costUsd,
+    deviceId,
+    success,
+    errorMessage,
+}) => {
     const client = getClient();
 
-    const { error } = await client
-        .from('usage_logs')
-        .insert({
-            user_id: userId,
-            subscription_id: subscriptionId,
-            operation_type: operationType,
-            tokens_used: tokensUsed || 0,
-            cost_usd: costUsd || 0,
-            device_id: deviceId,
-            success: success !== false,
-            error_message: errorMessage || null
-        });
+    const { error } = await client.from('usage_logs').insert({
+        user_id: userId,
+        subscription_id: subscriptionId,
+        operation_type: operationType,
+        tokens_used: tokensUsed || 0,
+        cost_usd: costUsd || 0,
+        device_id: deviceId,
+        success: success !== false,
+        error_message: errorMessage || null,
+    });
 
     if (error) {
         console.error('Failed to log usage:', error.message);
@@ -237,7 +246,7 @@ const getCredits = async (userId) => {
     const client = getClient();
 
     const { data, error } = await client.rpc('get_credit_balance', {
-        p_user_id: userId
+        p_user_id: userId,
     });
 
     if (error) {
@@ -263,7 +272,7 @@ const deductCredits = async (userId, amount, operationType, deviceId) => {
         p_user_id: userId,
         p_amount: amount,
         p_operation_type: operationType,
-        p_device_id: deviceId || null
+        p_device_id: deviceId || null,
     });
 
     if (error) {
@@ -287,7 +296,7 @@ const refundCredits = async (userId, amount, operationType) => {
     const { data, error } = await client.rpc('refund_credits', {
         p_user_id: userId,
         p_amount: amount,
-        p_operation_type: operationType
+        p_operation_type: operationType,
     });
 
     if (error) {
@@ -326,5 +335,5 @@ module.exports = {
     getCredits,
     deductCredits,
     refundCredits,
-    signOut
+    signOut,
 };

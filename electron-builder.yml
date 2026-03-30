@@ -8,7 +8,6 @@ files:
   - "dist/**/*"
   - "main/**/*"
   - "package.json"
-  - ".env"
   - "!src/**/*"
   - "!vite.config.*"
   - "!index.html"
@@ -17,7 +16,6 @@ files:
 # Native module handling (important for better-sqlite3)
 asarUnpack:
   - "**/*.node"
-  - ".env"
 
 mac:
   target: dmg

@@ -17,12 +17,9 @@
         },
         "allowImportingTsExtensions": true,
         "noEmit": true,
-        /* Strict Type-Checking Options - Gradual migration */
-        "strict": false,
-        "noImplicitAny": false,
-        "strictNullChecks": false,
-        "strictFunctionTypes": true,
-        "noImplicitReturns": false,
+        /* Strict Type-Checking Options */
+        "strict": true,
+        "noImplicitReturns": true,
         "noFallthroughCasesInSwitch": true,
         "forceConsistentCasingInFileNames": true,
         "incremental": true,

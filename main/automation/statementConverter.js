@@ -1,6 +1,6 @@
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const pdf = require('pdf-parse');
-const xlsx = require('xlsx');
+const ExcelJS = require('exceljs');
 
 // Note: API anahtarı kullanıcıdan alınır ve güvenli şekilde saklanır.
 
@@ -18,11 +18,24 @@ async function convert(fileBuffer, mimeType, prompt, apiKey) {
     if (mimeType === 'application/pdf') {
         const data = await pdf(fileBuffer);
         fileContent = data.text;
-    } else if (mimeType === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' || mimeType.includes('sheet') || mimeType.includes('excel')) {
-        const workbook = xlsx.read(fileBuffer, { type: 'buffer' });
-        const sheetName = workbook.SheetNames[0];
-        const worksheet = workbook.Sheets[sheetName];
-        fileContent = xlsx.utils.sheet_to_csv(worksheet);
+    } else if (
+        mimeType === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
+        mimeType.includes('sheet') ||
+        mimeType.includes('excel')
+    ) {
+        const workbook = new ExcelJS.Workbook();
+        await workbook.xlsx.load(fileBuffer);
+        const worksheet = workbook.worksheets[0];
+        const rows = [];
+        worksheet.eachRow((row) => {
+            rows.push(
+                row.values
+                    .slice(1)
+                    .map((v) => (v != null ? String(v) : ''))
+                    .join(',')
+            );
+        });
+        fileContent = rows.join('\n');
     } else if (mimeType === 'text/plain') {
         fileContent = fileBuffer.toString('utf-8');
     } else {
@@ -59,5 +72,5 @@ async function convert(fileBuffer, mimeType, prompt, apiKey) {
 }
 
 module.exports = {
-    convert
+    convert,
 };

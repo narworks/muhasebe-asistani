@@ -1,13 +1,14 @@
 const Database = require('better-sqlite3');
 const path = require('path');
 const { app, safeStorage } = require('electron');
+const logger = require('./logger');
 
 let db;
 
 function init() {
     const userDataPath = app.getPath('userData');
     const dbPath = path.join(userDataPath, 'local_data.db');
-    console.log('Database path:', dbPath);
+    logger.debug('Database path:', dbPath);
 
     db = new Database(dbPath);
 

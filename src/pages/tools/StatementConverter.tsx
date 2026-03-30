@@ -5,47 +5,122 @@ import Card from '../../components/ui/Card';
 // --- ICONS ---
 // (Icons omitted for brevity - same as before)
 const UploadIcon = () => (
-    <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 text-slate-500 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+    <svg
+        xmlns="http://www.w3.org/2000/svg"
+        className="h-12 w-12 text-slate-500 mx-auto"
+        fill="none"
+        viewBox="0 0 24 24"
+        stroke="currentColor"
+    >
+        <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={1}
+            d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"
+        />
     </svg>
 );
 const FileIcon = () => (
-    <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 text-sky-500 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2-2z" />
+    <svg
+        xmlns="http://www.w3.org/2000/svg"
+        className="h-12 w-12 text-sky-500 mx-auto"
+        fill="none"
+        viewBox="0 0 24 24"
+        stroke="currentColor"
+    >
+        <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth="1"
+            d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2-2z"
+        />
     </svg>
 );
 const SpinnerIcon = () => (
-    <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+    <svg
+        className="animate-spin -ml-1 mr-3 h-5 w-5 text-white"
+        xmlns="http://www.w3.org/2000/svg"
+        fill="none"
+        viewBox="0 0 24 24"
+    >
+        <circle
+            className="opacity-25"
+            cx="12"
+            cy="12"
+            r="10"
+            stroke="currentColor"
+            strokeWidth="4"
+        ></circle>
+        <path
+            className="opacity-75"
+            fill="currentColor"
+            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+        ></path>
     </svg>
 );
 const TrashIcon = () => (
-    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+    <svg
+        xmlns="http://www.w3.org/2000/svg"
+        className="h-4 w-4"
+        fill="none"
+        viewBox="0 0 24 24"
+        stroke="currentColor"
+    >
+        <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth="2"
+            d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+        />
     </svg>
 );
 const DownloadIcon = () => (
-    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+    <svg
+        xmlns="http://www.w3.org/2000/svg"
+        className="h-4 w-4 mr-2"
+        fill="none"
+        viewBox="0 0 24 24"
+        stroke="currentColor"
+    >
+        <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth="2"
+            d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
+        />
     </svg>
 );
 
-const ACCEPTED_FILE_TYPES = ['application/pdf', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'text/plain', 'text/csv', '.csv'];
+const ACCEPTED_FILE_TYPES = [
+    'application/pdf',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'text/plain',
+    'text/csv',
+    '.csv',
+];
 const PREDEFINED_TEMPLATES = [
-    { title: "Basit Tarih, Açıklama, Tutar", prompt: "Dosyadaki tarih, işlem açıklaması ve tutar sütunlarını bularak CSV formatına dönüştür." },
-    { title: "Borç/Alacak Ayrı Sütun", prompt: "Tarih, Açıklama, Borç ve Alacak sütunları oluştur. Gelen para alacak, giden para borç sütununa yazılsın." },
-    { title: "KDV Ayıklama (%20)", prompt: "Tarih, Açıklama, Tutar, KDV (%20) ve KDV Hariç Tutar sütunları oluştur. Tutar içindeki %20 KDV'yi hesaplayıp ayır." },
+    {
+        title: 'Basit Tarih, Açıklama, Tutar',
+        prompt: 'Dosyadaki tarih, işlem açıklaması ve tutar sütunlarını bularak CSV formatına dönüştür.',
+    },
+    {
+        title: 'Borç/Alacak Ayrı Sütun',
+        prompt: 'Tarih, Açıklama, Borç ve Alacak sütunları oluştur. Gelen para alacak, giden para borç sütununa yazılsın.',
+    },
+    {
+        title: 'KDV Ayıklama (%20)',
+        prompt: "Tarih, Açıklama, Tutar, KDV (%20) ve KDV Hariç Tutar sütunları oluştur. Tutar içindeki %20 KDV'yi hesaplayıp ayır.",
+    },
 ];
 const USER_TEMPLATES_KEY = 'userStatementTemplates';
 
-// Helper to interact with SheetJS (we might need to import it if not global in electron)
-// For now assuming script tag logic or we skip preview logic that relies on XLSX if complicated.
-// In electron, we can import * as XLSX from 'xlsx' if we use nodeIntegration or bundler. 
-// Vite is bundler, so:
-import * as XLSX from 'xlsx';
+import ExcelJS from 'exceljs';
 
-interface UserTemplate { id: number; title: string; prompt: string; }
+interface UserTemplate {
+    id: number;
+    title: string;
+    prompt: string;
+}
 
 const StatementConverter: React.FC = () => {
     // --- State ---
@@ -59,7 +134,10 @@ const StatementConverter: React.FC = () => {
     const [error, setError] = useState<string | null>(null);
     const [userTemplates, setUserTemplates] = useState<UserTemplate[]>([]);
     const [creditBalance, setCreditBalance] = useState<{ totalRemaining: number } | null>(null);
-    const [subscriptionStatus, setSubscriptionStatus] = useState<{ isActive: boolean; status: string } | null>(null);
+    const [subscriptionStatus, setSubscriptionStatus] = useState<{
+        isActive: boolean;
+        status: string;
+    } | null>(null);
 
     const { currentUser } = useAuth();
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -67,13 +145,21 @@ const StatementConverter: React.FC = () => {
     // --- Effects ---
     useEffect(() => {
         // Check subscription status
-        window.electronAPI.getSubscriptionStatus().then(setSubscriptionStatus).catch(() => {
-            setSubscriptionStatus({ isActive: false, status: 'unknown' });
-        });
+        window.electronAPI
+            .getSubscriptionStatus()
+            .then(setSubscriptionStatus)
+            .catch(() => {
+                setSubscriptionStatus({ isActive: false, status: 'unknown' });
+            });
 
-        window.electronAPI.getCredits().then(setCreditBalance).catch(() => {});
+        window.electronAPI
+            .getCredits()
+            .then(setCreditBalance)
+            .catch(() => {});
         window.electronAPI.onCreditsUpdated((credits) => setCreditBalance(credits));
-        return () => { window.electronAPI.removeCreditsListeners(); };
+        return () => {
+            window.electronAPI.removeCreditsListeners();
+        };
     }, []);
 
     useEffect(() => {
@@ -91,13 +177,20 @@ const StatementConverter: React.FC = () => {
 
         const reader = new FileReader();
         const generatePreview = (file: File) => {
-            if (file.type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' || file.name.endsWith('.xlsx')) {
-                reader.onload = (e) => {
-                    const data = new Uint8Array(e.target?.result as ArrayBuffer);
-                    const workbook = XLSX.read(data, { type: 'array' });
-                    const sheetName = workbook.SheetNames[0];
-                    const worksheet = workbook.Sheets[sheetName];
-                    const json: string[][] = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+            if (
+                file.type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
+                file.name.endsWith('.xlsx')
+            ) {
+                reader.onload = async (e) => {
+                    const buffer = e.target?.result as ArrayBuffer;
+                    const workbook = new ExcelJS.Workbook();
+                    await workbook.xlsx.load(buffer);
+                    const worksheet = workbook.worksheets[0];
+                    const json: string[][] = [];
+                    worksheet.eachRow((row) => {
+                        const cells = Array.isArray(row.values) ? row.values.slice(1) : [];
+                        json.push(cells.map((v: unknown) => (v != null ? String(v) : '')));
+                    });
 
                     const previewTable = (
                         <div className="overflow-x-auto max-h-60 bg-slate-900/50 rounded-lg">
@@ -106,7 +199,12 @@ const StatementConverter: React.FC = () => {
                                     {json.slice(0, 10).map((row, rIndex) => (
                                         <tr key={rIndex} className="border-b border-slate-700">
                                             {row.map((cell, cIndex) => (
-                                                <td key={cIndex} className="px-4 py-2 whitespace-nowrap">{String(cell)}</td>
+                                                <td
+                                                    key={cIndex}
+                                                    className="px-4 py-2 whitespace-nowrap"
+                                                >
+                                                    {String(cell)}
+                                                </td>
                                             ))}
                                         </tr>
                                     ))}
@@ -121,8 +219,8 @@ const StatementConverter: React.FC = () => {
                 // Parse CSV file for table preview
                 reader.onload = (e) => {
                     const textContent = e.target?.result as string;
-                    const lines = textContent.split('\n').filter(line => line.trim());
-                    const rows = lines.map(line => {
+                    const lines = textContent.split('\n').filter((line) => line.trim());
+                    const rows = lines.map((line) => {
                         // Simple CSV parsing (handles basic cases)
                         const cells: string[] = [];
                         let current = '';
@@ -148,7 +246,12 @@ const StatementConverter: React.FC = () => {
                                     {rows.slice(0, 10).map((row, rIndex) => (
                                         <tr key={rIndex} className="border-b border-slate-700">
                                             {row.map((cell, cIndex) => (
-                                                <td key={cIndex} className="px-4 py-2 whitespace-nowrap">{cell}</td>
+                                                <td
+                                                    key={cIndex}
+                                                    className="px-4 py-2 whitespace-nowrap"
+                                                >
+                                                    {cell}
+                                                </td>
                                             ))}
                                         </tr>
                                     ))}
@@ -165,16 +268,16 @@ const StatementConverter: React.FC = () => {
                     const previewText = (
                         <pre className="text-left text-xs bg-slate-900/50 p-4 rounded-lg overflow-auto max-h-60 text-slate-400 whitespace-pre-wrap">
                             {textContent.substring(0, 2000)}
-                            {textContent.length > 2000 ? "\n..." : ""}
+                            {textContent.length > 2000 ? '\n...' : ''}
                         </pre>
                     );
                     setPreviewContent(previewText);
                 };
-                reader.readAsText(file); // Note: PDF 'text' preview might be binary junk if read as text. 
-                // But original code did this. For PDF, usually we need a pdf viewer or parser. 
+                reader.readAsText(file); // Note: PDF 'text' preview might be binary junk if read as text.
+                // But original code did this. For PDF, usually we need a pdf viewer or parser.
                 // Keeping original behavior for generic text preview.
             } else {
-                setPreviewContent(<p className="text-slate-400">Önizleme oluşturulamadı.</p>)
+                setPreviewContent(<p className="text-slate-400">Önizleme oluşturulamadı.</p>);
             }
         };
 
@@ -185,10 +288,10 @@ const StatementConverter: React.FC = () => {
         if (conversionResult) {
             try {
                 const rows = conversionResult.trim().split('\n');
-                const data = rows.map(row => row.split(','));
+                const data = rows.map((row) => row.split(','));
                 setParsedResult(data);
             } catch {
-                setError("Sonuç verisi ayrıştırılamadı.");
+                setError('Sonuç verisi ayrıştırılamadı.');
                 setParsedResult(null);
             }
         } else {
@@ -207,17 +310,42 @@ const StatementConverter: React.FC = () => {
     };
 
     // ... (Other handlers like drag/drop omitted for brevity, logic remains same)
-    const handleFileInputChange = (event: React.ChangeEvent<HTMLInputElement>) => handleFileChange(event.target.files);
-    const handleDragOver = (event: DragEvent<HTMLDivElement>) => { event.preventDefault(); setIsDragging(true); };
-    const handleDragLeave = (event: DragEvent<HTMLDivElement>) => { event.preventDefault(); setIsDragging(false); };
-    const handleDrop = (event: DragEvent<HTMLDivElement>) => { event.preventDefault(); setIsDragging(false); handleFileChange(event.dataTransfer.files); };
+    const handleFileInputChange = (event: React.ChangeEvent<HTMLInputElement>) =>
+        handleFileChange(event.target.files);
+    const handleDragOver = (event: DragEvent<HTMLDivElement>) => {
+        event.preventDefault();
+        setIsDragging(true);
+    };
+    const handleDragLeave = (event: DragEvent<HTMLDivElement>) => {
+        event.preventDefault();
+        setIsDragging(false);
+    };
+    const handleDrop = (event: DragEvent<HTMLDivElement>) => {
+        event.preventDefault();
+        setIsDragging(false);
+        handleFileChange(event.dataTransfer.files);
+    };
     const handleBrowseClick = () => fileInputRef.current?.click();
-    const handleRemoveFile = () => { setUploadedFile(null); setConversionResult(null); setParsedResult(null); setError(null); };
+    const handleRemoveFile = () => {
+        setUploadedFile(null);
+        setConversionResult(null);
+        setParsedResult(null);
+        setError(null);
+    };
 
     const handleConvert = async () => {
-        if (!currentUser) { setError("İşlem yapmak için giriş yapmalısınız."); return; }
-        if (!uploadedFile) { setError("Lütfen önce bir dosya yükleyin."); return; }
-        if (userPrompt.trim().length === 0) { setError("Lütfen ne yapmak istediğinizi açıklayan bir komut girin."); return; }
+        if (!currentUser) {
+            setError('İşlem yapmak için giriş yapmalısınız.');
+            return;
+        }
+        if (!uploadedFile) {
+            setError('Lütfen önce bir dosya yükleyin.');
+            return;
+        }
+        if (userPrompt.trim().length === 0) {
+            setError('Lütfen ne yapmak istediğinizi açıklayan bir komut girin.');
+            return;
+        }
 
         setIsLoading(true);
         setConversionResult(null);
@@ -231,14 +359,20 @@ const StatementConverter: React.FC = () => {
             // Call Electron IPC
             const resultText = await window.electronAPI.convertStatement({
                 fileBuffer: Array.from(new Uint8Array(buffer)), // Convert to array for IPC
-                mimeType: uploadedFile.type || (uploadedFile.name.endsWith('.xlsx') ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' : uploadedFile.name.endsWith('.csv') ? 'text/csv' : 'text/plain'),
-                prompt: userPrompt
+                mimeType:
+                    uploadedFile.type ||
+                    (uploadedFile.name.endsWith('.xlsx')
+                        ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+                        : uploadedFile.name.endsWith('.csv')
+                          ? 'text/csv'
+                          : 'text/plain'),
+                prompt: userPrompt,
             });
 
             setConversionResult(resultText);
-
-        } catch (err: any) {
-            const message = err.message || "Dönüştürme sırasında bir hata oluştu.";
+        } catch (err: unknown) {
+            const message =
+                err instanceof Error ? err.message : 'Dönüştürme sırasında bir hata oluştu.';
             setError(message);
         } finally {
             setIsLoading(false);
@@ -261,7 +395,7 @@ const StatementConverter: React.FC = () => {
         if (!parsedResult || parsedResult.length === 0) return;
 
         const headers = parsedResult[0];
-        const dataRows = parsedResult.slice(1).map(row => {
+        const dataRows = parsedResult.slice(1).map((row) => {
             const obj: Record<string, string> = {};
             headers.forEach((header, index) => {
                 obj[header.trim()] = row[index]?.trim() || '';
@@ -280,7 +414,7 @@ const StatementConverter: React.FC = () => {
     };
 
     const handleSaveTemplate = () => {
-        const title = prompt("Bu şablon için kısa bir başlık girin:", "Yeni Şablonum");
+        const title = prompt('Bu şablon için kısa bir başlık girin:', 'Yeni Şablonum');
         if (title && userPrompt.trim()) {
             const newTemplate: UserTemplate = { id: Date.now(), title, prompt: userPrompt.trim() };
             const updatedTemplates = [...userTemplates, newTemplate];
@@ -290,7 +424,7 @@ const StatementConverter: React.FC = () => {
     };
 
     const handleDeleteTemplate = (id: number) => {
-        const updatedTemplates = userTemplates.filter(t => t.id !== id);
+        const updatedTemplates = userTemplates.filter((t) => t.id !== id);
         setUserTemplates(updatedTemplates);
         localStorage.setItem(USER_TEMPLATES_KEY, JSON.stringify(updatedTemplates));
     };
@@ -301,29 +435,56 @@ const StatementConverter: React.FC = () => {
             <div>
                 <div className="flex justify-between items-center mb-8">
                     <div>
-                        <h1 className="text-3xl md:text-4xl font-bold text-white mb-2">Banka Ekstresi Dönüştürücü</h1>
-                        <p className="text-slate-400 text-lg">Dosyanızı yükleyin ve yapay zekaya ne yapması gerektiğini söyleyin.</p>
+                        <h1 className="text-3xl md:text-4xl font-bold text-white mb-2">
+                            Banka Ekstresi Dönüştürücü
+                        </h1>
+                        <p className="text-slate-400 text-lg">
+                            Dosyanızı yükleyin ve yapay zekaya ne yapması gerektiğini söyleyin.
+                        </p>
                     </div>
                 </div>
 
                 <Card>
                     <div className="text-center py-12">
                         <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-amber-500/20 mb-6">
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                            <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                className="h-8 w-8 text-amber-400"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                stroke="currentColor"
+                            >
+                                <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth={2}
+                                    d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                                />
                             </svg>
                         </div>
                         <h2 className="text-2xl font-bold text-white mb-3">Abonelik Gerekli</h2>
                         <p className="text-slate-400 mb-6 max-w-md mx-auto">
-                            Bu özelliği kullanabilmek için aktif bir aboneliğe sahip olmanız gerekmektedir.
-                            Abonelik durumunuz: <span className="text-amber-400 font-medium">Pasif</span>
+                            Bu özelliği kullanabilmek için aktif bir aboneliğe sahip olmanız
+                            gerekmektedir. Abonelik durumunuz:{' '}
+                            <span className="text-amber-400 font-medium">Pasif</span>
                         </p>
                         <button
                             onClick={() => window.electronAPI.openBillingPortal()}
                             className="inline-flex items-center px-6 py-3 bg-sky-500 hover:bg-sky-600 text-white font-semibold rounded-lg transition-colors"
                         >
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+                            <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                className="h-5 w-5 mr-2"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                stroke="currentColor"
+                            >
+                                <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth={2}
+                                    d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"
+                                />
                             </svg>
                             Abonelik Satın Al
                         </button>
@@ -337,18 +498,27 @@ const StatementConverter: React.FC = () => {
         <div>
             <div className="flex justify-between items-center mb-8">
                 <div>
-                    <h1 className="text-3xl md:text-4xl font-bold text-white mb-2">Banka Ekstresi Dönüştürücü</h1>
-                    <p className="text-slate-400 text-lg">Dosyanızı yükleyin ve yapay zekaya ne yapması gerektiğini söyleyin.</p>
+                    <h1 className="text-3xl md:text-4xl font-bold text-white mb-2">
+                        Banka Ekstresi Dönüştürücü
+                    </h1>
+                    <p className="text-slate-400 text-lg">
+                        Dosyanızı yükleyin ve yapay zekaya ne yapması gerektiğini söyleyin.
+                    </p>
                 </div>
             </div>
 
             <div className="space-y-8">
-
                 <Card>
                     <h2 className="text-xl font-bold text-white mb-4">1. Kaynak Dosyayı Yükle</h2>
-                    {error && <div className="bg-red-500/20 text-red-400 p-3 rounded-lg mb-4 text-sm">{error}</div>}
+                    {error && (
+                        <div className="bg-red-500/20 text-red-400 p-3 rounded-lg mb-4 text-sm">
+                            {error}
+                        </div>
+                    )}
                     <div
-                        onDragOver={handleDragOver} onDragLeave={handleDragLeave} onDrop={handleDrop}
+                        onDragOver={handleDragOver}
+                        onDragLeave={handleDragLeave}
+                        onDrop={handleDrop}
                         className={`border-2 border-dashed border-slate-600 rounded-lg p-10 text-center transition-colors duration-300 ${isDragging ? 'bg-slate-700 border-sky-500' : 'bg-slate-800/50'}`}
                     >
                         {uploadedFile ? (
@@ -358,7 +528,10 @@ const StatementConverter: React.FC = () => {
                                 <p className="text-xs text-slate-400">
                                     {(uploadedFile.size / 1024).toFixed(2)} KB
                                 </p>
-                                <button onClick={handleRemoveFile} className="mt-4 text-sm text-red-400 hover:text-red-300 font-semibold">
+                                <button
+                                    onClick={handleRemoveFile}
+                                    className="mt-4 text-sm text-red-400 hover:text-red-300 font-semibold"
+                                >
                                     Dosyayı Kaldır
                                 </button>
                             </div>
@@ -366,10 +539,25 @@ const StatementConverter: React.FC = () => {
                             <div>
                                 <UploadIcon />
                                 <p className="mt-2 font-semibold text-slate-300">
-                                    Dosyanızı buraya sürükleyin veya <button type="button" onClick={handleBrowseClick} className="font-semibold text-sky-400 hover:text-sky-300">gözatın</button>
+                                    Dosyanızı buraya sürükleyin veya{' '}
+                                    <button
+                                        type="button"
+                                        onClick={handleBrowseClick}
+                                        className="font-semibold text-sky-400 hover:text-sky-300"
+                                    >
+                                        gözatın
+                                    </button>
                                 </p>
-                                <p className="text-xs text-slate-500 mt-1">Desteklenen formatlar: PDF, XLSX, CSV, TXT</p>
-                                <input type="file" ref={fileInputRef} onChange={handleFileInputChange} className="hidden" accept={ACCEPTED_FILE_TYPES.join(',')} />
+                                <p className="text-xs text-slate-500 mt-1">
+                                    Desteklenen formatlar: PDF, XLSX, CSV, TXT
+                                </p>
+                                <input
+                                    type="file"
+                                    ref={fileInputRef}
+                                    onChange={handleFileInputChange}
+                                    className="hidden"
+                                    accept={ACCEPTED_FILE_TYPES.join(',')}
+                                />
                             </div>
                         )}
                     </div>
@@ -383,14 +571,25 @@ const StatementConverter: React.FC = () => {
                 )}
 
                 <Card>
-                    <h2 className="text-xl font-bold text-white mb-4">2. Yapılacak İşlemi Tanımla</h2>
-                    <p className="text-slate-400 mb-4">Yapay zekanın dosyayla ne yapmasını istediğinizi basit cümlelerle açıklayın veya bir şablon seçin.</p>
+                    <h2 className="text-xl font-bold text-white mb-4">
+                        2. Yapılacak İşlemi Tanımla
+                    </h2>
+                    <p className="text-slate-400 mb-4">
+                        Yapay zekanın dosyayla ne yapmasını istediğinizi basit cümlelerle açıklayın
+                        veya bir şablon seçin.
+                    </p>
 
                     <div className="mb-4">
-                        <h3 className="text-sm font-semibold text-slate-300 mb-2">Hazır Şablonlar</h3>
+                        <h3 className="text-sm font-semibold text-slate-300 mb-2">
+                            Hazır Şablonlar
+                        </h3>
                         <div className="flex flex-wrap gap-2">
-                            {PREDEFINED_TEMPLATES.map(template => (
-                                <button key={template.title} onClick={() => setUserPrompt(template.prompt)} className="bg-slate-700 hover:bg-sky-500 text-xs text-slate-200 font-semibold py-1 px-3 rounded-full transition-colors">
+                            {PREDEFINED_TEMPLATES.map((template) => (
+                                <button
+                                    key={template.title}
+                                    onClick={() => setUserPrompt(template.prompt)}
+                                    className="bg-slate-700 hover:bg-sky-500 text-xs text-slate-200 font-semibold py-1 px-3 rounded-full transition-colors"
+                                >
                                     {template.title}
                                 </button>
                             ))}
@@ -398,14 +597,25 @@ const StatementConverter: React.FC = () => {
                     </div>
                     {userTemplates.length > 0 && (
                         <div className="mb-4 pt-3 border-t border-slate-700">
-                            <h3 className="text-sm font-semibold text-slate-300 mb-2">Kaydettiğim Şablonlar</h3>
+                            <h3 className="text-sm font-semibold text-slate-300 mb-2">
+                                Kaydettiğim Şablonlar
+                            </h3>
                             <div className="flex flex-wrap gap-2">
-                                {userTemplates.map(template => (
-                                    <div key={template.id} className="flex items-center bg-slate-700 rounded-full">
-                                        <button onClick={() => setUserPrompt(template.prompt)} className="hover:bg-sky-500 text-xs text-slate-200 font-semibold py-1 px-3 rounded-l-full transition-colors">
+                                {userTemplates.map((template) => (
+                                    <div
+                                        key={template.id}
+                                        className="flex items-center bg-slate-700 rounded-full"
+                                    >
+                                        <button
+                                            onClick={() => setUserPrompt(template.prompt)}
+                                            className="hover:bg-sky-500 text-xs text-slate-200 font-semibold py-1 px-3 rounded-l-full transition-colors"
+                                        >
                                             {template.title}
                                         </button>
-                                        <button onClick={() => handleDeleteTemplate(template.id)} className="px-2 text-slate-400 hover:text-red-400 hover:bg-slate-600 rounded-r-full transition-colors">
+                                        <button
+                                            onClick={() => handleDeleteTemplate(template.id)}
+                                            className="px-2 text-slate-400 hover:text-red-400 hover:bg-slate-600 rounded-r-full transition-colors"
+                                        >
                                             <TrashIcon />
                                         </button>
                                     </div>
@@ -421,7 +631,11 @@ const StatementConverter: React.FC = () => {
                         className="w-full h-32 bg-slate-700 border border-slate-600 rounded-md px-3 py-2 text-white placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-sky-500 text-sm"
                     />
                     <div className="mt-2 flex justify-end">
-                        <button onClick={handleSaveTemplate} disabled={!userPrompt.trim()} className="text-xs bg-emerald-500/20 text-emerald-300 font-semibold py-1 px-3 rounded-md hover:bg-emerald-500/40 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                        <button
+                            onClick={handleSaveTemplate}
+                            disabled={!userPrompt.trim()}
+                            className="text-xs bg-emerald-500/20 text-emerald-300 font-semibold py-1 px-3 rounded-md hover:bg-emerald-500/40 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
                             Şablon Olarak Kaydet
                         </button>
                     </div>
@@ -433,13 +647,26 @@ const StatementConverter: React.FC = () => {
                         <button
                             onClick={handleConvert}
                             className="w-full md:w-auto flex items-center justify-center bg-sky-500 text-white font-bold py-3 px-8 rounded-lg hover:bg-sky-600 transition-colors disabled:bg-slate-600 disabled:cursor-not-allowed"
-                            disabled={!uploadedFile || isLoading || (creditBalance !== null && creditBalance.totalRemaining < 5)}
+                            disabled={
+                                !uploadedFile ||
+                                isLoading ||
+                                (creditBalance !== null && creditBalance.totalRemaining < 5)
+                            }
                         >
-                            {isLoading ? (<><SpinnerIcon /> Dönüştürülüyor...</>) : ('Dönüştür')}
+                            {isLoading ? (
+                                <>
+                                    <SpinnerIcon /> Dönüştürülüyor...
+                                </>
+                            ) : (
+                                'Dönüştür'
+                            )}
                         </button>
                         {creditBalance !== null && (
-                            <span className={`text-sm ${creditBalance.totalRemaining < 5 ? 'text-red-400' : 'text-slate-400'}`}>
-                                Bu işlem 5 kredi kullanır. Kalan: {creditBalance.totalRemaining.toLocaleString('tr-TR')} kredi
+                            <span
+                                className={`text-sm ${creditBalance.totalRemaining < 5 ? 'text-red-400' : 'text-slate-400'}`}
+                            >
+                                Bu işlem 5 kredi kullanır. Kalan:{' '}
+                                {creditBalance.totalRemaining.toLocaleString('tr-TR')} kredi
                             </span>
                         )}
                     </div>
@@ -463,11 +690,17 @@ const StatementConverter: React.FC = () => {
                         <div className="flex justify-between items-center mb-4">
                             <h2 className="text-xl font-bold text-white">Dönüşüm Sonucu</h2>
                             <div className="flex space-x-2">
-                                <button onClick={handleDownloadExcel} className="flex items-center bg-emerald-500 text-white font-semibold py-2 px-4 rounded-lg hover:bg-emerald-600 transition-colors text-sm">
+                                <button
+                                    onClick={handleDownloadExcel}
+                                    className="flex items-center bg-emerald-500 text-white font-semibold py-2 px-4 rounded-lg hover:bg-emerald-600 transition-colors text-sm"
+                                >
                                     <DownloadIcon />
                                     Excel Olarak İndir
                                 </button>
-                                <button onClick={handleDownloadCsv} className="flex items-center bg-slate-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-slate-500 transition-colors text-sm">
+                                <button
+                                    onClick={handleDownloadCsv}
+                                    className="flex items-center bg-slate-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-slate-500 transition-colors text-sm"
+                                >
                                     <DownloadIcon />
                                     CSV Olarak İndir
                                 </button>
@@ -478,7 +711,11 @@ const StatementConverter: React.FC = () => {
                                 <thead className="bg-slate-700 text-xs text-slate-300 uppercase sticky top-0">
                                     <tr>
                                         {parsedResult[0].map((header, index) => (
-                                            <th key={index} scope="col" className="px-6 py-3 whitespace-nowrap">
+                                            <th
+                                                key={index}
+                                                scope="col"
+                                                className="px-6 py-3 whitespace-nowrap"
+                                            >
                                                 {header.trim()}
                                             </th>
                                         ))}
@@ -486,9 +723,15 @@ const StatementConverter: React.FC = () => {
                                 </thead>
                                 <tbody>
                                     {parsedResult.slice(1).map((row, rowIndex) => (
-                                        <tr key={rowIndex} className="bg-slate-800 border-b border-slate-700 hover:bg-slate-700/50">
+                                        <tr
+                                            key={rowIndex}
+                                            className="bg-slate-800 border-b border-slate-700 hover:bg-slate-700/50"
+                                        >
                                             {row.map((cell, cellIndex) => (
-                                                <td key={cellIndex} className="px-6 py-4 whitespace-nowrap">
+                                                <td
+                                                    key={cellIndex}
+                                                    className="px-6 py-4 whitespace-nowrap"
+                                                >
                                                     {cell.trim()}
                                                 </td>
                                             ))}

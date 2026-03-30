@@ -10,6 +10,7 @@ const USER_AGENT =
 const GIB_LOGIN_URL = 'https://dijital.gib.gov.tr/portal/login';
 
 const settings = require('../settings');
+const logger = require('../logger');
 
 // Get documents directory: basePath/firmName/YYYY-MM-DD/
 const getDocumentsDir = (clientId, firmName, dateStr) => {
@@ -63,16 +64,16 @@ const downloadDocument = async (
 
         // Skip if already downloaded
         if (fs.existsSync(filePath)) {
-            console.log('[DEBUG] Document already exists, skipping:', filePath);
+            logger.debug('[DEBUG] Document already exists, skipping:', filePath);
             return filePath;
         }
 
-        console.log('[DEBUG] Processing document:', documentUrl);
+        logger.debug('[DEBUG] Processing document:', documentUrl);
 
         // Handle row-click based document access (GİB portal style)
         if (documentUrl && documentUrl.startsWith('__CLICK_ROW__:')) {
             const targetRowIndex = parseInt(documentUrl.split(':')[1], 10);
-            console.log('[DEBUG] Fetching document for row:', targetRowIndex);
+            logger.debug('[DEBUG] Fetching document for row:', targetRowIndex);
 
             // Intercept network responses BEFORE clicking — any PDF served will be captured
             let pdfBuffer = null;
@@ -88,7 +89,7 @@ const downloadDocument = async (
                         const buf = await response.buffer();
                         if (buf && buf.length > 500) {
                             pdfBuffer = buf;
-                            console.log('[DEBUG] PDF captured via network:', response.url());
+                            logger.debug('[DEBUG] PDF captured via network:', response.url());
                         }
                     }
                 } catch {
@@ -111,7 +112,7 @@ const downloadDocument = async (
                     targetRowIndex
                 );
             } catch (clickErr) {
-                console.log('[DEBUG] Row click error:', clickErr.message);
+                logger.debug('[DEBUG] Row click error:', clickErr.message);
             }
 
             if (rowFound) {
@@ -175,7 +176,7 @@ const downloadDocument = async (
 
             if (pdfBuffer) {
                 fs.writeFileSync(filePath, pdfBuffer);
-                console.log('[DEBUG] Document saved to:', filePath);
+                logger.debug('[DEBUG] Document saved to:', filePath);
                 return filePath;
             }
 
@@ -274,12 +275,12 @@ const downloadDocument = async (
 
         // Skip invalid URLs
         if (!documentUrl || documentUrl.startsWith('__')) {
-            console.log('[DEBUG] Skipping invalid URL:', documentUrl);
+            logger.debug('[DEBUG] Skipping invalid URL:', documentUrl);
             return null;
         }
 
         // Standard URL-based download
-        console.log('[DEBUG] Downloading document from URL:', documentUrl);
+        logger.debug('[DEBUG] Downloading document from URL:', documentUrl);
         const response = await page.goto(documentUrl, {
             waitUntil: 'networkidle0',
             timeout: 30000,
@@ -290,10 +291,10 @@ const downloadDocument = async (
             if (contentType.includes('pdf') || contentType.includes('application/octet-stream')) {
                 const buffer = await response.buffer();
                 fs.writeFileSync(filePath, buffer);
-                console.log('[DEBUG] Document saved to:', filePath);
+                logger.debug('[DEBUG] Document saved to:', filePath);
                 return filePath;
             } else {
-                console.log('[DEBUG] Response is not a PDF, content-type:', contentType);
+                logger.debug('[DEBUG] Response is not a PDF, content-type:', contentType);
             }
         }
 
@@ -325,11 +326,11 @@ const randomDelay = (minSec, maxSec) => {
 };
 
 const ensureLoginForm = async (page) => {
-    console.log('[DEBUG] Navigating to GIB login page:', GIB_LOGIN_URL);
+    logger.debug('[DEBUG] Navigating to GIB login page:', GIB_LOGIN_URL);
     await page.goto(GIB_LOGIN_URL, { waitUntil: 'networkidle0', timeout: 60000 });
-    console.log('[DEBUG] Page loaded, URL:', page.url());
+    logger.debug('[DEBUG] Page loaded, URL:', page.url());
     await page.waitForSelector('#userid', { timeout: 30000 });
-    console.log('[DEBUG] Login form found successfully!');
+    logger.debug('[DEBUG] Login form found successfully!');
 };
 
 const solveCaptcha = async (page, apiKey) => {
@@ -356,11 +357,11 @@ const solveCaptcha = async (page, apiKey) => {
         throw new Error('Captcha elementi bulunamadı.');
     }
 
-    console.log('[DEBUG] CAPTCHA element found, taking screenshot...');
+    logger.debug('[DEBUG] CAPTCHA element found, taking screenshot...');
     const captchaBuffer = await captchaElement.screenshot();
     const captchaBase64 = captchaBuffer.toString('base64');
 
-    console.log('[DEBUG] Sending CAPTCHA to Gemini AI...');
+    logger.debug('[DEBUG] Sending CAPTCHA to Gemini AI...');
     const genAI = new GoogleGenerativeAI(apiKey);
     const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
 
@@ -371,13 +372,13 @@ const solveCaptcha = async (page, apiKey) => {
 
     const response = await result.response;
     const captchaText = response.text().trim().replace(/\s/g, '');
-    console.log('[DEBUG] Gemini solved CAPTCHA:', captchaText);
+    logger.debug('[DEBUG] Gemini solved CAPTCHA:', captchaText);
     return captchaText;
 };
 
 const logoutFromGIB = async (page) => {
     try {
-        console.log('[DEBUG] Attempting GIB logout...');
+        logger.debug('[DEBUG] Attempting GIB logout...');
 
         // Strategy 1: Find logout button/link by text
         const loggedOut = await page.evaluate(() => {
@@ -404,7 +405,7 @@ const logoutFromGIB = async (page) => {
         });
 
         if (loggedOut) {
-            console.log('[DEBUG] Logout button clicked');
+            logger.debug('[DEBUG] Logout button clicked');
             await page
                 .waitForNavigation({ waitUntil: 'networkidle0', timeout: 10000 })
                 .catch(() => {});
@@ -448,7 +449,7 @@ const logoutFromGIB = async (page) => {
                     .catch(() => {});
             } else {
                 // Strategy 3: Direct logout URL
-                console.log('[DEBUG] Trying direct logout URL...');
+                logger.debug('[DEBUG] Trying direct logout URL...');
                 await page
                     .goto('https://dijital.gib.gov.tr/portal/logout', {
                         waitUntil: 'networkidle0',
@@ -458,7 +459,7 @@ const logoutFromGIB = async (page) => {
             }
         }
 
-        console.log('[DEBUG] Logout completed. URL:', page.url());
+        logger.debug('[DEBUG] Logout completed. URL:', page.url());
     } catch (err) {
         console.error('[DEBUG] Logout failed (non-critical):', err.message);
     }
@@ -500,7 +501,7 @@ const extractTebligatFromPage = async (page, selector) => {
                 const documentNo = cols[offset + 3]?.innerText?.trim() || ''; // Belge No
                 const sendDate = cols[offset + 4]?.innerText?.trim() || ''; // Gönderme Tarihi
                 const notificationDate = cols[offset + 5]?.innerText?.trim() || ''; // Tebliğ Tarihi
-                const _taxpayer = cols[offset + 6]?.innerText?.trim() || ''; // Mükellef (unused)
+                // cols[offset + 6] = Mükellef (not used in processing)
 
                 // In GİB portal, clicking the row opens the document detail
                 // Mark all rows for click-based document access
@@ -599,7 +600,7 @@ const goToNextPage = async (page) => {
     });
 
     if (nextPageResult.clicked) {
-        console.log('[DEBUG] Navigated to next page using:', nextPageResult.method);
+        logger.debug('[DEBUG] Navigated to next page using:', nextPageResult.method);
         await new Promise((r) => setTimeout(r, 2000)); // Wait for page to load
         return true;
     }
@@ -629,7 +630,7 @@ const loginAndFetch = async (page, client, password, apiKey) => {
     for (const selector of loginSelectors) {
         const btn = await page.$(selector);
         if (btn) {
-            console.log('[DEBUG] Login button found:', selector);
+            logger.debug('[DEBUG] Login button found:', selector);
             await Promise.all([
                 page
                     .waitForNavigation({ waitUntil: 'networkidle0', timeout: 15000 })
@@ -666,7 +667,7 @@ const loginAndFetch = async (page, client, password, apiKey) => {
 
     await new Promise((r) => setTimeout(r, 3000));
     const postLoginUrl = page.url();
-    console.log('[DEBUG] Post-login URL:', postLoginUrl);
+    logger.debug('[DEBUG] Post-login URL:', postLoginUrl);
 
     if (postLoginUrl.includes('/login')) {
         throw new Error('Giriş başarısız - CAPTCHA veya kimlik bilgileri yanlış olabilir.');
@@ -699,7 +700,7 @@ const loginAndFetch = async (page, client, password, apiKey) => {
             }),
         ]);
         await new Promise((r) => setTimeout(r, 3000));
-        console.log('[DEBUG] E-Tebligat page URL:', page.url());
+        logger.debug('[DEBUG] E-Tebligat page URL:', page.url());
     } else {
         await page
             .goto('https://dijital.gib.gov.tr/portal/e-tebligat', {
@@ -732,7 +733,7 @@ const loginAndFetch = async (page, client, password, apiKey) => {
     }
 
     if (!foundSelector) {
-        console.log('[DEBUG] No tebligat rows found.');
+        logger.debug('[DEBUG] No tebligat rows found.');
         return [];
     }
 
@@ -742,11 +743,11 @@ const loginAndFetch = async (page, client, password, apiKey) => {
     const maxPages = 20; // Safety limit to prevent infinite loops
 
     while (pageNum <= maxPages) {
-        console.log(`[DEBUG] Scraping page ${pageNum}...`);
+        logger.debug(`[DEBUG] Scraping page ${pageNum}...`);
 
         // Extract data from current page
         const pageTebligatlar = await extractTebligatFromPage(page, foundSelector);
-        console.log(`[DEBUG] Found ${pageTebligatlar.length} tebligatlar on page ${pageNum}`);
+        logger.debug(`[DEBUG] Found ${pageTebligatlar.length} tebligatlar on page ${pageNum}`);
 
         if (pageTebligatlar.length === 0) {
             break; // No more data
@@ -755,7 +756,7 @@ const loginAndFetch = async (page, client, password, apiKey) => {
         // Download documents for each tebligat while still on this page
         for (let i = 0; i < pageTebligatlar.length; i++) {
             const tebligat = pageTebligatlar[i];
-            console.log(
+            logger.debug(
                 `[DEBUG] Processing tebligat ${i + 1}/${pageTebligatlar.length} on page ${pageNum}`
             );
 
@@ -773,9 +774,9 @@ const loginAndFetch = async (page, client, password, apiKey) => {
 
                     if (docPath) {
                         tebligat.documentPath = docPath;
-                        console.log(`[DEBUG] Downloaded document for row ${i}: ${docPath}`);
+                        logger.debug(`[DEBUG] Downloaded document for row ${i}: ${docPath}`);
                     } else {
-                        console.log(`[DEBUG] No document downloaded for row ${i}`);
+                        logger.debug(`[DEBUG] No document downloaded for row ${i}`);
                     }
 
                     // Ensure we're back on the tebligat list page before next download
@@ -786,7 +787,7 @@ const loginAndFetch = async (page, client, password, apiKey) => {
                         // page target lost
                     }
                     if (!currentUrl.includes('tebligat')) {
-                        console.log('[DEBUG] Navigating back to e-tebligat page...');
+                        logger.debug('[DEBUG] Navigating back to e-tebligat page...');
                         await page
                             .goto('https://dijital.gib.gov.tr/portal/e-tebligat', {
                                 waitUntil: 'networkidle0',
@@ -826,7 +827,7 @@ const loginAndFetch = async (page, client, password, apiKey) => {
         // Try to go to next page
         const hasNextPage = await goToNextPage(page);
         if (!hasNextPage) {
-            console.log('[DEBUG] No more pages to scrape.');
+            logger.debug('[DEBUG] No more pages to scrape.');
             break;
         }
 
@@ -836,14 +837,14 @@ const loginAndFetch = async (page, client, password, apiKey) => {
         // Verify we're on a new page with data
         const hasData = await hasDataOnPage(page, foundSelector);
         if (!hasData) {
-            console.log('[DEBUG] Next page has no data, stopping pagination.');
+            logger.debug('[DEBUG] Next page has no data, stopping pagination.');
             break;
         }
 
         pageNum++;
     }
 
-    console.log(
+    logger.debug(
         `[DEBUG] Total tebligatlar scraped: ${allTebligatlar.length} from ${pageNum} page(s)`
     );
     return allTebligatlar;
@@ -1167,12 +1168,12 @@ async function run(onStatusUpdate, apiKey, scanConfig = {}, options = {}, deduct
                         try {
                             await logoutFromGIB(page);
                         } catch (logoutErr) {
-                            console.log('[DEBUG] Logout error (ignored):', logoutErr.message);
+                            logger.debug('[DEBUG] Logout error (ignored):', logoutErr.message);
                         }
                         try {
                             await page.close();
                         } catch (closeErr) {
-                            console.log('[DEBUG] Page close error (ignored):', closeErr.message);
+                            logger.debug('[DEBUG] Page close error (ignored):', closeErr.message);
                         }
                     }
                 }
@@ -1282,7 +1283,7 @@ async function fetchSingleDocument(tebligat, apiKey) {
                     const buf = await response.buffer();
                     if (buf && buf.length > 500) {
                         pdfBuffer = buf;
-                        console.log(
+                        logger.debug(
                             '[fetchSingleDocument] PDF captured:',
                             url,
                             buf.length,
@@ -1380,7 +1381,7 @@ async function fetchSingleDocument(tebligat, apiKey) {
 
             if (matchIndex !== -1) {
                 found = true;
-                console.log('[fetchSingleDocument] Found matching row at index:', matchIndex);
+                logger.debug('[fetchSingleDocument] Found matching row at index:', matchIndex);
 
                 // Click the row
                 await page.evaluate(
@@ -1434,7 +1435,7 @@ async function fetchSingleDocument(tebligat, apiKey) {
 
         if (pdfBuffer) {
             fs.writeFileSync(filePath, pdfBuffer);
-            console.log('[fetchSingleDocument] Document saved to:', filePath);
+            logger.debug('[fetchSingleDocument] Document saved to:', filePath);
             return filePath;
         }
 
