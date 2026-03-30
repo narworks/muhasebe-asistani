@@ -216,10 +216,18 @@ app.whenReady().then(() => {
 
 app.on('before-quit', () => {
     isQuitting = true;
+    // Destroy tray so app can fully exit (needed for auto-update)
+    if (tray) {
+        tray.destroy();
+        tray = null;
+    }
 });
 
 app.on('window-all-closed', () => {
-    // Don't quit - stay in tray for scheduled scans
+    if (isQuitting) {
+        app.quit();
+    }
+    // Otherwise stay in tray for scheduled scans
 });
 
 // --- IPC HANDLERS ---

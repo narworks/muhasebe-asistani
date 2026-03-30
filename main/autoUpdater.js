@@ -93,11 +93,13 @@ function startDownload() {
 }
 
 function quitAndInstall() {
-    // On macOS, Squirrel applies the update on normal app quit.
-    // autoUpdater.quitAndInstall() is unreliable on macOS,
-    // so we relaunch + quit instead.
-    app.relaunch();
-    app.quit();
+    // On macOS, Squirrel's ShipIt needs the app to be fully exited
+    // before it can replace the bundle. app.quit() is too slow —
+    // ShipIt sees the app still running and aborts.
+    // Use autoUpdater.quitAndInstall with isSilent=true to force quit,
+    // then app.exit as fallback.
+    autoUpdater.quitAndInstall(true, true);
+    setTimeout(() => app.exit(0), 1000);
 }
 
 module.exports = {
