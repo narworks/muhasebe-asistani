@@ -47,317 +47,6 @@ const ensureDir = (dir) => {
     }
 };
 
-// Download a document from GIB portal
-const downloadDocument = async (
-    page,
-    documentUrl,
-    clientId,
-    documentNo,
-    tableSelector = null,
-    firmName = null,
-    dateStr = null
-) => {
-    try {
-        const docsDir = getDocumentsDir(clientId, firmName, dateStr);
-        const safeDocNo = (documentNo || 'doc').replace(/[^a-zA-Z0-9-_]/g, '_');
-        const fileName = `tebligat_${safeDocNo}.pdf`;
-        const filePath = path.join(docsDir, fileName);
-
-        // Skip if already downloaded
-        if (fs.existsSync(filePath)) {
-            logger.debug('[DEBUG] Document already exists, skipping:', filePath);
-            return filePath;
-        }
-
-        logger.debug('[DEBUG] Processing document:', documentUrl);
-
-        // Handle row-click based document access (GİB portal style)
-        if (documentUrl && documentUrl.startsWith('__CLICK_ROW__:')) {
-            const targetRowIndex = parseInt(documentUrl.split(':')[1], 10);
-            logger.debug('[DEBUG] Fetching document for row:', targetRowIndex);
-
-            // Configure Chrome to download files to our documents directory
-            const cdpSession = await page.createCDPSession();
-            await cdpSession.send('Page.setDownloadBehavior', {
-                behavior: 'allow',
-                downloadPath: docsDir,
-            });
-
-            // Intercept ALL PDF responses — keep the largest one (first is often a blank template)
-            let pdfBuffer = null;
-            const responseHandler = async (response) => {
-                try {
-                    const ct = response.headers()['content-type'] || '';
-                    if (
-                        ct.includes('application/pdf') ||
-                        ct.includes('application/octet-stream') ||
-                        response.url().includes('.pdf')
-                    ) {
-                        const buf = await response.buffer();
-                        if (
-                            buf &&
-                            buf.length > 500 &&
-                            (!pdfBuffer || buf.length > pdfBuffer.length)
-                        ) {
-                            pdfBuffer = buf;
-                            logger.debug(
-                                `[DEBUG] PDF captured (${buf.length} bytes):`,
-                                response.url()
-                            );
-                        }
-                    }
-                } catch {
-                    // buffer already consumed or response gone
-                }
-            };
-            page.on('response', responseHandler);
-
-            // Click the row
-            let rowFound = false;
-            try {
-                rowFound = await page.evaluate(
-                    (sel, rowIdx) => {
-                        const row = Array.from(document.querySelectorAll(sel))[rowIdx];
-                        if (!row) return false;
-                        row.click();
-                        return true;
-                    },
-                    tableSelector || 'table tbody tr',
-                    targetRowIndex
-                );
-            } catch (clickErr) {
-                logger.debug('[DEBUG] Row click error:', clickErr.message);
-            }
-
-            if (rowFound) {
-                // Wait for PDF responses. GIB portal often sends a blank template first,
-                // then the real document. We collect all and keep the largest.
-                // Wait at least 4s after first PDF, or up to 10s total.
-                let firstPdfAt = 0;
-                await new Promise((resolve) => {
-                    let elapsed = 0;
-                    const check = setInterval(() => {
-                        elapsed += 300;
-                        if (pdfBuffer && !firstPdfAt) firstPdfAt = elapsed;
-                        // After first PDF, wait 4 more seconds for the real one
-                        const doneWaiting = firstPdfAt && elapsed - firstPdfAt >= 4000;
-                        if (doneWaiting || elapsed >= 10000) {
-                            clearInterval(check);
-                            resolve();
-                        }
-                    }, 300);
-                });
-
-                // If no PDF yet, try clicking download/view buttons inside the modal
-                if (!pdfBuffer) {
-                    try {
-                        await page.evaluate(() => {
-                            const keywords = [
-                                'indir',
-                                'pdf',
-                                'görüntüle',
-                                'belge',
-                                'aç',
-                                'download',
-                            ];
-                            const els = document.querySelectorAll('button, [role="button"], a');
-                            for (const el of els) {
-                                const t = (el.textContent || '').toLowerCase();
-                                const title = (el.getAttribute('title') || '').toLowerCase();
-                                if (keywords.some((k) => t.includes(k) || title.includes(k))) {
-                                    el.click();
-                                    return;
-                                }
-                            }
-                        });
-                    } catch (_modalErr) {
-                        // page may have navigated away
-                    }
-
-                    // Wait up to 8 more seconds after button click
-                    await new Promise((resolve) => {
-                        let elapsed = 0;
-                        const check = setInterval(() => {
-                            elapsed += 300;
-                            if (pdfBuffer || elapsed >= 8000) {
-                                clearInterval(check);
-                                resolve();
-                            }
-                        }, 300);
-                    });
-                }
-            }
-
-            page.off('response', responseHandler);
-            await cdpSession.detach().catch(() => {});
-
-            // Close modal
-            await page.keyboard.press('Escape').catch(() => {});
-            await new Promise((r) => setTimeout(r, 500));
-
-            if (pdfBuffer) {
-                // Skip blank/template PDFs (real documents are typically >5KB)
-                if (pdfBuffer.length < 5000) {
-                    logger.debug(
-                        `[DEBUG] Skipping tiny PDF (${pdfBuffer.length} bytes) — likely blank template`
-                    );
-                } else {
-                    ensureDir(docsDir);
-                    fs.writeFileSync(filePath, pdfBuffer);
-                    logger.debug(`[DEBUG] Document saved (${pdfBuffer.length} bytes):`, filePath);
-                    return filePath;
-                }
-            }
-
-            // Check if Chrome downloaded a file to docsDir via download behavior
-            if (fs.existsSync(docsDir)) {
-                const files = fs.readdirSync(docsDir).filter((f) => f.endsWith('.pdf'));
-                if (files.length > 0) {
-                    // Rename the downloaded file to our naming convention
-                    const downloadedFile = path.join(docsDir, files[files.length - 1]);
-                    if (downloadedFile !== filePath) {
-                        ensureDir(docsDir);
-                        fs.renameSync(downloadedFile, filePath);
-                    }
-                    logger.debug('[DEBUG] Chrome-downloaded document moved to:', filePath);
-                    return filePath;
-                }
-            }
-
-            return null;
-        }
-
-        // Handle click-action based document access (button click in row)
-        if (documentUrl && documentUrl.startsWith('__CLICK_ACTION__:')) {
-            const targetRowIndex = parseInt(documentUrl.split(':')[1], 10);
-
-            const cdpSession2 = await page.createCDPSession();
-            await cdpSession2.send('Page.setDownloadBehavior', {
-                behavior: 'allow',
-                downloadPath: docsDir,
-            });
-
-            let pdfBuffer = null;
-            const responseHandler = async (response) => {
-                if (pdfBuffer) return;
-                try {
-                    const ct = response.headers()['content-type'] || '';
-                    if (
-                        ct.includes('application/pdf') ||
-                        ct.includes('application/octet-stream') ||
-                        response.url().includes('.pdf')
-                    ) {
-                        const buf = await response.buffer();
-                        if (buf && buf.length > 500) pdfBuffer = buf;
-                    }
-                } catch (_err) {
-                    // buffer already consumed or response gone
-                }
-            };
-            page.on('response', responseHandler);
-
-            const clicked = await page.evaluate(
-                (sel, rowIdx) => {
-                    const rows = Array.from(document.querySelectorAll(sel));
-                    const row = rows[rowIdx];
-                    if (!row) return false;
-
-                    const actionTexts = [
-                        'görüntüle',
-                        'incele',
-                        'detay',
-                        'indir',
-                        'aç',
-                        'pdf',
-                        'download',
-                        'view',
-                    ];
-                    const allClickables = row.querySelectorAll('button, a, [role="button"]');
-                    for (const el of allClickables) {
-                        const text = (el.textContent || '').toLowerCase().trim();
-                        const title = (el.getAttribute('title') || '').toLowerCase();
-                        const ariaLabel = (el.getAttribute('aria-label') || '').toLowerCase();
-                        if (
-                            actionTexts.some(
-                                (t) =>
-                                    text.includes(t) || title.includes(t) || ariaLabel.includes(t)
-                            )
-                        ) {
-                            el.click();
-                            return true;
-                        }
-                    }
-                    const lastCell = row.querySelector('td:last-child, [role="cell"]:last-child');
-                    if (lastCell) {
-                        const actionEl = lastCell.querySelector('button, a');
-                        if (actionEl) {
-                            actionEl.click();
-                            return true;
-                        }
-                    }
-                    return false;
-                },
-                tableSelector || 'table tbody tr',
-                targetRowIndex
-            );
-
-            if (clicked) {
-                await new Promise((resolve) => {
-                    let elapsed = 0;
-                    const check = setInterval(() => {
-                        elapsed += 300;
-                        if (pdfBuffer || elapsed >= 8000) {
-                            clearInterval(check);
-                            resolve();
-                        }
-                    }, 300);
-                });
-            }
-
-            page.off('response', responseHandler);
-            await cdpSession2.detach().catch(() => {});
-
-            if (pdfBuffer) {
-                ensureDir(docsDir);
-                fs.writeFileSync(filePath, pdfBuffer);
-                return filePath;
-            }
-            return null;
-        }
-
-        // Skip invalid URLs
-        if (!documentUrl || documentUrl.startsWith('__')) {
-            logger.debug('[DEBUG] Skipping invalid URL:', documentUrl);
-            return null;
-        }
-
-        // Standard URL-based download
-        logger.debug('[DEBUG] Downloading document from URL:', documentUrl);
-        const response = await page.goto(documentUrl, {
-            waitUntil: 'networkidle0',
-            timeout: 30000,
-        });
-
-        if (response) {
-            const contentType = response.headers()['content-type'] || '';
-            if (contentType.includes('pdf') || contentType.includes('application/octet-stream')) {
-                const buffer = await response.buffer();
-                ensureDir(docsDir);
-                fs.writeFileSync(filePath, buffer);
-                logger.debug('[DEBUG] Document saved to:', filePath);
-                return filePath;
-            } else {
-                logger.debug('[DEBUG] Response is not a PDF, content-type:', contentType);
-            }
-        }
-
-        return null;
-    } catch (err) {
-        logger.error('[DEBUG] Document download failed:', err.message);
-        return null;
-    }
-};
-
 // Module-level state
 let scanCancelled = false;
 let isRunning = false;
@@ -829,114 +518,16 @@ const loginAndFetch = async (page, client, password, apiKey, onStatus = null) =>
         }
 
         if (pageNum === 1) {
-            status(
-                `${pageTebligatlar.length} tebligat bulundu (sayfa ${pageNum}), dökümanlar indiriliyor...`
-            );
+            status(`${pageTebligatlar.length} tebligat bulundu (sayfa ${pageNum}).`);
         } else {
             status(`Sayfa ${pageNum}: ${pageTebligatlar.length} tebligat daha bulundu.`);
         }
 
-        // Add scraped data FIRST — even if downloads fail, records are preserved
         allTebligatlar.push(...pageTebligatlar);
-
-        // Download documents — wrapped in a protective try-catch so that
-        // page target loss does NOT discard the already-scraped tebligat data
-        try {
-            for (let i = 0; i < pageTebligatlar.length; i++) {
-                // Bail out early if page target was destroyed
-                if (!isPageUsable()) {
-                    status('Sayfa bağlantısı kesildi, indirmeler durduruluyor (veriler korundu).');
-                    break;
-                }
-
-                const tebligat = pageTebligatlar[i];
-                logger.debug(
-                    `[DEBUG] Processing tebligat ${i + 1}/${pageTebligatlar.length} on page ${pageNum}`
-                );
-
-                if (tebligat.documentUrl && tebligat.documentUrl.startsWith('__CLICK_ROW__:')) {
-                    status(
-                        `Döküman indiriliyor (${i + 1}/${pageTebligatlar.length}): ${tebligat.documentNo || '?'}...`
-                    );
-                    try {
-                        const docPath = await downloadDocument(
-                            page,
-                            tebligat.documentUrl,
-                            client.id,
-                            tebligat.documentNo,
-                            foundSelector,
-                            client.firm_name,
-                            tebligat.date || tebligat.notificationDate || tebligat.sendDate
-                        );
-
-                        if (docPath) {
-                            tebligat.documentPath = docPath;
-                            logger.debug(`[DEBUG] Downloaded document for row ${i}: ${docPath}`);
-                        } else {
-                            logger.debug(`[DEBUG] No document downloaded for row ${i}`);
-                        }
-
-                        // Ensure we're back on the tebligat list page before next download
-                        if (!isPageUsable()) break;
-
-                        let currentUrl = '';
-                        try {
-                            currentUrl = page.url();
-                        } catch (_urlErr) {
-                            break; // page target lost — stop downloads
-                        }
-                        if (!currentUrl.includes('tebligat')) {
-                            logger.debug('[DEBUG] Navigating back to e-tebligat page...');
-                            await page
-                                .goto('https://dijital.gib.gov.tr/portal/e-tebligat', {
-                                    waitUntil: 'networkidle0',
-                                    timeout: 20000,
-                                })
-                                .catch(() => {});
-                        }
-
-                        // Wait for the table to be ready again
-                        await page
-                            .waitForSelector(foundSelector, { timeout: 10000 })
-                            .catch(() => {});
-
-                        // Small delay between document downloads
-                        await new Promise((r) => setTimeout(r, 1500));
-                    } catch (err) {
-                        logger.debug(
-                            `[DEBUG] Error downloading document for row ${i}:`,
-                            err.message
-                        );
-
-                        // If page target is dead, stop trying
-                        if (!isPageUsable()) break;
-
-                        // Try to get back to the tebligat page on error
-                        try {
-                            await page
-                                .goto('https://dijital.gib.gov.tr/portal/e-tebligat', {
-                                    waitUntil: 'networkidle0',
-                                    timeout: 20000,
-                                })
-                                .catch(() => {});
-                            await page
-                                .waitForSelector(foundSelector, { timeout: 10000 })
-                                .catch(() => {});
-                        } catch {
-                            break; // navigation failed — page is likely dead
-                        }
-                    }
-                }
-            }
-        } catch (downloadLoopErr) {
-            // Protective catch: page target loss during download loop should NOT
-            // discard the already-scraped tebligat data
-            logger.debug('[DEBUG] Download loop error (data preserved):', downloadLoopErr.message);
-        }
 
         // If page is dead, stop pagination but keep the data we have
         if (!isPageUsable()) {
-            logger.debug('[DEBUG] Page target lost after downloads, stopping pagination.');
+            logger.debug('[DEBUG] Page target lost, stopping pagination.');
             break;
         }
 
@@ -970,31 +561,6 @@ const loginAndFetch = async (page, client, password, apiKey, onStatus = null) =>
         }
 
         pageNum++;
-    }
-
-    // Clean up empty directories created during download attempts
-    const s = settings.readSettings();
-    const basePath = s.documentsFolder || path.join(app.getPath('userData'), 'documents');
-    const safeFirmName = (client.firm_name || String(client.id))
-        .replace(/[<>:"/\\|?*]/g, '_')
-        .trim();
-    const firmDir = path.join(basePath, safeFirmName);
-    if (fs.existsSync(firmDir)) {
-        try {
-            const dateFolders = fs.readdirSync(firmDir);
-            for (const df of dateFolders) {
-                const dfPath = path.join(firmDir, df);
-                if (fs.statSync(dfPath).isDirectory() && fs.readdirSync(dfPath).length === 0) {
-                    fs.rmdirSync(dfPath);
-                }
-            }
-            // Remove firm folder too if empty
-            if (fs.readdirSync(firmDir).length === 0) {
-                fs.rmdirSync(firmDir);
-            }
-        } catch {
-            // ignore cleanup errors
-        }
     }
 
     status(`Tarama tamamlandı: ${allTebligatlar.length} tebligat (${pageNum} sayfa).`);
@@ -1272,18 +838,10 @@ async function run(onStatusUpdate, apiKey, scanConfig = {}, options = {}, deduct
                             firmId: client.id,
                         });
                     } else {
-                        // Documents are already downloaded in loginAndFetch
-                        // Count downloaded documents
-                        const downloadedCount = tebligatlar.filter((t) => t.documentPath).length;
-
                         savedCount = database.saveTebligatlar(client.id, tebligatlar);
 
-                        let message = `${client.firm_name}: ${count} tebligat bulundu, ${savedCount} yeni kayıt eklendi.`;
-                        if (downloadedCount > 0) {
-                            message += ` (${downloadedCount} döküman indirildi)`;
-                        }
                         onStatusUpdate({
-                            message,
+                            message: `${client.firm_name}: ${count} tebligat bulundu, ${savedCount} yeni kayıt eklendi.`,
                             type: 'success',
                             firmId: client.id,
                         });
@@ -1431,10 +989,9 @@ async function fetchSingleDocument(tebligat, apiKey) {
         const page = await browser.newPage();
         await page.setUserAgent(USER_AGENT);
 
-        // Intercept network responses to capture PDF before any click
+        // Intercept ALL PDF responses — keep the largest (first is often a blank template)
         let pdfBuffer = null;
         const responseHandler = async (response) => {
-            if (pdfBuffer) return;
             try {
                 const ct = response.headers()['content-type'] || '';
                 const url = response.url();
@@ -1444,13 +1001,11 @@ async function fetchSingleDocument(tebligat, apiKey) {
                     url.includes('.pdf')
                 ) {
                     const buf = await response.buffer();
-                    if (buf && buf.length > 500) {
+                    if (buf && buf.length > 500 && (!pdfBuffer || buf.length > pdfBuffer.length)) {
                         pdfBuffer = buf;
                         logger.debug(
-                            '[fetchSingleDocument] PDF captured:',
-                            url,
-                            buf.length,
-                            'bytes'
+                            `[fetchSingleDocument] PDF captured (${buf.length} bytes):`,
+                            url
                         );
                     }
                 }
@@ -1556,8 +1111,20 @@ async function fetchSingleDocument(tebligat, apiKey) {
                     matchIndex
                 );
 
-                // Wait for modal/detail to appear
-                await new Promise((r) => setTimeout(r, 4000));
+                // Wait for PDF responses (blank template comes first, real doc follows)
+                let firstPdfAt = 0;
+                await new Promise((resolve) => {
+                    let elapsed = 0;
+                    const check = setInterval(() => {
+                        elapsed += 300;
+                        if (pdfBuffer && !firstPdfAt) firstPdfAt = elapsed;
+                        const doneWaiting = firstPdfAt && elapsed - firstPdfAt >= 4000;
+                        if (doneWaiting || elapsed >= 10000) {
+                            clearInterval(check);
+                            resolve();
+                        }
+                    }, 300);
+                });
 
                 // If no PDF captured yet, try clicking download/view button in modal
                 if (!pdfBuffer) {
@@ -1596,9 +1163,13 @@ async function fetchSingleDocument(tebligat, apiKey) {
 
         page.off('response', responseHandler);
 
-        if (pdfBuffer) {
+        if (pdfBuffer && pdfBuffer.length >= 5000) {
+            ensureDir(path.dirname(filePath));
             fs.writeFileSync(filePath, pdfBuffer);
-            logger.debug('[fetchSingleDocument] Document saved to:', filePath);
+            logger.debug(
+                `[fetchSingleDocument] Document saved (${pdfBuffer.length} bytes):`,
+                filePath
+            );
             return filePath;
         }
 
