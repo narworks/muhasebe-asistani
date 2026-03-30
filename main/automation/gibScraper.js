@@ -83,10 +83,9 @@ const downloadDocument = async (
                 downloadPath: docsDir,
             });
 
-            // Intercept network responses BEFORE clicking — any PDF served will be captured
+            // Intercept ALL PDF responses — keep the largest one (first is often a blank template)
             let pdfBuffer = null;
             const responseHandler = async (response) => {
-                if (pdfBuffer) return;
                 try {
                     const ct = response.headers()['content-type'] || '';
                     if (
@@ -95,9 +94,16 @@ const downloadDocument = async (
                         response.url().includes('.pdf')
                     ) {
                         const buf = await response.buffer();
-                        if (buf && buf.length > 500) {
+                        if (
+                            buf &&
+                            buf.length > 500 &&
+                            (!pdfBuffer || buf.length > pdfBuffer.length)
+                        ) {
                             pdfBuffer = buf;
-                            logger.debug('[DEBUG] PDF captured via network:', response.url());
+                            logger.debug(
+                                `[DEBUG] PDF captured (${buf.length} bytes):`,
+                                response.url()
+                            );
                         }
                     }
                 } catch {
@@ -124,12 +130,18 @@ const downloadDocument = async (
             }
 
             if (rowFound) {
-                // Wait up to 6 seconds for a PDF response from the network
+                // Wait for PDF responses. GIB portal often sends a blank template first,
+                // then the real document. We collect all and keep the largest.
+                // Wait at least 4s after first PDF, or up to 10s total.
+                let firstPdfAt = 0;
                 await new Promise((resolve) => {
                     let elapsed = 0;
                     const check = setInterval(() => {
                         elapsed += 300;
-                        if (pdfBuffer || elapsed >= 6000) {
+                        if (pdfBuffer && !firstPdfAt) firstPdfAt = elapsed;
+                        // After first PDF, wait 4 more seconds for the real one
+                        const doneWaiting = firstPdfAt && elapsed - firstPdfAt >= 4000;
+                        if (doneWaiting || elapsed >= 10000) {
                             clearInterval(check);
                             resolve();
                         }
@@ -184,10 +196,17 @@ const downloadDocument = async (
             await new Promise((r) => setTimeout(r, 500));
 
             if (pdfBuffer) {
-                ensureDir(docsDir);
-                fs.writeFileSync(filePath, pdfBuffer);
-                logger.debug('[DEBUG] Document saved to:', filePath);
-                return filePath;
+                // Skip blank/template PDFs (real documents are typically >5KB)
+                if (pdfBuffer.length < 5000) {
+                    logger.debug(
+                        `[DEBUG] Skipping tiny PDF (${pdfBuffer.length} bytes) — likely blank template`
+                    );
+                } else {
+                    ensureDir(docsDir);
+                    fs.writeFileSync(filePath, pdfBuffer);
+                    logger.debug(`[DEBUG] Document saved (${pdfBuffer.length} bytes):`, filePath);
+                    return filePath;
+                }
             }
 
             // Check if Chrome downloaded a file to docsDir via download behavior
