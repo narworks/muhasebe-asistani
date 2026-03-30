@@ -165,6 +165,11 @@ app.whenReady().then(() => {
     // Initialize auto-updater
     autoUpdater.init(mainWindow);
 
+    // IPC: restart and install update
+    ipcMain.handle('restart-and-update', () => {
+        autoUpdater.quitAndInstall();
+    });
+
     // System tray
     const trayIcon = nativeImage.createFromDataURL(
         'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAABHNCSVQICAgIfAhkiAAAAAlwSFlzAAAAbwAAAG8B8aLcQwAAABl0RVh0U29mdHdhcmUAd3d3Lmlua3NjYXBlLm9yZ5vuPBoAAABjSURBVDiNY/j//z8DCjAxMDAwMDIy/mdgYGBgAmH8gImBgYGBiRCfkYGBgQlfIBMxBjAxMjL+JxTNROvCxMjI+B9fNBMDmBgYGBhIjUamhw8fUu4FYgNqJSNKk9F/Ag4BAOqQFBETnp7LAAAAAElFTkSuQmCC'

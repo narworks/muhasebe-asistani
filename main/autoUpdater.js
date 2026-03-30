@@ -73,23 +73,6 @@ function init(win) {
     autoUpdater.on('update-downloaded', (info) => {
         logger.debug('[AutoUpdater] Update downloaded:', info.version);
         sendStatusToWindow('update-downloaded', info);
-
-        // Show dialog and quit/install
-        dialog
-            .showMessageBox(mainWindow, {
-                type: 'info',
-                title: 'Güncelleme Hazır',
-                message: 'Güncelleme indirildi.',
-                detail: 'Uygulamayı yeniden başlatmak için "Şimdi Yeniden Başlat" butonuna tıklayın.',
-                buttons: ['Şimdi Yeniden Başlat', 'Daha Sonra'],
-                defaultId: 0,
-                cancelId: 1,
-            })
-            .then(({ response }) => {
-                if (response === 0) {
-                    autoUpdater.quitAndInstall(false, true);
-                }
-            });
     });
 
     // Check for updates after app is ready (delay 5 seconds)
@@ -122,7 +105,12 @@ function sendStatusToWindow(status, data = {}) {
     }
 }
 
+function quitAndInstall() {
+    autoUpdater.quitAndInstall(false, true);
+}
+
 module.exports = {
     init,
     checkForUpdates,
+    quitAndInstall,
 };

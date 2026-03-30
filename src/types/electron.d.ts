@@ -91,6 +91,7 @@ export interface IElectronAPI {
     // Auto-update
     onUpdateStatus: (callback: (status: UpdateStatus) => void) => void;
     removeUpdateListeners: () => void;
+    restartAndUpdate: () => Promise<void>;
 }
 
 declare global {
