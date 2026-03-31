@@ -354,6 +354,16 @@ ipcMain.handle('get-scan-state', () => {
     return gibScraper.getScanState();
 });
 
+// Legal consent
+ipcMain.handle('get-legal-consent', () => {
+    return settings.readSettings().legalConsentAccepted || false;
+});
+
+ipcMain.handle('accept-legal-consent', () => {
+    settings.updateSettings({ legalConsentAccepted: true });
+    return { success: true };
+});
+
 // Scan Settings
 ipcMain.handle('get-scan-settings', () => {
     return settings.readSettings().scan || {};

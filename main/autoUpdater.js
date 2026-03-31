@@ -62,6 +62,14 @@ function init(win) {
     setTimeout(() => {
         checkForUpdates();
     }, 5000);
+
+    // Re-check every 2 hours while app is running
+    setInterval(
+        () => {
+            checkForUpdates();
+        },
+        2 * 60 * 60 * 1000
+    );
 }
 
 /**

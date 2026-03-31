@@ -7,6 +7,7 @@ const SETTINGS_FILENAME = 'settings.json';
 
 const defaultSettings = {
     deviceId: null,
+    legalConsentAccepted: false,
     license: {
         subscriptionStatus: 'inactive',
         plan: null,

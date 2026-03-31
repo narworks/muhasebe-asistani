@@ -90,6 +90,10 @@ export interface IElectronAPI {
     selectDocumentsFolder: () => Promise<ApiResponse & { path?: string }>;
     getDocumentsFolder: () => Promise<string>;
 
+    // Legal consent
+    getLegalConsent: () => Promise<boolean>;
+    acceptLegalConsent: () => Promise<ApiResponse>;
+
     // Auto-update
     onUpdateStatus: (callback: (status: UpdateStatus) => void) => void;
     removeUpdateListeners: () => void;

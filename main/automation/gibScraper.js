@@ -588,188 +588,241 @@ const loginAndFetch = async (page, client, password, apiKey, onStatus = null) =>
             .catch(() => {});
     }
 
-    // Scrape tebligatlar with pagination support
-    const tableSelectors = [
-        'table tbody tr',
-        '[role="row"]',
-        '.MuiDataGrid-row',
-        '[class*="MuiDataGrid"] [role="row"]',
-    ];
+    // Click each tab (Okunmamış, Okunmuş, Arşivlenmiş) and scrape all
+    const tabs = ['OKUNMAMIŞ', 'OKUNMUŞ', 'ARŞİVLENMİŞ'];
+    const allTebligatlarFromAllTabs = [];
 
-    let foundSelector = null;
-    for (const sel of tableSelectors) {
-        try {
-            await page.waitForSelector(sel, { timeout: 5000 });
-            const count = await page.evaluate((s) => document.querySelectorAll(s).length, sel);
-            if (count > 0) {
-                foundSelector = sel;
-                break;
+    for (const tabName of tabs) {
+        // Click the tab
+        const tabClicked = await page.evaluate((name) => {
+            const els = document.querySelectorAll('button, [role="tab"], div, span, a');
+            for (const el of els) {
+                const text = (el.textContent || '').toUpperCase();
+                if (text.includes(name) && text.includes('TEBLİGATLAR')) {
+                    el.click();
+                    return true;
+                }
             }
-        } catch {
-            /* try next */
-        }
-    }
-
-    if (!foundSelector) {
-        status('Tebligat tablosu bulunamadı.');
-        return [];
-    }
-
-    // Extract from all pages and download documents while on each page
-    const allTebligatlar = [];
-    let pageNum = 1;
-    const maxPages = 20; // Safety limit to prevent infinite loops
-
-    // Helper: check if the page target is still alive
-    const isPageUsable = () => {
-        try {
-            return !page.isClosed();
-        } catch {
             return false;
-        }
-    };
+        }, tabName);
 
-    while (pageNum <= maxPages) {
-        logger.debug(`[DEBUG] Scraping page ${pageNum}...`);
-
-        // Extract data from current page
-        let pageTebligatlar;
-        try {
-            pageTebligatlar = await extractTebligatFromPage(page, foundSelector);
-        } catch (extractErr) {
-            logger.debug(
-                `[DEBUG] Failed to extract tebligatlar on page ${pageNum}:`,
-                extractErr.message
-            );
-            break;
-        }
-        logger.debug(`[DEBUG] Found ${pageTebligatlar.length} tebligatlar on page ${pageNum}`);
-
-        if (pageTebligatlar.length === 0) {
-            break; // No more data
+        if (!tabClicked) {
+            logger.debug(`[DEBUG] Tab "${tabName}" not found, skipping`);
+            continue;
         }
 
-        if (pageNum === 1) {
-            status(
-                `${pageTebligatlar.length} tebligat bulundu (sayfa ${pageNum}), dökümanlar indiriliyor...`
-            );
-        } else {
-            status(`Sayfa ${pageNum}: ${pageTebligatlar.length} tebligat daha bulundu.`);
-        }
+        await new Promise((r) => setTimeout(r, 2000));
 
-        // Add scraped data first — preserved even if downloads fail
-        allTebligatlar.push(...pageTebligatlar);
+        // Also click "FİLTRELE" button to load the table if needed
+        await page.evaluate(() => {
+            const btns = document.querySelectorAll('button');
+            for (const b of btns) {
+                if ((b.textContent || '').toUpperCase().includes('FİLTRELE')) {
+                    b.click();
+                    return;
+                }
+            }
+        });
+        await new Promise((r) => setTimeout(r, 2000));
 
-        // Download documents for this page via CDP Fetch interception
-        try {
-            for (let i = 0; i < pageTebligatlar.length; i++) {
-                if (!isPageUsable()) {
-                    status('Sayfa bağlantısı kesildi (veriler korundu).');
+        // Find table selector
+        const tableSelectors = [
+            'table tbody tr',
+            '[role="row"]',
+            '.MuiDataGrid-row',
+            '[class*="MuiDataGrid"] [role="row"]',
+        ];
+
+        let foundSelector = null;
+        for (const sel of tableSelectors) {
+            try {
+                await page.waitForSelector(sel, { timeout: 5000 });
+                const count = await page.evaluate((s) => document.querySelectorAll(s).length, sel);
+                if (count > 0) {
+                    foundSelector = sel;
                     break;
                 }
+            } catch {
+                /* try next */
+            }
+        }
 
-                const tebligat = pageTebligatlar[i];
-                if (!tebligat.documentUrl || !tebligat.documentUrl.startsWith('__CLICK_ROW__:'))
-                    continue;
+        if (!foundSelector) {
+            logger.debug(`[DEBUG] No table found for tab "${tabName}"`);
+            continue;
+        }
 
-                const docsDir = getDocumentsDir(
-                    client.id,
-                    client.firm_name,
-                    tebligat.date || tebligat.notificationDate || tebligat.sendDate
+        // Extract from all pages and download documents while on each page
+        const allTebligatlar = [];
+        status(`${tabName} tabı taranıyor...`);
+        let pageNum = 1;
+        const maxPages = 20; // Safety limit to prevent infinite loops
+
+        // Helper: check if the page target is still alive
+        const isPageUsable = () => {
+            try {
+                return !page.isClosed();
+            } catch {
+                return false;
+            }
+        };
+
+        while (pageNum <= maxPages) {
+            logger.debug(`[DEBUG] Scraping page ${pageNum}...`);
+
+            // Extract data from current page
+            let pageTebligatlar;
+            try {
+                pageTebligatlar = await extractTebligatFromPage(page, foundSelector);
+            } catch (extractErr) {
+                logger.debug(
+                    `[DEBUG] Failed to extract tebligatlar on page ${pageNum}:`,
+                    extractErr.message
                 );
-                const safeDocNo = (tebligat.documentNo || 'doc').replace(/[^a-zA-Z0-9-_]/g, '_');
-                const filePath = path.join(docsDir, `tebligat_${safeDocNo}.pdf`);
+                break;
+            }
+            logger.debug(`[DEBUG] Found ${pageTebligatlar.length} tebligatlar on page ${pageNum}`);
 
-                // Skip if already downloaded
-                if (fs.existsSync(filePath)) {
-                    tebligat.documentPath = filePath;
-                    tebligat._newDownload = false;
-                    continue;
-                }
+            if (pageTebligatlar.length === 0) {
+                break; // No more data
+            }
 
+            if (pageNum === 1) {
                 status(
-                    `Döküman indiriliyor (${i + 1}/${pageTebligatlar.length}): ${tebligat.documentNo || '?'}...`
+                    `${pageTebligatlar.length} tebligat bulundu (sayfa ${pageNum}), dökümanlar indiriliyor...`
                 );
+            } else {
+                status(`Sayfa ${pageNum}: ${pageTebligatlar.length} tebligat daha bulundu.`);
+            }
 
-                try {
-                    const docPath = await downloadDocumentByClick(page, i, foundSelector, filePath);
-                    if (docPath) {
-                        tebligat.documentPath = docPath;
-                        tebligat._newDownload = true;
+            // Add scraped data first — preserved even if downloads fail
+            allTebligatlar.push(...pageTebligatlar);
+
+            // Download documents for this page via CDP Fetch interception
+            try {
+                for (let i = 0; i < pageTebligatlar.length; i++) {
+                    if (!isPageUsable()) {
+                        status('Sayfa bağlantısı kesildi (veriler korundu).');
+                        break;
                     }
 
-                    // Navigate back to the list page (download goes to detail page)
-                    if (!isPageUsable()) break;
-                    const currentUrl = page.url();
-                    if (
-                        currentUrl.includes('tebligat-detay') ||
-                        !currentUrl.endsWith('/e-tebligat')
-                    ) {
+                    const tebligat = pageTebligatlar[i];
+                    if (!tebligat.documentUrl || !tebligat.documentUrl.startsWith('__CLICK_ROW__:'))
+                        continue;
+
+                    const docsDir = getDocumentsDir(
+                        client.id,
+                        client.firm_name,
+                        tebligat.date || tebligat.notificationDate || tebligat.sendDate
+                    );
+                    const safeDocNo = (tebligat.documentNo || 'doc').replace(
+                        /[^a-zA-Z0-9-_]/g,
+                        '_'
+                    );
+                    const filePath = path.join(docsDir, `tebligat_${safeDocNo}.pdf`);
+
+                    // Skip if already downloaded
+                    if (fs.existsSync(filePath)) {
+                        tebligat.documentPath = filePath;
+                        tebligat._newDownload = false;
+                        continue;
+                    }
+
+                    status(
+                        `Döküman indiriliyor (${i + 1}/${pageTebligatlar.length}): ${tebligat.documentNo || '?'}...`
+                    );
+
+                    try {
+                        const docPath = await downloadDocumentByClick(
+                            page,
+                            i,
+                            foundSelector,
+                            filePath
+                        );
+                        if (docPath) {
+                            tebligat.documentPath = docPath;
+                            tebligat._newDownload = true;
+                        }
+
+                        // Navigate back to the list page (download goes to detail page)
+                        if (!isPageUsable()) break;
+                        const currentUrl = page.url();
+                        if (
+                            currentUrl.includes('tebligat-detay') ||
+                            !currentUrl.endsWith('/e-tebligat')
+                        ) {
+                            await page
+                                .goto('https://dijital.gib.gov.tr/portal/e-tebligat', {
+                                    waitUntil: 'networkidle0',
+                                    timeout: 20000,
+                                })
+                                .catch(() => {});
+                        }
+                        await page
+                            .waitForSelector(foundSelector, { timeout: 10000 })
+                            .catch(() => {});
+                        await new Promise((r) => setTimeout(r, 1000));
+                    } catch (dlErr) {
+                        logger.debug(`[DEBUG] Download error for row ${i}:`, dlErr.message);
+                        if (!isPageUsable()) break;
+                        // Try to recover to the list page
                         await page
                             .goto('https://dijital.gib.gov.tr/portal/e-tebligat', {
                                 waitUntil: 'networkidle0',
                                 timeout: 20000,
                             })
                             .catch(() => {});
+                        await page
+                            .waitForSelector(foundSelector, { timeout: 10000 })
+                            .catch(() => {});
                     }
-                    await page.waitForSelector(foundSelector, { timeout: 10000 }).catch(() => {});
-                    await new Promise((r) => setTimeout(r, 1000));
-                } catch (dlErr) {
-                    logger.debug(`[DEBUG] Download error for row ${i}:`, dlErr.message);
-                    if (!isPageUsable()) break;
-                    // Try to recover to the list page
-                    await page
-                        .goto('https://dijital.gib.gov.tr/portal/e-tebligat', {
-                            waitUntil: 'networkidle0',
-                            timeout: 20000,
-                        })
-                        .catch(() => {});
-                    await page.waitForSelector(foundSelector, { timeout: 10000 }).catch(() => {});
                 }
+            } catch (loopErr) {
+                logger.debug('[DEBUG] Download loop error (data preserved):', loopErr.message);
             }
-        } catch (loopErr) {
-            logger.debug('[DEBUG] Download loop error (data preserved):', loopErr.message);
+
+            // If page is dead, stop pagination but keep the data we have
+            if (!isPageUsable()) {
+                logger.debug('[DEBUG] Page target lost, stopping pagination.');
+                break;
+            }
+
+            // Try to go to next page
+            status('Sonraki sayfa kontrol ediliyor...');
+            let hasNextPage = false;
+            try {
+                hasNextPage = await goToNextPage(page);
+            } catch (navErr) {
+                logger.debug('[DEBUG] Pagination error:', navErr.message);
+                break;
+            }
+            if (!hasNextPage) {
+                logger.debug('[DEBUG] No more pages to scrape.');
+                break;
+            }
+
+            // Wait for the page content to update
+            await new Promise((r) => setTimeout(r, 1500));
+
+            // Verify we're on a new page with data
+            let hasData = false;
+            try {
+                hasData = await hasDataOnPage(page, foundSelector);
+            } catch {
+                break;
+            }
+            if (!hasData) {
+                logger.debug('[DEBUG] Next page has no data, stopping pagination.');
+                break;
+            }
+
+            pageNum++;
         }
 
-        // If page is dead, stop pagination but keep the data we have
-        if (!isPageUsable()) {
-            logger.debug('[DEBUG] Page target lost, stopping pagination.');
-            break;
-        }
+        allTebligatlarFromAllTabs.push(...allTebligatlar);
+    } // end of tabs loop
 
-        // Try to go to next page
-        status('Sonraki sayfa kontrol ediliyor...');
-        let hasNextPage = false;
-        try {
-            hasNextPage = await goToNextPage(page);
-        } catch (navErr) {
-            logger.debug('[DEBUG] Pagination error:', navErr.message);
-            break;
-        }
-        if (!hasNextPage) {
-            logger.debug('[DEBUG] No more pages to scrape.');
-            break;
-        }
-
-        // Wait for the page content to update
-        await new Promise((r) => setTimeout(r, 1500));
-
-        // Verify we're on a new page with data
-        let hasData = false;
-        try {
-            hasData = await hasDataOnPage(page, foundSelector);
-        } catch {
-            break;
-        }
-        if (!hasData) {
-            logger.debug('[DEBUG] Next page has no data, stopping pagination.');
-            break;
-        }
-
-        pageNum++;
-    }
-
-    // Clean up empty date directories left by failed downloads
+    // Clean up empty date directories
     const s = settings.readSettings();
     const basePath = s.documentsFolder || path.join(app.getPath('userData'), 'documents');
     const safeFirmName = (client.firm_name || String(client.id))
@@ -789,8 +842,8 @@ const loginAndFetch = async (page, client, password, apiKey, onStatus = null) =>
         }
     }
 
-    status(`Tarama tamamlandı: ${allTebligatlar.length} tebligat (${pageNum} sayfa).`);
-    return allTebligatlar;
+    status(`Tarama tamamlandı: ${allTebligatlarFromAllTabs.length} tebligat.`);
+    return allTebligatlarFromAllTabs;
 };
 
 function cancelScan() {

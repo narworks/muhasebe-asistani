@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { clientCreateSchema, clientEditSchema, validateForm } from '../../lib/validations';
 import type { ScheduleStatus, Client, Tebligat, ScanUpdate } from '../../types';
+import LegalConsentModal from '../../components/LegalConsentModal';
 
 interface ClientGroup {
     client_id: number;
@@ -72,6 +73,10 @@ const ETebligat: React.FC = () => {
         status: string;
     } | null>(null);
 
+    // Legal consent
+    const [showLegalConsent, setShowLegalConsent] = useState(false);
+    const [legalConsentAccepted, setLegalConsentAccepted] = useState(true); // assume true until checked
+
     // Accordion & Pagination state
     const [expandedClients, setExpandedClients] = useState<Set<number>>(new Set());
     const [clientPages, setClientPages] = useState<Record<number, number>>({});
@@ -88,6 +93,13 @@ const ETebligat: React.FC = () => {
             setLoadingTebligatlar(false);
         }
     };
+
+    // Check legal consent on mount
+    useEffect(() => {
+        window.electronAPI.getLegalConsent().then((accepted) => {
+            setLegalConsentAccepted(accepted);
+        });
+    }, []);
 
     const fetchClients = async () => {
         try {
@@ -377,6 +389,12 @@ const ETebligat: React.FC = () => {
     const handleSaveClient = async (event: React.FormEvent) => {
         event.preventDefault();
         setClientErrors({});
+
+        // Show legal consent if not accepted yet (first time adding a client)
+        if (!editingClientId && !legalConsentAccepted) {
+            setShowLegalConsent(true);
+            return;
+        }
 
         // Use appropriate schema based on edit vs create mode
         const schema = editingClientId ? clientEditSchema : clientCreateSchema;
@@ -750,6 +768,16 @@ const ETebligat: React.FC = () => {
 
     return (
         <div className="p-6 h-full flex flex-col">
+            {showLegalConsent && (
+                <LegalConsentModal
+                    onAccept={async () => {
+                        await window.electronAPI.acceptLegalConsent();
+                        setLegalConsentAccepted(true);
+                        setShowLegalConsent(false);
+                    }}
+                    onDecline={() => setShowLegalConsent(false)}
+                />
+            )}
             {selectedTebligat && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
                     <div className="bg-white rounded-lg shadow-xl w-full max-w-lg p-6">
@@ -1607,7 +1635,7 @@ const ETebligat: React.FC = () => {
                     </div>
                 )}
 
-                <div className="flex-1 bg-gray-900 rounded-lg p-4 font-mono text-sm overflow-y-auto min-h-[400px]">
+                <div className="bg-gray-900 rounded-lg p-4 font-mono text-xs overflow-y-auto max-h-[200px]">
                     {logs.length === 0 ? (
                         <div className="text-gray-500 text-center mt-10">
                             Henüz işlem yapılmadı. Başlamak için butona tıklayın.

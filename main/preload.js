@@ -34,6 +34,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     onScanComplete: (callback) =>
         ipcRenderer.on('scan-complete', (_event, value) => callback(value)),
 
+    // Legal consent
+    getLegalConsent: () => ipcRenderer.invoke('get-legal-consent'),
+    acceptLegalConsent: () => ipcRenderer.invoke('accept-legal-consent'),
+
     // Scan Settings
     getScanSettings: () => ipcRenderer.invoke('get-scan-settings'),
     saveScanSettings: (settings) => ipcRenderer.invoke('save-scan-settings', settings),

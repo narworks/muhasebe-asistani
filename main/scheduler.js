@@ -9,11 +9,16 @@ let onScanCallback = null;
 function init(onScanTrigger) {
     onScanCallback = onScanTrigger;
     const current = settings.readSettings();
-    if (current.schedule && current.schedule.enabled && current.schedule.finishByTime) {
+    if (
+        current.schedule &&
+        current.schedule.enabled &&
+        (current.schedule.finishByTime || current.schedule.startAtTime)
+    ) {
         startSchedule(
             current.schedule.finishByTime,
             current.schedule.frequency || 'daily',
-            current.schedule.customDays || []
+            current.schedule.customDays || [],
+            current.schedule.startAtTime || null
         );
     }
 }
@@ -163,13 +168,14 @@ function buildCronExpression(startTime, frequency, customDays) {
     return `${minutes} ${hours} * * ${dayOfWeek}`;
 }
 
-function startSchedule(finishByTime, frequency = 'daily', customDays = []) {
+function startSchedule(finishByTime, frequency = 'daily', customDays = [], startAtTime = null) {
     stopSchedule();
 
-    const [hours, minutes] = finishByTime.split(':').map(Number);
+    const timeToValidate = startAtTime || finishByTime;
+    const [hours, minutes] = timeToValidate.split(':').map(Number);
 
     if (isNaN(hours) || isNaN(minutes) || hours < 0 || hours > 23 || minutes < 0 || minutes > 59) {
-        console.error('[Scheduler] Invalid time format:', finishByTime);
+        console.error('[Scheduler] Invalid time format:', timeToValidate);
         return false;
     }
 
@@ -199,12 +205,24 @@ function startSchedule(finishByTime, frequency = 'daily', customDays = []) {
     }
 
     // Calculate when to start
-    const { startTime, finishTime } = calculateStartTime(
-        finishByTime,
-        totalMinutes,
-        frequency,
-        customDays
-    );
+    let startTime, finishTime;
+    if (startAtTime) {
+        // User specified exact start time
+        const [sh, sm] = startAtTime.split(':').map(Number);
+        const now = new Date();
+        startTime = new Date(now);
+        startTime.setHours(sh, sm, 0, 0);
+        if (startTime <= now) startTime.setDate(startTime.getDate() + 1);
+        finishTime = new Date(startTime.getTime() + totalMinutes * 60 * 1000);
+    } else {
+        // Calculate start from finish time
+        ({ startTime, finishTime } = calculateStartTime(
+            finishByTime,
+            totalMinutes,
+            frequency,
+            customDays
+        ));
+    }
     const cronExpression = buildCronExpression(startTime, frequency, customDays);
 
     if (!cron.validate(cronExpression)) {
@@ -255,6 +273,7 @@ function startSchedule(finishByTime, frequency = 'daily', customDays = []) {
         schedule: {
             enabled: true,
             finishByTime: finishByTime,
+            startAtTime: startAtTime || null,
             frequency: frequency,
             customDays: customDays,
             estimatedDurationMinutes: totalMinutes,
@@ -296,6 +315,7 @@ function getStatus() {
     return {
         enabled: current.schedule?.enabled || false,
         finishByTime: current.schedule?.finishByTime || '08:00',
+        startAtTime: current.schedule?.startAtTime || null,
         // Keep 'time' for backwards compatibility
         time: current.schedule?.finishByTime || current.schedule?.time || '08:00',
         frequency: current.schedule?.frequency || 'daily',
@@ -313,11 +333,15 @@ function getStatus() {
  */
 function refreshSchedule() {
     const current = settings.readSettings();
-    if (current.schedule?.enabled && current.schedule?.finishByTime) {
+    if (
+        current.schedule?.enabled &&
+        (current.schedule?.finishByTime || current.schedule?.startAtTime)
+    ) {
         startSchedule(
             current.schedule.finishByTime,
             current.schedule.frequency || 'daily',
-            current.schedule.customDays || []
+            current.schedule.customDays || [],
+            current.schedule.startAtTime || null
         );
     }
 }
