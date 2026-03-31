@@ -49,20 +49,42 @@ const ensureDir = (dir) => {
 
 // Download: İŞLEM YAP → Zarf İçeriği Gör → /tebligat-detay → BELGE GÖRÜNTÜLE (opens new tab) → GERİ
 const downloadDocumentByClick = async (page, rowIndex, tableSelector, filePath) => {
-    const browser = page.browser();
-    let pdfBuffer = null;
+    const docsDir = path.dirname(filePath);
+    ensureDir(docsDir);
 
+    const cdp = await page.createCDPSession();
     try {
-        // Step 1: Click "İŞLEM YAP" button
+        // Configure Chrome to download to our folder and report progress
+        await cdp.send('Browser.setDownloadBehavior', {
+            behavior: 'allowAndName',
+            downloadPath: docsDir,
+            eventsEnabled: true,
+        });
+
+        // Listen for download completion
+        const dlDone = new Promise((resolve) => {
+            const timer = setTimeout(() => resolve(null), 20000);
+            cdp.on('Browser.downloadProgress', (ev) => {
+                if (ev.state === 'completed') {
+                    clearTimeout(timer);
+                    resolve(ev.guid);
+                }
+                if (ev.state === 'canceled') {
+                    clearTimeout(timer);
+                    resolve(null);
+                }
+            });
+        });
+
+        // Step 1: Click "İŞLEM YAP"
         const clicked = await page.evaluate(
             (sel, idx) => {
                 const rows = Array.from(document.querySelectorAll(sel));
                 const row = rows[idx];
                 if (!row) return false;
-                const buttons = row.querySelectorAll('button');
-                for (const btn of buttons) {
-                    const text = (btn.textContent || '').toUpperCase();
-                    if (text.includes('İŞLEM') || text.includes('ISLEM')) {
+                for (const btn of row.querySelectorAll('button')) {
+                    const t = (btn.textContent || '').toUpperCase();
+                    if (t.includes('İŞLEM') || t.includes('ISLEM')) {
                         btn.click();
                         return true;
                     }
@@ -76,18 +98,19 @@ const downloadDocumentByClick = async (page, rowIndex, tableSelector, filePath) 
         await new Promise((r) => setTimeout(r, 1000));
 
         // Step 2: Click "Zarf İçeriği Gör"
-        const menuClicked = await page.evaluate(() => {
-            const els = document.querySelectorAll(
+        const menuOk = await page.evaluate(() => {
+            for (const el of document.querySelectorAll(
                 'li, [role="menuitem"], .MuiMenuItem-root, span, div, a'
-            );
-            for (const el of els) {
+            )) {
                 const t = (el.textContent || '').trim();
                 if (t === 'Zarf İçeriği Gör' || t === 'Zarf İçeriğini Gör') {
                     el.click();
                     return true;
                 }
             }
-            for (const el of els) {
+            for (const el of document.querySelectorAll(
+                'li, [role="menuitem"], .MuiMenuItem-root'
+            )) {
                 if ((el.textContent || '').toLowerCase().includes('zarf içeriği')) {
                     el.click();
                     return true;
@@ -95,7 +118,7 @@ const downloadDocumentByClick = async (page, rowIndex, tableSelector, filePath) 
             }
             return false;
         });
-        if (!menuClicked) {
+        if (!menuOk) {
             await page.keyboard.press('Escape').catch(() => {});
             return null;
         }
@@ -103,40 +126,9 @@ const downloadDocumentByClick = async (page, rowIndex, tableSelector, filePath) 
         await page.waitForNavigation({ waitUntil: 'networkidle0', timeout: 15000 }).catch(() => {});
         await new Promise((r) => setTimeout(r, 2000));
 
-        // Step 3: "BELGE GÖRÜNTÜLE" — may open new tab with PDF
-        // Listen for new tab BEFORE clicking
-        const newTabPromise = new Promise((resolve) => {
-            const onTarget = async (target) => {
-                if (target.type() === 'page') {
-                    browser.off('targetcreated', onTarget);
-                    resolve(await target.page());
-                }
-            };
-            browser.on('targetcreated', onTarget);
-            setTimeout(() => {
-                browser.off('targetcreated', onTarget);
-                resolve(null);
-            }, 12000);
-        });
-
-        // Also listen on current page
-        const curPdfHandler = async (resp) => {
-            try {
-                const ct = resp.headers()['content-type'] || '';
-                if (ct.includes('application/pdf') || ct.includes('application/octet-stream')) {
-                    const buf = await resp.buffer();
-                    if (buf && buf.length > 1000 && (!pdfBuffer || buf.length > pdfBuffer.length))
-                        pdfBuffer = buf;
-                }
-            } catch {
-                /* consumed */
-            }
-        };
-        page.on('response', curPdfHandler);
-
+        // Step 3: Click "BELGE GÖRÜNTÜLE" — triggers direct file download
         await page.evaluate(() => {
-            const btns = document.querySelectorAll('button, a');
-            for (const b of btns) {
+            for (const b of document.querySelectorAll('button, a')) {
                 const t = (b.textContent || '').toUpperCase();
                 if (t.includes('BELGE GÖRÜNTÜLE') || t.includes('BELGE GORUNTULE')) {
                     b.click();
@@ -145,62 +137,12 @@ const downloadDocumentByClick = async (page, rowIndex, tableSelector, filePath) 
             }
         });
 
-        const newTab = await newTabPromise;
-        page.off('response', curPdfHandler);
+        // Wait for Chrome download to finish
+        const guid = await dlDone;
 
-        if (newTab) {
-            logger.debug(`[DL] New tab: ${newTab.url()}`);
-            try {
-                await new Promise((r) => setTimeout(r, 3000));
-                // Capture PDF from new tab responses
-                const tabHandler = async (resp) => {
-                    try {
-                        const ct = resp.headers()['content-type'] || '';
-                        if (
-                            ct.includes('application/pdf') ||
-                            ct.includes('application/octet-stream')
-                        ) {
-                            const buf = await resp.buffer();
-                            if (
-                                buf &&
-                                buf.length > 1000 &&
-                                (!pdfBuffer || buf.length > pdfBuffer.length)
-                            )
-                                pdfBuffer = buf;
-                        }
-                    } catch {
-                        /* consumed */
-                    }
-                };
-                newTab.on('response', tabHandler);
-                await newTab.reload({ waitUntil: 'networkidle0', timeout: 10000 }).catch(() => {});
-                await new Promise((r) => setTimeout(r, 3000));
-                newTab.off('response', tabHandler);
-
-                // Fallback: print new tab page as PDF
-                if (!pdfBuffer) {
-                    try {
-                        const buf = await newTab.pdf({ format: 'A4' });
-                        if (buf && buf.length > 3000) {
-                            pdfBuffer = buf;
-                            logger.debug(`[DL] Printed PDF (${buf.length}b)`);
-                        }
-                    } catch {
-                        /* print failed */
-                    }
-                }
-            } finally {
-                await newTab.close().catch(() => {});
-            }
-        } else if (!pdfBuffer) {
-            // No new tab, wait for PDF on current page
-            await new Promise((r) => setTimeout(r, 8000));
-        }
-
-        // Step 4: Go back
+        // Step 4: Go back to list
         await page.evaluate(() => {
-            const btns = document.querySelectorAll('button, a');
-            for (const b of btns) {
+            for (const b of document.querySelectorAll('button, a')) {
                 const t = (b.textContent || '').toUpperCase();
                 if (t.includes('GERİ') || t.includes('GERI')) {
                     b.click();
@@ -209,16 +151,33 @@ const downloadDocumentByClick = async (page, rowIndex, tableSelector, filePath) 
             }
         });
         await page.waitForNavigation({ waitUntil: 'networkidle0', timeout: 10000 }).catch(() => {});
+
+        // Rename the downloaded file (Chrome saves with guid as filename)
+        if (guid) {
+            const guidPath = path.join(docsDir, guid);
+            if (fs.existsSync(guidPath)) {
+                fs.renameSync(guidPath, filePath);
+                logger.debug(`[DL] Saved: ${filePath}`);
+                return filePath;
+            }
+        }
+
+        // Fallback: find any new file in docsDir
+        const files = fs.readdirSync(docsDir).filter((f) => f !== path.basename(filePath));
+        for (const f of files) {
+            const fp = path.join(docsDir, f);
+            if (fs.statSync(fp).size > 1000) {
+                fs.renameSync(fp, filePath);
+                logger.debug(`[DL] Renamed ${f} → ${path.basename(filePath)}`);
+                return filePath;
+            }
+        }
     } catch (err) {
         logger.debug(`[DL] Error row ${rowIndex}: ${err.message}`);
+    } finally {
+        await cdp.detach().catch(() => {});
     }
 
-    if (pdfBuffer && pdfBuffer.length >= 3000) {
-        ensureDir(path.dirname(filePath));
-        fs.writeFileSync(filePath, pdfBuffer);
-        logger.debug(`[DL] Saved (${pdfBuffer.length} bytes): ${filePath}`);
-        return filePath;
-    }
     return null;
 };
 
