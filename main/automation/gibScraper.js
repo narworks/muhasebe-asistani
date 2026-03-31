@@ -47,15 +47,13 @@ const ensureDir = (dir) => {
     }
 };
 
-// Download a document via GIB portal's 3-step flow:
-// 1. Click "İşlem" dropdown on the row → select "Zarf içeriğini gör"
-// 2. Navigate to /e-tebligat/tebligat-detay page
-// 3. Click "Belge Görüntüle" button to download the actual PDF
+// Download via: "İŞLEM YAP" → "Zarf İçeriği Gör" → detay sayfası → "BELGE GÖRÜNTÜLE"
+// Then "← GERİ" to return to the list
 const downloadDocumentByClick = async (page, rowIndex, tableSelector, filePath) => {
     let pdfBuffer = null;
     let lastPdfTime = 0;
 
-    const handler = async (response) => {
+    const pdfHandler = async (response) => {
         try {
             const ct = response.headers()['content-type'] || '';
             const url = response.url();
@@ -68,227 +66,124 @@ const downloadDocumentByClick = async (page, rowIndex, tableSelector, filePath) 
                 if (buf && buf.length > 1000 && (!pdfBuffer || buf.length > pdfBuffer.length)) {
                     pdfBuffer = buf;
                     lastPdfTime = Date.now();
-                    logger.debug(
-                        `[DL] PDF captured (${buf.length} bytes): ${url.substring(0, 80)}`
-                    );
+                    logger.debug(`[DL] PDF captured (${buf.length} bytes)`);
                 }
             }
         } catch {
-            // buffer already consumed
+            /* buffer consumed */
         }
     };
-    page.on('response', handler);
+    page.on('response', pdfHandler);
 
     try {
-        // Save debug screenshots for first 2 attempts
-        const debugDir = app.getPath('userData');
-        if (rowIndex < 2) {
-            await page.screenshot({
-                path: path.join(debugDir, `debug_dl_step0_row${rowIndex}.png`),
-                fullPage: false,
-            });
-        }
-
-        // Step 1: Find and click "İşlem" action button on this row
-        // First, take a debug snapshot of the row structure
-        const rowDebug = await page.evaluate(
-            (sel, idx) => {
-                const rows = Array.from(document.querySelectorAll(sel));
-                const row = rows[idx];
-                if (!row) return { found: false };
-                const cells = row.querySelectorAll('td, [role="cell"]');
-                const cellCount = cells.length;
-                const lastCellHtml = cells[cellCount - 1]?.innerHTML?.substring(0, 500) || '';
-                const allButtons = Array.from(row.querySelectorAll('button')).map((b) => ({
-                    text: b.textContent?.trim()?.substring(0, 50),
-                    class: b.className?.substring(0, 80),
-                    aria: b.getAttribute('aria-label'),
-                }));
-                return { found: true, cellCount, lastCellHtml, allButtons };
-            },
-            tableSelector,
-            rowIndex
-        );
-        logger.debug('[DL] Row debug:', JSON.stringify(rowDebug, null, 2));
-
-        // Now try to click the action button
-        const dropdownOpened = await page.evaluate(
+        // Step 1: Click "İŞLEM YAP" button on the row
+        // The button text is "İŞLEM YAP" with a dropdown arrow, in the last column
+        const clicked = await page.evaluate(
             (sel, idx) => {
                 const rows = Array.from(document.querySelectorAll(sel));
                 const row = rows[idx];
                 if (!row) return false;
-                const cells = row.querySelectorAll('td, [role="cell"]');
 
-                // Strategy 1: Look for button in the last cell (İşlem column)
-                const lastCell = cells[cells.length - 1];
-                if (lastCell) {
-                    const btn = lastCell.querySelector('button, [role="button"]');
-                    if (btn) {
+                // Find button containing "İŞLEM YAP" or "İşlem" text
+                const buttons = row.querySelectorAll('button');
+                for (const btn of buttons) {
+                    const text = (btn.textContent || '').trim().toUpperCase();
+                    if (text.includes('İŞLEM') || text.includes('ISLEM')) {
                         btn.click();
-                        return 'last-cell-button';
-                    }
-                    // Maybe the cell itself is clickable
-                    const clickable = lastCell.querySelector(
-                        '[aria-haspopup], [class*="icon"], svg'
-                    );
-                    if (clickable) {
-                        clickable.click();
-                        return 'last-cell-clickable';
+                        return true;
                     }
                 }
-
-                // Strategy 2: Look for button with "işlem" text or three-dot icon
-                const allBtns = row.querySelectorAll('button, [role="button"]');
-                for (const btn of allBtns) {
-                    const text = (btn.textContent || '').toLowerCase();
-                    const aria = (btn.getAttribute('aria-label') || '').toLowerCase();
-                    if (
-                        text.includes('işlem') ||
-                        aria.includes('işlem') ||
-                        aria.includes('more') ||
-                        aria.includes('action')
-                    ) {
-                        btn.click();
-                        return 'text-match';
-                    }
-                }
-
-                // Strategy 3: Last button in the row (skip checkbox which is usually first)
-                const btns = Array.from(row.querySelectorAll('button'));
-                if (btns.length > 1) {
-                    btns[btns.length - 1].click();
-                    return 'last-button';
-                }
-
-                // Strategy 4: Click the last cell directly
-                if (lastCell) {
-                    lastCell.click();
-                    return 'last-cell-click';
-                }
-
                 return false;
             },
             tableSelector,
             rowIndex
         );
 
-        logger.debug(`[DL] Dropdown strategy: ${dropdownOpened}`);
-
-        if (rowIndex < 2) {
-            await page.screenshot({
-                path: path.join(debugDir, `debug_dl_step1_row${rowIndex}.png`),
-                fullPage: false,
-            });
-        }
-
-        if (!dropdownOpened) {
-            logger.debug(`[DL] No action dropdown for row ${rowIndex}`);
+        if (!clicked) {
+            logger.debug(`[DL] "İŞLEM YAP" button not found in row ${rowIndex}`);
             return null;
         }
         await new Promise((r) => setTimeout(r, 1000));
 
-        // Step 2: Click "Zarf içeriğini gör" in the dropdown menu
-        // First debug: list all visible menu items
-        const menuDebug = await page.evaluate(() => {
-            const selectors =
-                '[role="menuitem"], .MuiMenuItem-root, [role="menu"] li, .MuiMenu-list li, .MuiList-root li, [role="option"], .MuiPopover-root li, [class*="menu"] li, [class*="Menu"] li, [class*="dropdown"] li, [class*="Dropdown"] li';
-            const items = document.querySelectorAll(selectors);
-            return Array.from(items).map((el) => ({
-                text: el.textContent?.trim()?.substring(0, 80),
-                tag: el.tagName,
-                role: el.getAttribute('role'),
-            }));
-        });
-        logger.debug('[DL] Menu items found:', JSON.stringify(menuDebug));
-
-        const detailClicked = await page.evaluate(() => {
-            // Broad search for menu items / popover items
-            const allItems = document.querySelectorAll(
-                '[role="menuitem"], .MuiMenuItem-root, [role="menu"] li, .MuiMenu-list li, .MuiList-root li, [role="option"], .MuiPopover-root li, [class*="menu"] li, [class*="Menu"] li'
+        // Step 2: Click "Zarf İçeriği Gör" in the dropdown
+        const menuClicked = await page.evaluate(() => {
+            // Search all visible elements for the menu text
+            const allEls = document.querySelectorAll(
+                'li, [role="menuitem"], .MuiMenuItem-root, a, span, div'
             );
-            for (const item of allItems) {
-                const text = (item.textContent || '').toLowerCase();
-                if (
-                    text.includes('zarf içeriğini gör') ||
-                    text.includes('zarf içeriği') ||
-                    text.includes('içeriğini gör') ||
-                    text.includes('detay') ||
-                    text.includes('görüntüle')
-                ) {
-                    item.click();
-                    return text.substring(0, 50);
+            for (const el of allEls) {
+                const text = (el.textContent || '').trim();
+                if (text === 'Zarf İçeriği Gör' || text === 'Zarf İçeriğini Gör') {
+                    el.click();
+                    return true;
+                }
+            }
+            // Fallback: partial match
+            for (const el of allEls) {
+                const text = (el.textContent || '').toLowerCase();
+                if (text.includes('zarf içeriği')) {
+                    el.click();
+                    return true;
                 }
             }
             return false;
         });
 
-        if (!detailClicked) {
-            logger.debug('[DL] "Zarf içeriğini gör" not found in menu');
+        if (!menuClicked) {
+            logger.debug('[DL] "Zarf İçeriği Gör" not found');
             await page.keyboard.press('Escape').catch(() => {});
             return null;
         }
 
-        // Wait for navigation to detail page
+        // Wait for navigation to /tebligat-detay
         await page.waitForNavigation({ waitUntil: 'networkidle0', timeout: 15000 }).catch(() => {});
         await new Promise((r) => setTimeout(r, 2000));
 
-        logger.debug(`[DL] Detail page: ${page.url()}`);
-
-        if (rowIndex < 2) {
-            await page.screenshot({
-                path: path.join(debugDir, `debug_dl_step2_row${rowIndex}.png`),
-                fullPage: false,
-            });
-        }
-
-        // Step 3: Click "Belge Görüntüle" button
-        // Debug: list all buttons on the detail page
-        const detailButtons = await page.evaluate(() => {
-            return Array.from(
-                document.querySelectorAll('button, [role="button"], a.MuiButton-root')
-            ).map((b) => ({
-                text: b.textContent?.trim()?.substring(0, 60),
-                tag: b.tagName,
-            }));
-        });
-        logger.debug('[DL] Detail page buttons:', JSON.stringify(detailButtons));
-
+        // Step 3: Click "BELGE GÖRÜNTÜLE" on the detail page
         const viewClicked = await page.evaluate(() => {
-            const btns = document.querySelectorAll('button, [role="button"], a, a.MuiButton-root');
-            for (const btn of btns) {
-                const text = (btn.textContent || '').toLowerCase();
-                if (
-                    text.includes('belge görüntüle') ||
-                    text.includes('belgeyi görüntüle') ||
-                    text.includes('belge göster') ||
-                    text.includes('belge indir') ||
-                    text.includes('döküman')
-                ) {
+            const buttons = document.querySelectorAll('button, a');
+            for (const btn of buttons) {
+                const text = (btn.textContent || '').trim().toUpperCase();
+                if (text.includes('BELGE GÖRÜNTÜLE') || text.includes('BELGE GORUNTULE')) {
                     btn.click();
-                    return text.substring(0, 50);
+                    return true;
                 }
             }
             return false;
         });
 
-        logger.debug(`[DL] View button result: ${viewClicked}`);
+        if (!viewClicked) {
+            logger.debug('[DL] "BELGE GÖRÜNTÜLE" not found on detail page');
+        }
 
-        // Wait for PDF with debounce: settle 3s after last PDF, max 15s
-        const startTime = Date.now();
+        // Wait for PDF: settle 3s after last capture, max 15s
+        const start = Date.now();
         await new Promise((resolve) => {
             const check = setInterval(() => {
                 const now = Date.now();
-                const elapsed = now - startTime;
-                const sinceLast = lastPdfTime ? now - lastPdfTime : 0;
-                const settled = lastPdfTime > 0 && sinceLast >= 3000;
+                const elapsed = now - start;
+                const settled = lastPdfTime > 0 && now - lastPdfTime >= 3000;
                 if (settled || elapsed >= 15000) {
                     clearInterval(check);
                     resolve();
                 }
             }, 300);
         });
+
+        // Step 4: Click "← GERİ" to go back to the list
+        await page.evaluate(() => {
+            const buttons = document.querySelectorAll('button, a');
+            for (const btn of buttons) {
+                const text = (btn.textContent || '').trim().toUpperCase();
+                if (text.includes('GERİ') || text.includes('GERI')) {
+                    btn.click();
+                    return;
+                }
+            }
+        });
+        await page.waitForNavigation({ waitUntil: 'networkidle0', timeout: 10000 }).catch(() => {});
     } finally {
-        page.off('response', handler);
+        page.off('response', pdfHandler);
     }
 
     if (pdfBuffer && pdfBuffer.length >= 3000) {
@@ -1116,7 +1011,7 @@ async function run(onStatusUpdate, apiKey, scanConfig = {}, options = {}, deduct
                 try {
                     page = await browser.newPage();
                     await page.setUserAgent(USER_AGENT);
-                    await page.setViewport({ width: 1280, height: 800 });
+                    await page.setViewport({ width: 1920, height: 1080 });
 
                     await ensureLoginForm(page);
                     const tebligatlar = await loginAndFetch(
