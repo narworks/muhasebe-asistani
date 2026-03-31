@@ -50,6 +50,12 @@ export interface IElectronAPI {
     resumeScan: () => void;
     cancelScan: () => void;
     getScanState: () => Promise<ScanState>;
+    getRateLimits: () => Promise<{
+        dailyUsed: number;
+        dailyLimit: number;
+        hourlyUsed: number;
+        hourlyLimit: number;
+    }>;
     onScanUpdate: (callback: (status: ScanStatus) => void) => void;
     onScanError: (callback: (error: string) => void) => void;
     onScanComplete: (callback: (result: string) => void) => void;

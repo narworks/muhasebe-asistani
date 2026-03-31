@@ -369,6 +369,11 @@ ipcMain.on('resume-scan', async (event) => {
     }
 });
 
+// Rate limits
+ipcMain.handle('get-rate-limits', () => {
+    return gibScraper.getRateLimits();
+});
+
 // Cancel Scan
 ipcMain.on('cancel-scan', (event) => {
     gibScraper.cancelScan();

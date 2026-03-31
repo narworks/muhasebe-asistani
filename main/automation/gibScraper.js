@@ -205,9 +205,19 @@ let lastScanState = {
 };
 
 // Helper: random delay between min and max seconds
-const randomDelay = (minSec, maxSec) => {
-    const ms = (Math.floor(Math.random() * (maxSec - minSec + 1)) + minSec) * 1000;
-    return new Promise((r) => setTimeout(r, ms));
+const randomDelay = async (minSec, maxSec) => {
+    const sec = Math.floor(Math.random() * (maxSec - minSec + 1)) + minSec;
+    await new Promise((r) => setTimeout(r, sec * 1000));
+    return sec;
+};
+
+// Named delays for human-like behavior simulation
+const HUMAN_DELAYS = {
+    betweenDocuments: [15, 30], // Reading/deciding between docs
+    betweenPages: [8, 15], // Reviewing page before next
+    afterPageLoad: [5, 10], // Looking at loaded content
+    betweenClients: [120, 240], // Notes, tea break, switching context
+    batchPause: [300, 600], // Longer break between batches
 };
 
 // CRITICAL: Detect GIB IP Reputation Block page
@@ -598,7 +608,7 @@ const loginAndFetch = async (page, client, password, apiKey, onStatus = null) =>
         }
     }
 
-    await new Promise((r) => setTimeout(r, 3000));
+    await randomDelay(...HUMAN_DELAYS.afterPageLoad);
     const postLoginUrl = page.url();
     logger.debug('[DEBUG] Post-login URL:', postLoginUrl);
 
@@ -632,7 +642,7 @@ const loginAndFetch = async (page, client, password, apiKey, onStatus = null) =>
                 if (link) link.click();
             }),
         ]);
-        await new Promise((r) => setTimeout(r, 3000));
+        await randomDelay(...HUMAN_DELAYS.afterPageLoad);
         logger.debug('[DEBUG] E-Tebligat page URL:', page.url());
     } else {
         await page
@@ -818,8 +828,8 @@ const loginAndFetch = async (page, client, password, apiKey, onStatus = null) =>
                         await page
                             .waitForSelector(foundSelector, { timeout: 10000 })
                             .catch(() => {});
-                        // Human-like delay between document downloads (3-8 seconds)
-                        await randomDelay(3, 8);
+                        // Human-like delay between document downloads
+                        await randomDelay(...HUMAN_DELAYS.betweenDocuments);
                     } catch (dlErr) {
                         logger.debug(`[DEBUG] Download error for row ${i}:`, dlErr.message);
                         if (!isPageUsable()) break;
@@ -859,8 +869,8 @@ const loginAndFetch = async (page, client, password, apiKey, onStatus = null) =>
                 break;
             }
 
-            // Wait for the page content to update
-            await new Promise((r) => setTimeout(r, 1500));
+            // Human-like delay before checking next page content
+            await randomDelay(...HUMAN_DELAYS.betweenPages);
 
             // Verify we're on a new page with data
             let hasData = false;
@@ -981,8 +991,8 @@ async function run(onStatusUpdate, apiKey, scanConfig = {}, options = {}, deduct
     };
     const config = {
         ...merged,
-        delayMin: Math.max(merged.delayMin, 60), // Min 1 minute between clients
-        delayMax: Math.max(merged.delayMax, 120), // Min 2 minute max delay
+        delayMin: Math.max(merged.delayMin, HUMAN_DELAYS.betweenClients[0]),
+        delayMax: Math.max(merged.delayMax, HUMAN_DELAYS.betweenClients[1]),
         batchSize: Math.min(merged.batchSize, 10), // Max 10 clients per batch
         batchPauseMin: Math.max(merged.batchPauseMin, 300), // Min 5 min batch pause
     };
@@ -1315,6 +1325,8 @@ async function run(onStatusUpdate, apiKey, scanConfig = {}, options = {}, deduct
 
             if (!succeeded) {
                 errorCount++;
+                dailyScanCount++; // Count failed attempts too — GIB still saw the request
+                hourlyScanCount++;
                 lastScanState.processedClientIds.add(client.id);
                 onStatusUpdate({
                     message: `${client.firm_name}: Sorgulanamadı. Lütfen kimlik bilgilerini kontrol edin.`,
@@ -1516,4 +1528,20 @@ async function fetchSingleDocument(tebligat, apiKey) {
     }
 }
 
-module.exports = { run, cancelScan, getScanState, clearScanState, fetchSingleDocument };
+function getRateLimits() {
+    return {
+        dailyUsed: dailyScanCount,
+        dailyLimit: DAILY_CLIENT_LIMIT,
+        hourlyUsed: hourlyScanCount,
+        hourlyLimit: HOURLY_CLIENT_LIMIT,
+    };
+}
+
+module.exports = {
+    run,
+    cancelScan,
+    getScanState,
+    clearScanState,
+    fetchSingleDocument,
+    getRateLimits,
+};

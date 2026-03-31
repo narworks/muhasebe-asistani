@@ -75,6 +75,14 @@ const ETebligat: React.FC = () => {
         status: string;
     } | null>(null);
 
+    // Rate limits
+    const [rateLimits, setRateLimits] = useState({
+        dailyUsed: 0,
+        dailyLimit: 50,
+        hourlyUsed: 0,
+        hourlyLimit: 10,
+    });
+
     // Legal consent
     const [showLegalConsent, setShowLegalConsent] = useState(false);
     const [legalConsentAccepted, setLegalConsentAccepted] = useState(true); // assume true until checked
@@ -95,6 +103,18 @@ const ETebligat: React.FC = () => {
             setLoadingTebligatlar(false);
         }
     };
+
+    // Load rate limits on mount and refresh periodically
+    useEffect(() => {
+        const loadLimits = () =>
+            window.electronAPI
+                .getRateLimits()
+                .then(setRateLimits)
+                .catch(() => {});
+        loadLimits();
+        const interval = setInterval(loadLimits, 10000); // refresh every 10s
+        return () => clearInterval(interval);
+    }, []);
 
     // Check legal consent on mount
     useEffect(() => {
@@ -1632,6 +1652,21 @@ const ETebligat: React.FC = () => {
                                 Durdur
                             </button>
                         )}
+                    </div>
+                    {/* Rate limit counters */}
+                    <div className="flex items-center gap-4 text-xs text-slate-500">
+                        <span>
+                            Bugün:{' '}
+                            <span className="font-semibold text-slate-300">
+                                {rateLimits.dailyUsed}/{rateLimits.dailyLimit}
+                            </span>
+                        </span>
+                        <span>
+                            Bu saat:{' '}
+                            <span className="font-semibold text-slate-300">
+                                {rateLimits.hourlyUsed}/{rateLimits.hourlyLimit}
+                            </span>
+                        </span>
                     </div>
                 </div>
 

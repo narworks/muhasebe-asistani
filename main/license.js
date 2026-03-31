@@ -172,6 +172,22 @@ const login = async ({ email, password }) => {
         if (subError) {
             console.warn('Failed to fetch subscription:', subError.message);
         } else {
+            // Single device check: reject if another device is actively using this account
+            if (subscription && subscription.device_id && subscription.device_id !== deviceId) {
+                const lastCheck = subscription.last_check_at
+                    ? new Date(subscription.last_check_at)
+                    : null;
+                const hourAgo = new Date(Date.now() - 60 * 60 * 1000);
+                // Only block if other device was active in the last hour
+                if (lastCheck && lastCheck > hourAgo) {
+                    return {
+                        success: false,
+                        message:
+                            'Bu hesap başka bir cihazda aktif olarak kullanılıyor. Aynı anda yalnızca bir cihazda oturum açılabilir.',
+                    };
+                }
+            }
+
             setStateFromSubscription(subscription);
 
             // Device info güncelle
