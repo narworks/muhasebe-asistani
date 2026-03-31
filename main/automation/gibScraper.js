@@ -377,17 +377,15 @@ const extractTebligatFromPage = async (page, selector) => {
                 const documentNo = cols[offset + 3]?.innerText?.trim() || ''; // Belge No
                 const sendDate = cols[offset + 4]?.innerText?.trim() || ''; // Gönderme Tarihi
                 const notificationDate = cols[offset + 5]?.innerText?.trim() || ''; // Tebliğ Tarihi
-                // cols[offset + 6] = Mükellef (not used in processing)
+                const readDate = cols[offset + 6]?.innerText?.trim() || ''; // Mükellef Okuma Tarihi
 
-                // In GİB portal, clicking the row opens the document detail
-                // Mark all rows for click-based document access
                 const documentUrl = `__CLICK_ROW__:${rowIndex}`;
 
                 return {
                     sender: senderInstitution || subUnit || 'GİB',
                     subject: `${documentType} - ${subUnit}`.trim() || 'Tebligat',
                     documentNo: documentNo,
-                    status: 'Yeni', // Will be determined by which tab we're on
+                    status: readDate ? 'Okunmuş' : 'Okunmamış',
                     date: notificationDate || sendDate,
                     sendDate: sendDate,
                     notificationDate: notificationDate,
@@ -685,6 +683,7 @@ const loginAndFetch = async (page, client, password, apiKey, onStatus = null) =>
                 // Skip if already downloaded
                 if (fs.existsSync(filePath)) {
                     tebligat.documentPath = filePath;
+                    tebligat._newDownload = false;
                     continue;
                 }
 
@@ -696,6 +695,7 @@ const loginAndFetch = async (page, client, password, apiKey, onStatus = null) =>
                     const docPath = await downloadDocumentByClick(page, i, foundSelector, filePath);
                     if (docPath) {
                         tebligat.documentPath = docPath;
+                        tebligat._newDownload = true;
                     }
 
                     // Navigate back to the list page (download goes to detail page)
@@ -1062,15 +1062,22 @@ async function run(onStatusUpdate, apiKey, scanConfig = {}, options = {}, deduct
                             firmId: client.id,
                         });
                     } else {
-                        const downloadedCount = tebligatlar.filter((t) => t.documentPath).length;
+                        const newlyDownloaded = tebligatlar.filter(
+                            (t) => t.documentPath && t._newDownload
+                        ).length;
+                        const alreadyDownloaded = tebligatlar.filter(
+                            (t) => t.documentPath && !t._newDownload
+                        ).length;
                         savedCount = database.saveTebligatlar(client.id, tebligatlar);
 
-                        let message = `${client.firm_name}: ${count} tebligat bulundu, ${savedCount} yeni kayıt eklendi.`;
-                        if (downloadedCount > 0) {
-                            message += ` (${downloadedCount} döküman indirildi)`;
-                        }
+                        const parts = [`${client.firm_name}: ${count} tebligat bulundu`];
+                        if (savedCount > 0) parts.push(`${savedCount} yeni kayıt`);
+                        if (newlyDownloaded > 0)
+                            parts.push(`${newlyDownloaded} yeni döküman indirildi`);
+                        if (alreadyDownloaded > 0)
+                            parts.push(`${alreadyDownloaded} döküman zaten mevcut`);
                         onStatusUpdate({
-                            message,
+                            message: parts.join(', ') + '.',
                             type: 'success',
                             firmId: client.id,
                         });

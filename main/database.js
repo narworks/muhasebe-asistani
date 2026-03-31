@@ -162,6 +162,14 @@ function saveTebligatlar(clientId, tebligatlar) {
     VALUES (@client_id, @tebligat_date, @sender, @subject, @status, @document_no, @document_url, @document_path)
   `);
 
+    // Update document_path for existing records that now have a downloaded file
+    const updateDocPath = db.prepare(`
+    UPDATE tebligatlar SET document_path = @document_path
+    WHERE client_id = @client_id AND document_no = @document_no
+      AND (document_path IS NULL OR document_path = '')
+      AND @document_path IS NOT NULL
+  `);
+
     const insertMany = db.transaction((items) => {
         let inserted = 0;
         for (const item of items) {
@@ -176,6 +184,15 @@ function saveTebligatlar(clientId, tebligatlar) {
                 document_path: item.documentPath || null,
             });
             inserted += result.changes || 0;
+
+            // If record already existed, update its document_path
+            if (result.changes === 0 && item.documentPath) {
+                updateDocPath.run({
+                    client_id: clientId,
+                    document_no: item.documentNo || null,
+                    document_path: item.documentPath,
+                });
+            }
         }
         return inserted;
     });
