@@ -186,10 +186,13 @@ let scanCancelled = false;
 let isRunning = false;
 let activeBrowser = null;
 
-// Daily scan limit to prevent GIB IP blocking
-const DAILY_CLIENT_LIMIT = 100;
+// Rate limiting to prevent GIB IP blocking
+const DAILY_CLIENT_LIMIT = 50; // Max 50 clients per day (safe for any office)
+const HOURLY_CLIENT_LIMIT = 10; // Max 10 clients per hour (~1 per 6 min)
 let dailyScanCount = 0;
 let dailyScanDate = new Date().toDateString();
+let hourlyScanCount = 0;
+let hourlyScanHour = new Date().getHours();
 
 // Resume state: tracks which clients were successfully processed in the last scan
 let lastScanState = {
@@ -640,8 +643,10 @@ const loginAndFetch = async (page, client, password, apiKey, onStatus = null) =>
             .catch(() => {});
     }
 
-    // Click each tab (Okunmamış, Okunmuş, Arşivlenmiş) and scrape all
-    const tabs = ['OKUNMAMIŞ', 'OKUNMUŞ', 'ARŞİVLENMİŞ'];
+    // Default: only scan Okunmamış (new/unread) tab for safety
+    // Scanning all tabs generates too many requests for large accounts
+    // FİLTRELE button loads the default tab's data
+    const tabs = ['OKUNMAMIŞ'];
     const allTebligatlarFromAllTabs = [];
 
     for (const tabName of tabs) {
@@ -813,7 +818,8 @@ const loginAndFetch = async (page, client, password, apiKey, onStatus = null) =>
                         await page
                             .waitForSelector(foundSelector, { timeout: 10000 })
                             .catch(() => {});
-                        await new Promise((r) => setTimeout(r, 1000));
+                        // Human-like delay between document downloads (3-8 seconds)
+                        await randomDelay(3, 8);
                     } catch (dlErr) {
                         logger.debug(`[DEBUG] Download error for row ${i}:`, dlErr.message);
                         if (!isPageUsable()) break;
@@ -941,11 +947,16 @@ async function run(onStatusUpdate, apiKey, scanConfig = {}, options = {}, deduct
     isRunning = true;
     scanCancelled = false;
 
-    // Reset daily counter if new day
+    // Reset daily/hourly counters
     const today = new Date().toDateString();
     if (dailyScanDate !== today) {
         dailyScanDate = today;
         dailyScanCount = 0;
+    }
+    const currentHour = new Date().getHours();
+    if (hourlyScanHour !== currentHour) {
+        hourlyScanHour = currentHour;
+        hourlyScanCount = 0;
     }
 
     const isResume = options.resume === true;
@@ -956,31 +967,24 @@ async function run(onStatusUpdate, apiKey, scanConfig = {}, options = {}, deduct
         clearScanState();
     }
 
-    // SAFETY: Enforce minimum delays to prevent GIB IP blocking
-    // These minimums cannot be overridden by user config
-    const SAFE_MINIMUMS = {
-        delayMin: 15, // At least 15s between clients
-        delayMax: 30, // At least 30s max delay
-        batchPauseMin: 120, // At least 2min batch pause
-        batchSize: 20, // Max 20 clients per batch
-    };
-
-    const rawConfig = {
-        delayMin: 15,
-        delayMax: 45,
-        batchSize: 20,
-        batchPauseMin: 120,
-        batchPauseMax: 300,
-        maxCaptchaRetries: 3,
+    // ULTRA-SAFE: Human-like timing to prevent GIB IP blocking
+    // A real accountant spends 5-7 minutes per client session.
+    // We simulate this by enforcing strict minimums that cannot be overridden.
+    const merged = {
+        delayMin: 60,
+        delayMax: 180,
+        batchSize: 10,
+        batchPauseMin: 300,
+        batchPauseMax: 600,
+        maxCaptchaRetries: 2,
         ...scanConfig,
     };
-
     const config = {
-        ...rawConfig,
-        delayMin: Math.max(rawConfig.delayMin, SAFE_MINIMUMS.delayMin),
-        delayMax: Math.max(rawConfig.delayMax, SAFE_MINIMUMS.delayMax),
-        batchPauseMin: Math.max(rawConfig.batchPauseMin, SAFE_MINIMUMS.batchPauseMin),
-        batchSize: Math.min(rawConfig.batchSize, SAFE_MINIMUMS.batchSize),
+        ...merged,
+        delayMin: Math.max(merged.delayMin, 60), // Min 1 minute between clients
+        delayMax: Math.max(merged.delayMax, 120), // Min 2 minute max delay
+        batchSize: Math.min(merged.batchSize, 10), // Max 10 clients per batch
+        batchPauseMin: Math.max(merged.batchPauseMin, 300), // Min 5 min batch pause
     };
 
     const allClients = database.getClients().filter((c) => c.status === 'active');
@@ -1052,11 +1056,30 @@ async function run(onStatusUpdate, apiKey, scanConfig = {}, options = {}, deduct
             // Daily limit check
             if (dailyScanCount >= DAILY_CLIENT_LIMIT) {
                 onStatusUpdate({
-                    message: `Günlük tarama limiti (${DAILY_CLIENT_LIMIT} mükellef) aşıldı. Kalan mükellefler yarın taranacak.`,
+                    message: `Günlük güvenli tarama limiti (${DAILY_CLIENT_LIMIT} mükellef) tamamlandı. Kalan mükellefler yarın taranacak.`,
                     type: 'info',
                 });
                 lastScanState.wasCancelled = true;
                 break;
+            }
+
+            // Hourly limit check — wait if needed
+            const nowHour = new Date().getHours();
+            if (hourlyScanHour !== nowHour) {
+                hourlyScanHour = nowHour;
+                hourlyScanCount = 0;
+            }
+            if (hourlyScanCount >= HOURLY_CLIENT_LIMIT) {
+                const waitMinutes = 60 - new Date().getMinutes();
+                onStatusUpdate({
+                    message: `Saatlik güvenli limit (${HOURLY_CLIENT_LIMIT} mükellef). ${waitMinutes} dakika bekleniyor...`,
+                    type: 'info',
+                });
+                // Wait until next hour
+                await new Promise((r) => setTimeout(r, waitMinutes * 60 * 1000));
+                hourlyScanHour = new Date().getHours();
+                hourlyScanCount = 0;
+                if (scanCancelled) break;
             }
 
             if (scanCancelled) {
@@ -1230,6 +1253,7 @@ async function run(onStatusUpdate, apiKey, scanConfig = {}, options = {}, deduct
 
                     successCount++;
                     dailyScanCount++;
+                    hourlyScanCount++;
                     succeeded = true;
 
                     // Mark this client as processed
