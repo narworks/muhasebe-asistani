@@ -184,6 +184,7 @@ const downloadDocumentByClick = async (page, rowIndex, tableSelector, filePath) 
 // Module-level state
 let scanCancelled = false;
 let isRunning = false;
+let activeBrowser = null;
 
 // Resume state: tracks which clients were successfully processed in the last scan
 let lastScanState = {
@@ -848,6 +849,11 @@ const loginAndFetch = async (page, client, password, apiKey, onStatus = null) =>
 
 function cancelScan() {
     scanCancelled = true;
+    // Force close browser to stop any ongoing download/navigation immediately
+    if (activeBrowser) {
+        activeBrowser.close().catch(() => {});
+        activeBrowser = null;
+    }
 }
 
 function getScanState() {
@@ -965,6 +971,7 @@ async function run(onStatusUpdate, apiKey, scanConfig = {}, options = {}, deduct
             headless: 'new',
             args: ['--no-sandbox', '--disable-setuid-sandbox'],
         });
+        activeBrowser = browser;
 
         for (let i = 0; i < totalRemaining; i++) {
             if (scanCancelled) {
@@ -1197,6 +1204,7 @@ async function run(onStatusUpdate, apiKey, scanConfig = {}, options = {}, deduct
             type: 'error',
         });
     } finally {
+        activeBrowser = null;
         if (browser) {
             try {
                 await browser.close();

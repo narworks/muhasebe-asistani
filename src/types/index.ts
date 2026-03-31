@@ -86,6 +86,7 @@ export interface ScheduleConfig {
     enabled: boolean;
     time?: string;
     finishByTime?: string;
+    startAtTime?: string;
     frequency?: 'daily' | 'weekdays' | 'weekends' | 'custom';
     customDays?: number[];
 }

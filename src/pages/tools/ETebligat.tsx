@@ -66,6 +66,8 @@ const ETebligat: React.FC = () => {
         clientCount: 0,
     });
     const [scheduleLoading, setScheduleLoading] = useState(false);
+    const [scheduleMode, setScheduleMode] = useState<'finish' | 'start'>('finish');
+    const [startAtTime, setStartAtTime] = useState('08:00');
     const [, setCreditBalance] = useState<{ totalRemaining: number } | null>(null);
     const [insufficientCredits, setInsufficientCredits] = useState(false);
     const [subscriptionStatus, setSubscriptionStatus] = useState<{
@@ -289,6 +291,9 @@ const ETebligat: React.FC = () => {
 
     const handleStopScan = () => {
         window.electronAPI.cancelScan();
+        setScanning(false);
+        setScanProgress(null);
+        addLog('Tarama durduruldu.', 'info');
     };
 
     const handleScheduleToggle = async () => {
@@ -297,7 +302,11 @@ const ETebligat: React.FC = () => {
             const newEnabled = !scheduleConfig.enabled;
             await window.electronAPI.setSchedule({
                 enabled: newEnabled,
-                finishByTime: scheduleConfig.finishByTime || scheduleConfig.time,
+                finishByTime:
+                    scheduleMode === 'finish'
+                        ? scheduleConfig.finishByTime || scheduleConfig.time
+                        : undefined,
+                startAtTime: scheduleMode === 'start' ? startAtTime : undefined,
                 frequency: scheduleConfig.frequency,
                 customDays: scheduleConfig.customDays,
             });
@@ -1201,22 +1210,55 @@ const ETebligat: React.FC = () => {
                                                     d="M5 13l4 4L19 7"
                                                 />
                                             </svg>
-                                            Tarama Bitiş Saati
+                                            Zamanlama
                                         </label>
-                                        <input
-                                            type="time"
-                                            value={
-                                                scheduleConfig.finishByTime || scheduleConfig.time
-                                            }
-                                            onChange={(e) =>
-                                                handleScheduleTimeChange(e.target.value)
-                                            }
-                                            className="w-full border border-gray-200 rounded-lg px-4 py-3 text-lg font-semibold text-gray-800 bg-gray-50 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                                        />
-                                        <p className="mt-2 text-xs text-gray-500">
-                                            Tarama bu saate kadar tamamlanacak şekilde otomatik
-                                            başlatılır
-                                        </p>
+                                        <div className="flex gap-2 mb-2">
+                                            <button
+                                                type="button"
+                                                onClick={() => setScheduleMode('finish')}
+                                                className={`flex-1 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${scheduleMode === 'finish' ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+                                            >
+                                                Bitiş Saati
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => setScheduleMode('start')}
+                                                className={`flex-1 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${scheduleMode === 'start' ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+                                            >
+                                                Başlangıç Saati
+                                            </button>
+                                        </div>
+                                        {scheduleMode === 'finish' ? (
+                                            <>
+                                                <input
+                                                    type="time"
+                                                    value={
+                                                        scheduleConfig.finishByTime ||
+                                                        scheduleConfig.time
+                                                    }
+                                                    onChange={(e) =>
+                                                        handleScheduleTimeChange(e.target.value)
+                                                    }
+                                                    className="w-full border border-gray-200 rounded-lg px-4 py-3 text-lg font-semibold text-gray-800 bg-gray-50 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                                                />
+                                                <p className="mt-2 text-xs text-gray-500">
+                                                    Tarama bu saate kadar tamamlanacak şekilde
+                                                    otomatik başlatılır
+                                                </p>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <input
+                                                    type="time"
+                                                    value={startAtTime}
+                                                    onChange={(e) => setStartAtTime(e.target.value)}
+                                                    className="w-full border border-gray-200 rounded-lg px-4 py-3 text-lg font-semibold text-gray-800 bg-gray-50 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                                                />
+                                                <p className="mt-2 text-xs text-gray-500">
+                                                    Tarama tam bu saatte başlatılır
+                                                </p>
+                                            </>
+                                        )}
                                     </div>
 
                                     {/* Frequency Selection */}

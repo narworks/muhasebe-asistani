@@ -381,12 +381,23 @@ ipcMain.handle('get-schedule-status', () => {
 });
 
 ipcMain.handle('set-schedule', (event, config) => {
-    const { enabled, time, finishByTime, frequency = 'daily', customDays = [] } = config;
+    const {
+        enabled,
+        time,
+        finishByTime,
+        startAtTime,
+        frequency = 'daily',
+        customDays = [],
+    } = config;
     validation.validateScheduleConfig(config);
-    // Use finishByTime if provided, otherwise fallback to time for backwards compatibility
     const targetTime = finishByTime || time;
-    if (enabled && targetTime) {
-        const success = scheduler.startSchedule(targetTime, frequency, customDays);
+    if (enabled && (targetTime || startAtTime)) {
+        const success = scheduler.startSchedule(
+            targetTime,
+            frequency,
+            customDays,
+            startAtTime || null
+        );
         return { success };
     } else {
         scheduler.stopSchedule();
