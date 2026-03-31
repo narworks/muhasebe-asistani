@@ -76,6 +76,33 @@ const LegalConsentModal: React.FC<Props> = ({ onAccept, onDecline }) => {
                             </li>
                         </ul>
                     </div>
+
+                    <div className="bg-slate-900/50 border border-amber-700/50 rounded-lg p-4">
+                        <h3 className="font-semibold text-amber-400 mb-2">
+                            Otomatik Sorgulama Bildirimi
+                        </h3>
+                        <ul className="list-disc list-inside space-y-1.5 text-slate-400">
+                            <li>
+                                Bu uygulama, GIB Dijital Vergi Dairesi portalina mukellef kimlik
+                                bilgileriyle otomatik olarak erisim saglar. Uygulama, insan
+                                davranisini taklit eden guvenli zamanlama ile calisir ancak{' '}
+                                <span className="text-amber-300">
+                                    GIB tarafindan IP engelleme riski tamamen ortadan kaldirilamaz
+                                </span>
+                                .
+                            </li>
+                            <li>
+                                IP engellenmesi durumunda bilgisayarinizdan tum GIB servislerine
+                                (e-fatura, e-beyanname, dijital vergi dairesi) erisim geçici olarak
+                                kesilebilir. Bu durumda GIB ile iletisime gecerek IP adresinizin
+                                engel listesinden cikarilmasini talep etmeniz gerekir.
+                            </li>
+                            <li>
+                                NarWorks, GIB tarafindan uygulanan IP engellemelerinden sorumlu
+                                tutulamaz.
+                            </li>
+                        </ul>
+                    </div>
                 </div>
 
                 <label className="flex items-start gap-3 mb-6 cursor-pointer">
