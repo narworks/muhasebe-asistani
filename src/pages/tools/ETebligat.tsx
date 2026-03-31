@@ -128,6 +128,10 @@ const ETebligat: React.FC = () => {
                 setScanning(false);
             } else {
                 addLog(status.message, status.type);
+                // Refresh table after each client completes
+                if (status.type === 'success') {
+                    fetchTebligatlar();
+                }
             }
         };
 
@@ -667,7 +671,17 @@ const ETebligat: React.FC = () => {
         }
     };
 
-    const statusOptions = Array.from(new Set(tebligatlar.map((row) => row.status).filter(Boolean)));
+    const statusOptions = [
+        'Okunmuş',
+        'Okunmamış',
+        ...Array.from(
+            new Set(
+                tebligatlar
+                    .map((row) => row.status)
+                    .filter((s) => s && s !== 'Okunmuş' && s !== 'Okunmamış')
+            )
+        ),
+    ];
     const normalizedSearch = searchTerm.trim().toLowerCase();
     const filteredTebligatlar = tebligatlar.filter((row) => {
         if (filterClientId !== 'all' && String(row.client_id) !== filterClientId) return false;
