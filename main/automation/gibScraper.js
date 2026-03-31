@@ -769,6 +769,26 @@ const loginAndFetch = async (page, client, password, apiKey, onStatus = null) =>
         pageNum++;
     }
 
+    // Clean up empty date directories left by failed downloads
+    const s = settings.readSettings();
+    const basePath = s.documentsFolder || path.join(app.getPath('userData'), 'documents');
+    const safeFirmName = (client.firm_name || String(client.id))
+        .replace(/[<>:"/\\|?*]/g, '_')
+        .trim();
+    const firmDir = path.join(basePath, safeFirmName);
+    if (fs.existsSync(firmDir)) {
+        try {
+            for (const df of fs.readdirSync(firmDir)) {
+                const dfPath = path.join(firmDir, df);
+                if (fs.statSync(dfPath).isDirectory() && fs.readdirSync(dfPath).length === 0) {
+                    fs.rmdirSync(dfPath);
+                }
+            }
+        } catch {
+            /* ignore cleanup errors */
+        }
+    }
+
     status(`Tarama tamamlandı: ${allTebligatlar.length} tebligat (${pageNum} sayfa).`);
     return allTebligatlar;
 };
@@ -987,6 +1007,16 @@ async function run(onStatusUpdate, apiKey, scanConfig = {}, options = {}, deduct
                     successes: successCount,
                 },
             });
+
+            // Ensure client folder exists even if no tebligat found
+            const clientBasePath =
+                settings.readSettings().documentsFolder ||
+                path.join(app.getPath('userData'), 'documents');
+            const clientFolder = path.join(
+                clientBasePath,
+                (client.firm_name || String(client.id)).replace(/[<>:"/\\|?*]/g, '_').trim()
+            );
+            ensureDir(clientFolder);
 
             let succeeded = false;
 
