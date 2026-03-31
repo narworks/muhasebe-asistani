@@ -10,6 +10,7 @@ export interface Client {
     gib_user_code?: string;
     gib_password?: string;
     status: 'active' | 'inactive';
+    last_full_scan_at?: string;
 }
 
 export interface ClientFormData {
@@ -32,6 +33,11 @@ export interface Tebligat {
     document_no?: string;
     document_url?: string;
     document_path?: string;
+    sub_unit?: string;
+    document_type?: string;
+    send_date?: string;
+    notification_date?: string;
+    read_date?: string;
     created_at?: string;
 }
 

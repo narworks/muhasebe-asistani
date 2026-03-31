@@ -55,6 +55,28 @@ function init() {
     if (!columns.includes('document_path')) {
         db.exec('ALTER TABLE tebligatlar ADD COLUMN document_path TEXT');
     }
+    if (!columns.includes('sub_unit')) {
+        db.exec('ALTER TABLE tebligatlar ADD COLUMN sub_unit TEXT');
+    }
+    if (!columns.includes('document_type')) {
+        db.exec('ALTER TABLE tebligatlar ADD COLUMN document_type TEXT');
+    }
+    if (!columns.includes('send_date')) {
+        db.exec('ALTER TABLE tebligatlar ADD COLUMN send_date TEXT');
+    }
+    if (!columns.includes('notification_date')) {
+        db.exec('ALTER TABLE tebligatlar ADD COLUMN notification_date TEXT');
+    }
+    if (!columns.includes('read_date')) {
+        db.exec('ALTER TABLE tebligatlar ADD COLUMN read_date TEXT');
+    }
+
+    // Migration: Add last_full_scan_at to clients
+    const clientInfo = db.pragma('table_info(clients)');
+    const clientCols = clientInfo.map((col) => col.name);
+    if (!clientCols.includes('last_full_scan_at')) {
+        db.exec('ALTER TABLE clients ADD COLUMN last_full_scan_at TEXT');
+    }
 }
 
 function saveClient(clientData) {
@@ -149,7 +171,9 @@ function deleteClient(id) {
 
 function getClients() {
     if (!db) init();
-    const stmt = db.prepare('SELECT id, firm_name, tax_number, gib_user_code, status FROM clients');
+    const stmt = db.prepare(
+        'SELECT id, firm_name, tax_number, gib_user_code, status, last_full_scan_at FROM clients'
+    );
     return stmt.all();
 }
 
@@ -158,8 +182,15 @@ function saveTebligatlar(clientId, tebligatlar) {
     if (!Array.isArray(tebligatlar) || tebligatlar.length === 0) return 0;
 
     const insert = db.prepare(`
-    INSERT OR IGNORE INTO tebligatlar (client_id, tebligat_date, sender, subject, status, document_no, document_url, document_path)
-    VALUES (@client_id, @tebligat_date, @sender, @subject, @status, @document_no, @document_url, @document_path)
+    INSERT OR IGNORE INTO tebligatlar (
+      client_id, tebligat_date, sender, subject, status,
+      document_no, document_url, document_path,
+      sub_unit, document_type, send_date, notification_date, read_date
+    ) VALUES (
+      @client_id, @tebligat_date, @sender, @subject, @status,
+      @document_no, @document_url, @document_path,
+      @sub_unit, @document_type, @send_date, @notification_date, @read_date
+    )
   `);
 
     // Update document_path for existing records that now have a downloaded file
@@ -182,6 +213,11 @@ function saveTebligatlar(clientId, tebligatlar) {
                 document_no: item.documentNo || null,
                 document_url: item.documentUrl || null,
                 document_path: item.documentPath || null,
+                sub_unit: item.subUnit || null,
+                document_type: item.documentType || null,
+                send_date: item.sendDate || null,
+                notification_date: item.notificationDate || null,
+                read_date: item.readDate || null,
             });
             inserted += result.changes || 0;
 
@@ -244,6 +280,13 @@ function getTebligatById(id) {
     return stmt.get(id);
 }
 
+// Mark client as having completed a full scan
+function updateClientScanDate(id) {
+    if (!db) init();
+    const stmt = db.prepare('UPDATE clients SET last_full_scan_at = ? WHERE id = ?');
+    return stmt.run(new Date().toISOString(), id);
+}
+
 // Update document path for a tebligat
 function updateTebligatDocument(tebligatId, documentPath) {
     if (!db) init();
@@ -292,6 +335,7 @@ module.exports = {
     getTebligatlar,
     getTebligatById,
     updateTebligatDocument,
+    updateClientScanDate,
     deleteTebligat,
     deleteTebligatlarByClient,
     getTebligatlarByClient,

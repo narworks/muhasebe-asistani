@@ -857,8 +857,32 @@ const ETebligat: React.FC = () => {
                             </div>
                             <div className="grid grid-cols-2 gap-3">
                                 <div>
+                                    <p className="text-xs text-gray-500">Alt Birim</p>
+                                    <p>{selectedTebligat.sub_unit || '-'}</p>
+                                </div>
+                                <div>
+                                    <p className="text-xs text-gray-500">Belge Türü</p>
+                                    <p>{selectedTebligat.document_type || '-'}</p>
+                                </div>
+                            </div>
+                            <div className="grid grid-cols-2 gap-3">
+                                <div>
+                                    <p className="text-xs text-gray-500">Gönderme Tarihi</p>
+                                    <p>{selectedTebligat.send_date || '-'}</p>
+                                </div>
+                                <div>
                                     <p className="text-xs text-gray-500">Tebliğ Tarihi</p>
-                                    <p>{selectedTebligat.tebligat_date || '-'}</p>
+                                    <p>
+                                        {selectedTebligat.notification_date ||
+                                            selectedTebligat.tebligat_date ||
+                                            '-'}
+                                    </p>
+                                </div>
+                            </div>
+                            <div className="grid grid-cols-2 gap-3">
+                                <div>
+                                    <p className="text-xs text-gray-500">Okuma Tarihi</p>
+                                    <p>{selectedTebligat.read_date || '-'}</p>
                                 </div>
                                 <div>
                                     <p className="text-xs text-gray-500">Durum</p>

@@ -448,12 +448,15 @@ const extractTebligatFromPage = async (page, selector) => {
 
                 return {
                     sender: senderInstitution || subUnit || 'GİB',
+                    subUnit: subUnit,
+                    documentType: documentType,
                     subject: `${documentType} - ${subUnit}`.trim() || 'Tebligat',
                     documentNo: documentNo,
                     status: readDate ? 'Okunmuş' : 'Okunmamış',
                     date: notificationDate || sendDate,
                     sendDate: sendDate,
                     notificationDate: notificationDate,
+                    readDate: readDate,
                     documentUrl: documentUrl,
                     rowIndex: rowIndex,
                 };
@@ -555,7 +558,14 @@ const hasDataOnPage = async (page, selector) => {
     return count > 0;
 };
 
-const loginAndFetch = async (page, client, password, apiKey, onStatus = null) => {
+const loginAndFetch = async (
+    page,
+    client,
+    password,
+    apiKey,
+    onStatus = null,
+    isFirstScan = false
+) => {
     const status = (msg) => {
         if (onStatus) onStatus({ message: `  → ${msg}`, type: 'process', firmId: client.id });
     };
@@ -653,10 +663,9 @@ const loginAndFetch = async (page, client, password, apiKey, onStatus = null) =>
             .catch(() => {});
     }
 
-    // Default: only scan Okunmamış (new/unread) tab for safety
-    // Scanning all tabs generates too many requests for large accounts
-    // FİLTRELE button loads the default tab's data
-    const tabs = ['OKUNMAMIŞ'];
+    // First scan: all 3 tabs to capture complete history
+    // Subsequent scans: only Okunmamış (new notifications)
+    const tabs = isFirstScan ? ['OKUNMAMIŞ', 'OKUNMUŞ', 'ARŞİVLENMİŞ'] : ['OKUNMAMIŞ'];
     const allTebligatlarFromAllTabs = [];
 
     for (const tabName of tabs) {
@@ -997,7 +1006,11 @@ async function run(onStatusUpdate, apiKey, scanConfig = {}, options = {}, deduct
         batchPauseMin: Math.max(merged.batchPauseMin, 300), // Min 5 min batch pause
     };
 
-    const allClients = database.getClients().filter((c) => c.status === 'active');
+    const activeClients = database.getClients().filter((c) => c.status === 'active');
+    // Prioritize new clients (never scanned) — they need full 3-tab scan
+    const newClients = activeClients.filter((c) => !c.last_full_scan_at);
+    const existingClients = activeClients.filter((c) => c.last_full_scan_at);
+    const allClients = [...newClients, ...existingClients];
 
     if (allClients.length === 0) {
         onStatusUpdate({ message: 'Tanımlı aktif mükellef bulunamadı.', type: 'info' });
@@ -1208,12 +1221,14 @@ async function run(onStatusUpdate, apiKey, scanConfig = {}, options = {}, deduct
                     await page.setViewport({ width: 1920, height: 1080 });
 
                     await ensureLoginForm(page);
+                    const clientIsFirstScan = !client.last_full_scan_at;
                     const tebligatlar = await loginAndFetch(
                         page,
                         client,
                         password,
                         apiKey,
-                        onStatusUpdate
+                        onStatusUpdate,
+                        clientIsFirstScan
                     );
 
                     const count = tebligatlar.length;
@@ -1267,6 +1282,11 @@ async function run(onStatusUpdate, apiKey, scanConfig = {}, options = {}, deduct
                     dailyScanCount++;
                     hourlyScanCount++;
                     succeeded = true;
+
+                    // Mark first scan complete for this client
+                    if (clientIsFirstScan) {
+                        database.updateClientScanDate(client.id);
+                    }
 
                     // Mark this client as processed
                     lastScanState.processedClientIds.add(client.id);
