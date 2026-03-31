@@ -47,47 +47,21 @@ const ensureDir = (dir) => {
     }
 };
 
-// Download via: "İŞLEM YAP" → "Zarf İçeriği Gör" → detay sayfası → "BELGE GÖRÜNTÜLE"
-// Then "← GERİ" to return to the list
+// Download: İŞLEM YAP → Zarf İçeriği Gör → /tebligat-detay → BELGE GÖRÜNTÜLE (opens new tab) → GERİ
 const downloadDocumentByClick = async (page, rowIndex, tableSelector, filePath) => {
+    const browser = page.browser();
     let pdfBuffer = null;
-    let lastPdfTime = 0;
-
-    const pdfHandler = async (response) => {
-        try {
-            const ct = response.headers()['content-type'] || '';
-            const url = response.url();
-            if (
-                ct.includes('application/pdf') ||
-                ct.includes('application/octet-stream') ||
-                url.includes('.pdf')
-            ) {
-                const buf = await response.buffer();
-                if (buf && buf.length > 1000 && (!pdfBuffer || buf.length > pdfBuffer.length)) {
-                    pdfBuffer = buf;
-                    lastPdfTime = Date.now();
-                    logger.debug(`[DL] PDF captured (${buf.length} bytes)`);
-                }
-            }
-        } catch {
-            /* buffer consumed */
-        }
-    };
-    page.on('response', pdfHandler);
 
     try {
-        // Step 1: Click "İŞLEM YAP" button on the row
-        // The button text is "İŞLEM YAP" with a dropdown arrow, in the last column
+        // Step 1: Click "İŞLEM YAP" button
         const clicked = await page.evaluate(
             (sel, idx) => {
                 const rows = Array.from(document.querySelectorAll(sel));
                 const row = rows[idx];
                 if (!row) return false;
-
-                // Find button containing "İŞLEM YAP" or "İşlem" text
                 const buttons = row.querySelectorAll('button');
                 for (const btn of buttons) {
-                    const text = (btn.textContent || '').trim().toUpperCase();
+                    const text = (btn.textContent || '').toUpperCase();
                     if (text.includes('İŞLEM') || text.includes('ISLEM')) {
                         btn.click();
                         return true;
@@ -98,92 +72,145 @@ const downloadDocumentByClick = async (page, rowIndex, tableSelector, filePath) 
             tableSelector,
             rowIndex
         );
-
-        if (!clicked) {
-            logger.debug(`[DL] "İŞLEM YAP" button not found in row ${rowIndex}`);
-            return null;
-        }
+        if (!clicked) return null;
         await new Promise((r) => setTimeout(r, 1000));
 
-        // Step 2: Click "Zarf İçeriği Gör" in the dropdown
+        // Step 2: Click "Zarf İçeriği Gör"
         const menuClicked = await page.evaluate(() => {
-            // Search all visible elements for the menu text
-            const allEls = document.querySelectorAll(
-                'li, [role="menuitem"], .MuiMenuItem-root, a, span, div'
+            const els = document.querySelectorAll(
+                'li, [role="menuitem"], .MuiMenuItem-root, span, div, a'
             );
-            for (const el of allEls) {
-                const text = (el.textContent || '').trim();
-                if (text === 'Zarf İçeriği Gör' || text === 'Zarf İçeriğini Gör') {
+            for (const el of els) {
+                const t = (el.textContent || '').trim();
+                if (t === 'Zarf İçeriği Gör' || t === 'Zarf İçeriğini Gör') {
                     el.click();
                     return true;
                 }
             }
-            // Fallback: partial match
-            for (const el of allEls) {
-                const text = (el.textContent || '').toLowerCase();
-                if (text.includes('zarf içeriği')) {
+            for (const el of els) {
+                if ((el.textContent || '').toLowerCase().includes('zarf içeriği')) {
                     el.click();
                     return true;
                 }
             }
             return false;
         });
-
         if (!menuClicked) {
-            logger.debug('[DL] "Zarf İçeriği Gör" not found');
             await page.keyboard.press('Escape').catch(() => {});
             return null;
         }
 
-        // Wait for navigation to /tebligat-detay
         await page.waitForNavigation({ waitUntil: 'networkidle0', timeout: 15000 }).catch(() => {});
         await new Promise((r) => setTimeout(r, 2000));
 
-        // Step 3: Click "BELGE GÖRÜNTÜLE" on the detail page
-        const viewClicked = await page.evaluate(() => {
-            const buttons = document.querySelectorAll('button, a');
-            for (const btn of buttons) {
-                const text = (btn.textContent || '').trim().toUpperCase();
-                if (text.includes('BELGE GÖRÜNTÜLE') || text.includes('BELGE GORUNTULE')) {
-                    btn.click();
-                    return true;
+        // Step 3: "BELGE GÖRÜNTÜLE" — may open new tab with PDF
+        // Listen for new tab BEFORE clicking
+        const newTabPromise = new Promise((resolve) => {
+            const onTarget = async (target) => {
+                if (target.type() === 'page') {
+                    browser.off('targetcreated', onTarget);
+                    resolve(await target.page());
+                }
+            };
+            browser.on('targetcreated', onTarget);
+            setTimeout(() => {
+                browser.off('targetcreated', onTarget);
+                resolve(null);
+            }, 12000);
+        });
+
+        // Also listen on current page
+        const curPdfHandler = async (resp) => {
+            try {
+                const ct = resp.headers()['content-type'] || '';
+                if (ct.includes('application/pdf') || ct.includes('application/octet-stream')) {
+                    const buf = await resp.buffer();
+                    if (buf && buf.length > 1000 && (!pdfBuffer || buf.length > pdfBuffer.length))
+                        pdfBuffer = buf;
+                }
+            } catch {
+                /* consumed */
+            }
+        };
+        page.on('response', curPdfHandler);
+
+        await page.evaluate(() => {
+            const btns = document.querySelectorAll('button, a');
+            for (const b of btns) {
+                const t = (b.textContent || '').toUpperCase();
+                if (t.includes('BELGE GÖRÜNTÜLE') || t.includes('BELGE GORUNTULE')) {
+                    b.click();
+                    return;
                 }
             }
-            return false;
         });
 
-        if (!viewClicked) {
-            logger.debug('[DL] "BELGE GÖRÜNTÜLE" not found on detail page');
+        const newTab = await newTabPromise;
+        page.off('response', curPdfHandler);
+
+        if (newTab) {
+            logger.debug(`[DL] New tab: ${newTab.url()}`);
+            try {
+                await new Promise((r) => setTimeout(r, 3000));
+                // Capture PDF from new tab responses
+                const tabHandler = async (resp) => {
+                    try {
+                        const ct = resp.headers()['content-type'] || '';
+                        if (
+                            ct.includes('application/pdf') ||
+                            ct.includes('application/octet-stream')
+                        ) {
+                            const buf = await resp.buffer();
+                            if (
+                                buf &&
+                                buf.length > 1000 &&
+                                (!pdfBuffer || buf.length > pdfBuffer.length)
+                            )
+                                pdfBuffer = buf;
+                        }
+                    } catch {
+                        /* consumed */
+                    }
+                };
+                newTab.on('response', tabHandler);
+                await newTab.reload({ waitUntil: 'networkidle0', timeout: 10000 }).catch(() => {});
+                await new Promise((r) => setTimeout(r, 3000));
+                newTab.off('response', tabHandler);
+
+                // Fallback: print new tab page as PDF
+                if (!pdfBuffer) {
+                    try {
+                        const buf = await newTab.pdf({ format: 'A4' });
+                        if (buf && buf.length > 3000) {
+                            pdfBuffer = buf;
+                            logger.debug(`[DL] Printed PDF (${buf.length}b)`);
+                        }
+                    } catch {
+                        /* print failed */
+                    }
+                }
+            } finally {
+                await newTab.close().catch(() => {});
+            }
+        } else if (!pdfBuffer) {
+            // No new tab, wait for PDF on current page
+            await new Promise((r) => setTimeout(r, 8000));
         }
 
-        // Wait for PDF: settle 3s after last capture, max 15s
-        const start = Date.now();
-        await new Promise((resolve) => {
-            const check = setInterval(() => {
-                const now = Date.now();
-                const elapsed = now - start;
-                const settled = lastPdfTime > 0 && now - lastPdfTime >= 3000;
-                if (settled || elapsed >= 15000) {
-                    clearInterval(check);
-                    resolve();
-                }
-            }, 300);
-        });
-
-        // Step 4: Click "← GERİ" to go back to the list
+        // Step 4: Go back
         await page.evaluate(() => {
-            const buttons = document.querySelectorAll('button, a');
-            for (const btn of buttons) {
-                const text = (btn.textContent || '').trim().toUpperCase();
-                if (text.includes('GERİ') || text.includes('GERI')) {
-                    btn.click();
+            const btns = document.querySelectorAll('button, a');
+            for (const b of btns) {
+                const t = (b.textContent || '').toUpperCase();
+                if (t.includes('GERİ') || t.includes('GERI')) {
+                    b.click();
                     return;
                 }
             }
         });
         await page.waitForNavigation({ waitUntil: 'networkidle0', timeout: 10000 }).catch(() => {});
-    } finally {
-        page.off('response', pdfHandler);
+    } catch (err) {
+        logger.debug(`[DL] Error row ${rowIndex}: ${err.message}`);
     }
 
     if (pdfBuffer && pdfBuffer.length >= 3000) {
