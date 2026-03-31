@@ -607,7 +607,7 @@ const ETebligat: React.FC = () => {
 
     const handleExportCsv = async () => {
         if (filteredTebligatlar.length === 0) return;
-        const headers = ['Mükellef', 'Tarih', 'Gönderen', 'Konu', 'Durum', 'Kayıt Tarihi'];
+        const headers = ['Mükellef', 'Tarih', 'Gönderen', 'Konu', 'Durum', 'Tarama Tarihi'];
         const rows = filteredTebligatlar.map((row) => [
             escapeCsvValue(row.firm_name),
             escapeCsvValue(row.tebligat_date),
@@ -647,7 +647,7 @@ const ETebligat: React.FC = () => {
             Gönderen: row.sender || '',
             Konu: row.subject || '',
             Durum: row.status || '',
-            'Kayıt Tarihi': row.created_at || '',
+            'Tarama Tarihi': row.created_at || '',
         }));
 
         const fileName = `tebligatlar_${new Date().toISOString().slice(0, 10)}.xlsx`;
@@ -821,13 +821,21 @@ const ETebligat: React.FC = () => {
                                 <p className="text-xs text-gray-500">Konu</p>
                                 <p>{selectedTebligat.subject || '-'}</p>
                             </div>
-                            <div>
-                                <p className="text-xs text-gray-500">Durum</p>
-                                <p>{selectedTebligat.status || '-'}</p>
+                            <div className="grid grid-cols-2 gap-3">
+                                <div>
+                                    <p className="text-xs text-gray-500">Tebliğ Tarihi</p>
+                                    <p>{selectedTebligat.tebligat_date || '-'}</p>
+                                </div>
+                                <div>
+                                    <p className="text-xs text-gray-500">Durum</p>
+                                    <p>{selectedTebligat.status || '-'}</p>
+                                </div>
                             </div>
                             <div>
-                                <p className="text-xs text-gray-500">Kayıt Tarihi</p>
-                                <p>{selectedTebligat.created_at || '-'}</p>
+                                <p className="text-xs text-gray-500">Tarama Tarihi</p>
+                                <p className="text-xs text-gray-400">
+                                    {selectedTebligat.created_at || '-'}
+                                </p>
                             </div>
                             {/* Döküman İşlemleri */}
                             <div className="pt-3 border-t border-gray-200">
@@ -1896,7 +1904,7 @@ const ETebligat: React.FC = () => {
                                                                 <thead className="bg-gray-100 text-xs uppercase text-gray-500">
                                                                     <tr>
                                                                         <th className="px-4 py-2">
-                                                                            Kayıt Tarihi
+                                                                            Tarama Tarihi
                                                                         </th>
                                                                         <th className="px-4 py-2">
                                                                             Belge No

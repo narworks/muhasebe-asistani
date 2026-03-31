@@ -866,7 +866,19 @@ ipcMain.handle('fetch-tebligat-document', async (event, tebligatId) => {
             error: 'Döküman bulunamadı. GIB portalında bu belgeyi mevcut olmayabilir.',
         };
     } catch (err) {
-        console.error('fetch-tebligat-document error:', err);
-        return { success: false, error: err.message };
+        logger.error('fetch-tebligat-document error:', err.message);
+        // Show user-friendly messages instead of technical errors
+        let userMessage = 'Döküman indirilemedi. Lütfen daha sonra tekrar deneyin.';
+        if (
+            err.message.includes('429') ||
+            err.message.includes('Rate') ||
+            err.message.includes('exhausted')
+        ) {
+            userMessage =
+                'Çok fazla istek gönderildi. Lütfen birkaç dakika bekleyip tekrar deneyin.';
+        } else if (err.message.includes('Giriş başarısız') || err.message.includes('CAPTCHA')) {
+            userMessage = 'GIB portalına giriş yapılamadı. Lütfen daha sonra tekrar deneyin.';
+        }
+        return { success: false, error: userMessage };
     }
 });
