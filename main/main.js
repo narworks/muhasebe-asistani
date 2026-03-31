@@ -1,4 +1,14 @@
-const { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, dialog, shell } = require('electron');
+const {
+    app,
+    BrowserWindow,
+    ipcMain,
+    Tray,
+    Menu,
+    nativeImage,
+    dialog,
+    shell,
+    powerSaveBlocker,
+} = require('electron');
 const fs = require('fs');
 const ExcelJS = require('exceljs');
 const path = require('path');
@@ -277,6 +287,10 @@ ipcMain.on('start-scan', async (event) => {
         return result;
     };
 
+    // Prevent system sleep during scan
+    const sleepBlockId = powerSaveBlocker.start('prevent-app-suspension');
+    logger.debug(`[Scan] Sleep blocker started: ${sleepBlockId}`);
+
     try {
         await gibScraper.run(
             (status) => {
@@ -295,6 +309,12 @@ ipcMain.on('start-scan', async (event) => {
     } catch (error) {
         console.error('Scan error:', error);
         event.reply('scan-error', 'Tarama sırasında hata oluştu: ' + error.message);
+    } finally {
+        // Allow sleep again
+        if (powerSaveBlocker.isStarted(sleepBlockId)) {
+            powerSaveBlocker.stop(sleepBlockId);
+            logger.debug('[Scan] Sleep blocker stopped');
+        }
     }
 });
 
@@ -322,6 +342,8 @@ ipcMain.on('resume-scan', async (event) => {
         return result;
     };
 
+    const sleepBlockId = powerSaveBlocker.start('prevent-app-suspension');
+
     try {
         await gibScraper.run(
             (status) => {
@@ -340,6 +362,10 @@ ipcMain.on('resume-scan', async (event) => {
     } catch (error) {
         console.error('Resume scan error:', error);
         event.reply('scan-error', 'Tarama sırasında hata oluştu: ' + error.message);
+    } finally {
+        if (powerSaveBlocker.isStarted(sleepBlockId)) {
+            powerSaveBlocker.stop(sleepBlockId);
+        }
     }
 });
 

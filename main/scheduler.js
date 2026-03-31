@@ -20,6 +20,23 @@ function init(onScanTrigger) {
             current.schedule.customDays || [],
             current.schedule.startAtTime || null
         );
+
+        // Check if a scheduled scan was missed while app was closed/sleeping
+        const nextScan = current.schedule.nextScheduledScanAt;
+        if (nextScan) {
+            const nextScanTime = new Date(nextScan);
+            const now = new Date();
+            if (nextScanTime < now) {
+                // Missed scan — run it now (with 30s delay to let app fully initialize)
+                const missedAgo = Math.round((now - nextScanTime) / 60000);
+                logger.debug(
+                    `[Scheduler] Missed scan detected (${missedAgo} min ago), triggering now`
+                );
+                setTimeout(() => {
+                    if (onScanCallback) onScanCallback();
+                }, 30000);
+            }
+        }
     }
 }
 
