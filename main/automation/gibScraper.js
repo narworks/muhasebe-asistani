@@ -242,15 +242,36 @@ const solveCaptcha = async (page, apiKey) => {
     const genAI = new GoogleGenerativeAI(apiKey);
     const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
 
-    const result = await model.generateContent([
-        { text: 'Bu resimdeki metni oku. Sadece metni döndür, boşluksuz. Başka hiçbir şey yazma.' },
-        { inlineData: { mimeType: 'image/png', data: captchaBase64 } },
-    ]);
-
-    const response = await result.response;
-    const captchaText = response.text().trim().replace(/\s/g, '');
-    logger.debug('[DEBUG] Gemini solved CAPTCHA:', captchaText);
-    return captchaText;
+    // Retry Gemini API calls with backoff for rate limits
+    for (let attempt = 1; attempt <= 3; attempt++) {
+        try {
+            const result = await model.generateContent([
+                {
+                    text: 'Bu resimdeki metni oku. Sadece metni döndür, boşluksuz. Başka hiçbir şey yazma.',
+                },
+                { inlineData: { mimeType: 'image/png', data: captchaBase64 } },
+            ]);
+            const response = await result.response;
+            const captchaText = response.text().trim().replace(/\s/g, '');
+            logger.debug('[DEBUG] Gemini solved CAPTCHA:', captchaText);
+            return captchaText;
+        } catch (err) {
+            const isRateLimit =
+                err.message &&
+                (err.message.includes('429') ||
+                    err.message.includes('Rate') ||
+                    err.message.includes('exhausted'));
+            if (isRateLimit && attempt < 3) {
+                const waitSec = 30 * attempt;
+                logger.debug(
+                    `[DEBUG] Gemini rate limited, waiting ${waitSec}s (attempt ${attempt}/3)`
+                );
+                await new Promise((r) => setTimeout(r, waitSec * 1000));
+                continue;
+            }
+            throw err;
+        }
+    }
 };
 
 const logoutFromGIB = async (page) => {

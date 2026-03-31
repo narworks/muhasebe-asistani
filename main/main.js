@@ -855,30 +855,43 @@ ipcMain.handle('fetch-tebligat-document', async (event, tebligatId) => {
         return { success: false, error: 'Sistem yapılandırma hatası' };
     }
 
-    try {
-        const docPath = await gibScraper.fetchSingleDocument(tebligat, apiKey);
-        if (docPath) {
-            database.updateTebligatDocument(tebligatId, docPath);
-            return { success: true, path: docPath };
+    // Retry up to 3 times with exponential backoff for rate limit errors
+    const maxRetries = 3;
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+            const docPath = await gibScraper.fetchSingleDocument(tebligat, apiKey);
+            if (docPath) {
+                database.updateTebligatDocument(tebligatId, docPath);
+                return { success: true, path: docPath };
+            }
+            return {
+                success: false,
+                error: 'Döküman bulunamadı. GIB portalında bu belge mevcut olmayabilir.',
+            };
+        } catch (err) {
+            const isRateLimit =
+                err.message.includes('429') ||
+                err.message.includes('Rate') ||
+                err.message.includes('exhausted');
+
+            if (isRateLimit && attempt < maxRetries) {
+                const waitSec = 30 * attempt; // 30s, 60s, 90s
+                logger.debug(
+                    `[fetch-doc] Rate limited, retry ${attempt}/${maxRetries} in ${waitSec}s`
+                );
+                await new Promise((r) => setTimeout(r, waitSec * 1000));
+                continue;
+            }
+
+            logger.error('fetch-tebligat-document error:', err.message);
+            let userMessage = 'Döküman indirilemedi. Lütfen daha sonra tekrar deneyin.';
+            if (isRateLimit) {
+                userMessage =
+                    'Çok fazla istek gönderildi. Lütfen birkaç dakika bekleyip tekrar deneyin.';
+            } else if (err.message.includes('Giriş başarısız') || err.message.includes('CAPTCHA')) {
+                userMessage = 'GIB portalına giriş yapılamadı. Lütfen daha sonra tekrar deneyin.';
+            }
+            return { success: false, error: userMessage };
         }
-        return {
-            success: false,
-            error: 'Döküman bulunamadı. GIB portalında bu belgeyi mevcut olmayabilir.',
-        };
-    } catch (err) {
-        logger.error('fetch-tebligat-document error:', err.message);
-        // Show user-friendly messages instead of technical errors
-        let userMessage = 'Döküman indirilemedi. Lütfen daha sonra tekrar deneyin.';
-        if (
-            err.message.includes('429') ||
-            err.message.includes('Rate') ||
-            err.message.includes('exhausted')
-        ) {
-            userMessage =
-                'Çok fazla istek gönderildi. Lütfen birkaç dakika bekleyip tekrar deneyin.';
-        } else if (err.message.includes('Giriş başarısız') || err.message.includes('CAPTCHA')) {
-            userMessage = 'GIB portalına giriş yapılamadı. Lütfen daha sonra tekrar deneyin.';
-        }
-        return { success: false, error: userMessage };
     }
 });
