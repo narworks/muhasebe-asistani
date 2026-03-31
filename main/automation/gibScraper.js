@@ -186,6 +186,11 @@ let scanCancelled = false;
 let isRunning = false;
 let activeBrowser = null;
 
+// Daily scan limit to prevent GIB IP blocking
+const DAILY_CLIENT_LIMIT = 100;
+let dailyScanCount = 0;
+let dailyScanDate = new Date().toDateString();
+
 // Resume state: tracks which clients were successfully processed in the last scan
 let lastScanState = {
     processedClientIds: new Set(), // IDs of clients that completed successfully
@@ -202,9 +207,34 @@ const randomDelay = (minSec, maxSec) => {
     return new Promise((r) => setTimeout(r, ms));
 };
 
+// CRITICAL: Detect GIB IP Reputation Block page
+// If detected, ALL operations must stop immediately to prevent further damage
+const checkForIPBlock = async (page) => {
+    const isBlocked = await page
+        .evaluate(() => {
+            const bodyText = (document.body?.innerText || '').toLowerCase();
+            return (
+                bodyText.includes('ip reputation block') ||
+                bodyText.includes('malicious ips list') ||
+                bodyText.includes('ip adresiniz engellenmistir') ||
+                bodyText.includes('ip adresi engellendi') ||
+                bodyText.includes('erisim engellendi')
+            );
+        })
+        .catch(() => false);
+
+    if (isBlocked) {
+        throw new Error('GIB_IP_BLOCKED');
+    }
+};
+
 const ensureLoginForm = async (page) => {
     logger.debug('[DEBUG] Navigating to GIB login page:', GIB_LOGIN_URL);
     await page.goto(GIB_LOGIN_URL, { waitUntil: 'networkidle0', timeout: 60000 });
+
+    // Check for IP block BEFORE anything else
+    await checkForIPBlock(page);
+
     logger.debug('[DEBUG] Page loaded, URL:', page.url());
     await page.waitForSelector('#userid', { timeout: 30000 });
     logger.debug('[DEBUG] Login form found successfully!');
@@ -911,6 +941,13 @@ async function run(onStatusUpdate, apiKey, scanConfig = {}, options = {}, deduct
     isRunning = true;
     scanCancelled = false;
 
+    // Reset daily counter if new day
+    const today = new Date().toDateString();
+    if (dailyScanDate !== today) {
+        dailyScanDate = today;
+        dailyScanCount = 0;
+    }
+
     const isResume = options.resume === true;
     const skipClientIds = isResume ? new Set(lastScanState.processedClientIds) : new Set();
 
@@ -919,7 +956,16 @@ async function run(onStatusUpdate, apiKey, scanConfig = {}, options = {}, deduct
         clearScanState();
     }
 
-    const config = {
+    // SAFETY: Enforce minimum delays to prevent GIB IP blocking
+    // These minimums cannot be overridden by user config
+    const SAFE_MINIMUMS = {
+        delayMin: 15, // At least 15s between clients
+        delayMax: 30, // At least 30s max delay
+        batchPauseMin: 120, // At least 2min batch pause
+        batchSize: 20, // Max 20 clients per batch
+    };
+
+    const rawConfig = {
         delayMin: 15,
         delayMax: 45,
         batchSize: 20,
@@ -927,6 +973,14 @@ async function run(onStatusUpdate, apiKey, scanConfig = {}, options = {}, deduct
         batchPauseMax: 300,
         maxCaptchaRetries: 3,
         ...scanConfig,
+    };
+
+    const config = {
+        ...rawConfig,
+        delayMin: Math.max(rawConfig.delayMin, SAFE_MINIMUMS.delayMin),
+        delayMax: Math.max(rawConfig.delayMax, SAFE_MINIMUMS.delayMax),
+        batchPauseMin: Math.max(rawConfig.batchPauseMin, SAFE_MINIMUMS.batchPauseMin),
+        batchSize: Math.min(rawConfig.batchSize, SAFE_MINIMUMS.batchSize),
     };
 
     const allClients = database.getClients().filter((c) => c.status === 'active');
@@ -995,6 +1049,16 @@ async function run(onStatusUpdate, apiKey, scanConfig = {}, options = {}, deduct
         activeBrowser = browser;
 
         for (let i = 0; i < totalRemaining; i++) {
+            // Daily limit check
+            if (dailyScanCount >= DAILY_CLIENT_LIMIT) {
+                onStatusUpdate({
+                    message: `Günlük tarama limiti (${DAILY_CLIENT_LIMIT} mükellef) aşıldı. Kalan mükellefler yarın taranacak.`,
+                    type: 'info',
+                });
+                lastScanState.wasCancelled = true;
+                break;
+            }
+
             if (scanCancelled) {
                 lastScanState.wasCancelled = true;
                 lastScanState.wasError = false;
@@ -1165,6 +1229,7 @@ async function run(onStatusUpdate, apiKey, scanConfig = {}, options = {}, deduct
                     }
 
                     successCount++;
+                    dailyScanCount++;
                     succeeded = true;
 
                     // Mark this client as processed
@@ -1176,6 +1241,22 @@ async function run(onStatusUpdate, apiKey, scanConfig = {}, options = {}, deduct
                         `[${client.firm_name}] Deneme ${attempt}/${config.maxCaptchaRetries}:`,
                         err.message
                     );
+
+                    // CRITICAL: IP block detection — stop ALL operations
+                    if (err.message === 'GIB_IP_BLOCKED') {
+                        onStatusUpdate({
+                            message:
+                                '⛔ DİKKAT: GİB tarafından IP adresiniz engellenmiş. Tarama durduruluyor. Lütfen GİB ile iletişime geçin.',
+                            type: 'error',
+                        });
+                        scanCancelled = true;
+                        if (activeBrowser) {
+                            activeBrowser.close().catch(() => {});
+                            activeBrowser = null;
+                        }
+                        isRunning = false;
+                        return;
+                    }
 
                     const isCaptchaError =
                         err.message.includes('Captcha') ||
