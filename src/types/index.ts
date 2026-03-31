@@ -79,6 +79,7 @@ export interface ScanStatus {
 export type ScanUpdate =
     | { type: 'progress'; progress: ScanProgress }
     | { type: 'scan-state'; scanState: ScanState }
+    | { type: 'data-updated' }
     | ScanStatus;
 
 // Schedule types

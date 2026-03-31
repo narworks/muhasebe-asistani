@@ -114,6 +114,10 @@ const ETebligat: React.FC = () => {
 
     useEffect(() => {
         const handleUpdate = (status: ScanUpdate) => {
+            if (status.type === 'data-updated') {
+                fetchTebligatlar();
+                return;
+            }
             if (status.type === 'progress') {
                 setScanProgress(status.progress);
                 if (status.progress.insufficientCredits) {
@@ -128,10 +132,6 @@ const ETebligat: React.FC = () => {
                 setScanning(false);
             } else {
                 addLog(status.message, status.type);
-                // Refresh table after each client completes
-                if (status.type === 'success') {
-                    fetchTebligatlar();
-                }
             }
         };
 

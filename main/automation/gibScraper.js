@@ -1224,6 +1224,7 @@ async function run(onStatusUpdate, apiKey, scanConfig = {}, options = {}, deduct
                             },
                         ];
                         savedCount = database.saveTebligatlar(client.id, noNotificationRecord);
+                        onStatusUpdate({ type: 'data-updated' });
                         onStatusUpdate({
                             message: `${client.firm_name}: Tebligat bulunamadı.`,
                             type: 'success',
@@ -1237,6 +1238,7 @@ async function run(onStatusUpdate, apiKey, scanConfig = {}, options = {}, deduct
                             (t) => t.documentPath && !t._newDownload
                         ).length;
                         savedCount = database.saveTebligatlar(client.id, tebligatlar);
+                        onStatusUpdate({ type: 'data-updated' });
 
                         const parts = [`${client.firm_name}: ${count} tebligat bulundu`];
                         if (savedCount > 0) parts.push(`${savedCount} yeni kayıt`);

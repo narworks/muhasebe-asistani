@@ -1,7 +1,7 @@
 {
     "name": "muhasebeci-arac-kutusu",
     "private": true,
-    "version": "1.0.51",
+    "version": "1.0.52",
     "main": "main/main.js",
     "author": {
         "name": "NarWorks",
