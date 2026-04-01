@@ -32,6 +32,9 @@ main/env-config.js
 # Claude Code
 .claude/
 
+# TypeScript build cache
+*.tsbuildinfo
+
 # Electron Builder Output
 release/
 out/
