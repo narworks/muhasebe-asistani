@@ -247,6 +247,11 @@ function getTebligatlar(limit = 200) {
            t.document_no,
            t.document_url,
            t.document_path,
+           t.sub_unit,
+           t.document_type,
+           t.send_date,
+           t.notification_date,
+           t.read_date,
            t.created_at,
            c.firm_name,
            c.id as client_id
@@ -270,6 +275,11 @@ function getTebligatById(id) {
            t.document_no,
            t.document_url,
            t.document_path,
+           t.sub_unit,
+           t.document_type,
+           t.send_date,
+           t.notification_date,
+           t.read_date,
            t.created_at,
            t.client_id,
            c.firm_name
