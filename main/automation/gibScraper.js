@@ -187,8 +187,8 @@ let isRunning = false;
 let activeBrowser = null;
 
 // Rate limiting to prevent GIB IP blocking
-const DAILY_CLIENT_LIMIT = 50; // Max 50 clients per day (safe for any office)
-const HOURLY_CLIENT_LIMIT = 10; // Max 10 clients per hour (~1 per 6 min)
+const DAILY_CLIENT_LIMIT = 200; // Competitors handle 150-450/day without blocks
+const HOURLY_CLIENT_LIMIT = 50; // ~1 client per 1-2 min
 let dailyScanCount = 0;
 let dailyScanDate = new Date().toDateString();
 let hourlyScanCount = 0;
@@ -212,12 +212,13 @@ const randomDelay = async (minSec, maxSec) => {
 };
 
 // Named delays for human-like behavior simulation
+// Competitor-matched timing (tebligattakip.com runs 150 clients 3x/day without blocks)
 const HUMAN_DELAYS = {
-    betweenDocuments: [15, 30], // Reading/deciding between docs
-    betweenPages: [8, 15], // Reviewing page before next
-    afterPageLoad: [5, 10], // Looking at loaded content
-    betweenClients: [120, 240], // Notes, tea break, switching context
-    batchPause: [300, 600], // Longer break between batches
+    betweenDocuments: [5, 10], // Between document downloads
+    betweenPages: [3, 5], // Between pagination
+    afterPageLoad: [2, 4], // After page load
+    betweenClients: [15, 30], // Between client sessions
+    batchPause: [60, 120], // Break between batches
 };
 
 // CRITICAL: Detect GIB IP Reputation Block page
@@ -1000,10 +1001,10 @@ async function run(onStatusUpdate, apiKey, scanConfig = {}, options = {}, deduct
     };
     const config = {
         ...merged,
-        delayMin: Math.max(merged.delayMin, HUMAN_DELAYS.betweenClients[0]),
-        delayMax: Math.max(merged.delayMax, HUMAN_DELAYS.betweenClients[1]),
-        batchSize: Math.min(merged.batchSize, 10), // Max 10 clients per batch
-        batchPauseMin: Math.max(merged.batchPauseMin, 300), // Min 5 min batch pause
+        delayMin: Math.max(merged.delayMin, 15), // Min 15s between clients
+        delayMax: Math.max(merged.delayMax, 30), // Min 30s max delay
+        batchSize: Math.min(merged.batchSize, 20), // Max 20 clients per batch
+        batchPauseMin: Math.max(merged.batchPauseMin, 60), // Min 1 min batch pause
     };
 
     const activeClients = database.getClients().filter((c) => c.status === 'active');
