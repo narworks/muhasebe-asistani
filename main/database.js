@@ -294,6 +294,13 @@ function updateTebligatDocument(tebligatId, documentPath) {
     return stmt.run(documentPath, tebligatId);
 }
 
+// Update document path by old path (used when .imz is converted to .pdf)
+function updateTebligatDocumentByPath(oldPath, newPath) {
+    if (!db) init();
+    const stmt = db.prepare('UPDATE tebligatlar SET document_path = ? WHERE document_path = ?');
+    return stmt.run(newPath, oldPath);
+}
+
 // Function to retrieve decrypted password (internal use only, for bot)
 function getClientPassword(id) {
     if (!db) init();
@@ -335,6 +342,7 @@ module.exports = {
     getTebligatlar,
     getTebligatById,
     updateTebligatDocument,
+    updateTebligatDocumentByPath,
     updateClientScanDate,
     deleteTebligat,
     deleteTebligatlarByClient,

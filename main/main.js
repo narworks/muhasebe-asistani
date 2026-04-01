@@ -802,7 +802,7 @@ ipcMain.handle('export-excel', async (event, { rows, sheetName, defaultFileName 
     }
 });
 
-// Open document (PDF, etc.)
+// Open document (PDF, etc.) — auto-extract PDF from .imz if needed
 ipcMain.handle('open-document', async (event, documentPath) => {
     if (!documentPath) {
         return { success: false, error: 'Döküman yolu belirtilmedi.' };
@@ -813,7 +813,24 @@ ipcMain.handle('open-document', async (event, documentPath) => {
     }
 
     try {
-        await shell.openPath(documentPath);
+        let pathToOpen = documentPath;
+
+        // .imz files can't be opened directly — extract PDF first
+        if (documentPath.toLowerCase().endsWith('.imz')) {
+            const pdfPath = documentPath.replace(/\.imz$/i, '.pdf');
+            if (fs.existsSync(pdfPath)) {
+                pathToOpen = pdfPath;
+            } else {
+                const { extractPdfFromImz } = require('./automation/gibApiClient');
+                const extracted = extractPdfFromImz(documentPath);
+                if (extracted) {
+                    pathToOpen = extracted;
+                    database.updateTebligatDocumentByPath(documentPath, extracted);
+                }
+            }
+        }
+
+        await shell.openPath(pathToOpen);
         return { success: true };
     } catch (error) {
         console.error('Open document error:', error);

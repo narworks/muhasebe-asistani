@@ -108,6 +108,32 @@ async function downloadFile(reportLink, filePath) {
     return null;
 }
 
+// Extract PDF from .imz (PKCS#7 signed envelope containing PDF)
+function extractPdfFromImz(imzPath) {
+    const data = fs.readFileSync(imzPath);
+    const pdfStart = data.indexOf(Buffer.from('%PDF'));
+    if (pdfStart < 0) return null;
+
+    // Find last %%EOF marker
+    const eofMarker = Buffer.from('%%EOF');
+    let pdfEnd = -1;
+    let searchFrom = data.length - 1;
+    while (searchFrom > pdfStart) {
+        const idx = data.lastIndexOf(eofMarker, searchFrom);
+        if (idx > pdfStart) {
+            pdfEnd = idx + eofMarker.length;
+            break;
+        }
+        searchFrom = idx - 1;
+    }
+    if (pdfEnd < 0) return null;
+
+    const pdfData = data.subarray(pdfStart, pdfEnd);
+    const pdfPath = imzPath.replace(/\.imz$/i, '.pdf');
+    fs.writeFileSync(pdfPath, pdfData);
+    return pdfPath;
+}
+
 // Full download chain: belge-ek-listele → belge-getir → download
 async function downloadDocument(apiClient, tebligat, filePath) {
     // Step 1: Get document file info
@@ -132,8 +158,15 @@ async function downloadDocument(apiClient, tebligat, filePath) {
     // Step 3: Download — adjust extension based on actual file type
     const ext = belge.uzanti || 'pdf';
     const actualPath = filePath.replace(/\.[^.]+$/, `.${ext}`);
+    const savedPath = await downloadFile(linkResult.reportLink, actualPath);
 
-    return await downloadFile(linkResult.reportLink, actualPath);
+    // Step 4: If .imz, extract the embedded PDF for easy viewing
+    if (savedPath && ext === 'imz') {
+        const pdfPath = extractPdfFromImz(savedPath);
+        if (pdfPath) return pdfPath; // Return .pdf path for DB storage
+    }
+
+    return savedPath;
 }
 
 // Map GİB API DTO → our internal tebligat format (matches saveTebligatlar expectations)
@@ -167,5 +200,6 @@ module.exports = {
     getDocumentLink,
     downloadFile,
     downloadDocument,
+    extractPdfFromImz,
     mapTebligatDto,
 };
