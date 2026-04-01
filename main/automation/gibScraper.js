@@ -674,10 +674,18 @@ const loginAndFetch = async (
                     teb.date || teb.notificationDate || teb.sendDate
                 );
                 const safeDocNo = (teb.documentNo || 'doc').replace(/[^a-zA-Z0-9-_]/g, '_');
-                const filePath = path.join(docsDir, `tebligat_${safeDocNo}.pdf`);
+                const baseName = `tebligat_${safeDocNo}`;
+                const filePath = path.join(docsDir, `${baseName}.pdf`);
 
-                if (fs.existsSync(filePath)) {
-                    teb.documentPath = filePath;
+                // Check for existing file with any extension (.pdf, .imz, etc.)
+                const existingFile = ['.pdf', '.imz', '.jpg', '.png'].reduce((found, ext) => {
+                    if (found) return found;
+                    const p = path.join(docsDir, `${baseName}${ext}`);
+                    return fs.existsSync(p) ? p : null;
+                }, null);
+
+                if (existingFile) {
+                    teb.documentPath = existingFile;
                     teb._newDownload = false;
                     continue;
                 }
@@ -878,11 +886,17 @@ const loginAndFetch = async (
                         /[^a-zA-Z0-9-_]/g,
                         '_'
                     );
-                    const filePath = path.join(docsDir, `tebligat_${safeDocNo}.pdf`);
+                    const pdfPath = path.join(docsDir, `tebligat_${safeDocNo}.pdf`);
+                    const filePath = pdfPath;
 
-                    // Skip if already downloaded
-                    if (fs.existsSync(filePath)) {
-                        tebligat.documentPath = filePath;
+                    // Skip if already downloaded (check multiple extensions)
+                    const existingDlFile = ['.pdf', '.imz', '.jpg', '.png'].reduce((f, ext) => {
+                        if (f) return f;
+                        const p = path.join(docsDir, `tebligat_${safeDocNo}${ext}`);
+                        return fs.existsSync(p) ? p : null;
+                    }, null);
+                    if (existingDlFile) {
+                        tebligat.documentPath = existingDlFile;
                         tebligat._newDownload = false;
                         continue;
                     }
@@ -1508,12 +1522,13 @@ async function fetchSingleDocument(tebligat, apiKey) {
     const dateStr = tebligat.tebligat_date || null;
     const docsDir = getDocumentsDir(clientId, client.firm_name, dateStr);
     const safeDocNo = (tebligat.document_no || String(tebligat.id)).replace(/[^a-zA-Z0-9-_]/g, '_');
-    const fileName = `tebligat_${safeDocNo}.pdf`;
-    const filePath = path.join(docsDir, fileName);
+    const baseName = `tebligat_${safeDocNo}`;
+    const filePath = path.join(docsDir, `${baseName}.pdf`);
 
-    // Skip if already downloaded
-    if (fs.existsSync(filePath)) {
-        return filePath;
+    // Skip if already downloaded (check multiple extensions)
+    for (const ext of ['.pdf', '.imz', '.jpg', '.png']) {
+        const p = path.join(docsDir, `${baseName}${ext}`);
+        if (fs.existsSync(p)) return p;
     }
 
     let browser;
