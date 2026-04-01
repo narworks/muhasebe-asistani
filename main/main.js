@@ -374,6 +374,19 @@ ipcMain.handle('get-rate-limits', () => {
     return gibScraper.getRateLimits();
 });
 
+// Vekalet Discovery — test mali müşavir hesabı ile vekalet keşfi
+ipcMain.handle('vekalet-discovery', async (event, credentials) => {
+    const s = settings.readSettings();
+    const apiKey = s.geminiApiKey;
+    if (!apiKey) return { success: false, error: 'Gemini API anahtarı bulunamadı' };
+
+    return await gibScraper.vekaletDiscovery(credentials, apiKey, (status) => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('scan-update', status);
+        }
+    });
+});
+
 // Cancel Scan
 ipcMain.on('cancel-scan', (event) => {
     gibScraper.cancelScan();
