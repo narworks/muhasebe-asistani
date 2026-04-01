@@ -1,0 +1,171 @@
+const axios = require('axios');
+const fs = require('fs');
+const path = require('path');
+const GIB_API_BASE = 'https://dijital.gib.gov.tr/apigateway';
+const USER_AGENT =
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+
+// Create an axios client with GİB API auth headers
+function createApiClient(token) {
+    return axios.create({
+        baseURL: GIB_API_BASE,
+        headers: {
+            Authorization: `Bearer ${token}`,
+            'ui-client': 'fe',
+            'page-name': 'e-tebligat',
+            referer: 'https://dijital.gib.gov.tr/',
+            accept: 'application/json, text/plain, */*',
+            'content-type': 'application/json',
+            'user-agent': USER_AGENT,
+        },
+        timeout: 30000,
+    });
+}
+
+// POST /etebligat/etebligat/tebligat-listele
+async function listTebligatlar(apiClient, { pageNo = 1, pageSize = 100, arsivDurum = null } = {}) {
+    const filters = [];
+    if (arsivDurum !== null) {
+        filters.push({ fieldName: 'arsivDurum', values: [String(arsivDurum)] });
+    }
+
+    const resp = await apiClient.post('/etebligat/etebligat/tebligat-listele', {
+        meta: {
+            pagination: { pageNo, pageSize },
+            sortFieldName: 'id',
+            sortType: 'ASC',
+            filters,
+        },
+    });
+
+    return resp.data;
+}
+
+// Fetch all tebligatlar across pages (pageSize=100)
+async function fetchAllTebligatlar(apiClient, { arsivDurum = null } = {}) {
+    const PAGE_SIZE = 100;
+    let pageNo = 1;
+    const allItems = [];
+
+    for (;;) {
+        const result = await listTebligatlar(apiClient, {
+            pageNo,
+            pageSize: PAGE_SIZE,
+            arsivDurum,
+        });
+        const items = result.data?.tebligatDtoList || [];
+        allItems.push(...items);
+
+        const totalCount = result.data?.count || 0;
+        if (allItems.length >= totalCount || items.length < PAGE_SIZE) break;
+        pageNo++;
+    }
+
+    return allItems;
+}
+
+// POST /etebligat/etebligat/belge-ek-listele — get document file info
+async function getDocumentFiles(apiClient, tebligId, tebligSecureId) {
+    const resp = await apiClient.post('/etebligat/etebligat/belge-ek-listele', {
+        tebligId,
+        tebligSecureId,
+    });
+    return resp.data;
+}
+
+// POST /etebligat/etebligat/belge-getir — get download link
+async function getDocumentLink(apiClient, params) {
+    const resp = await apiClient.post('/etebligat/etebligat/belge-getir', {
+        data: params,
+    });
+    return resp.data;
+}
+
+// GET report/download?uuid=... — download actual file
+async function downloadFile(reportLink, filePath) {
+    const dir = path.dirname(filePath);
+    if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+    }
+
+    const response = await axios({
+        method: 'GET',
+        url: reportLink,
+        responseType: 'arraybuffer',
+        headers: {
+            referer: 'https://dijital.gib.gov.tr/',
+            'user-agent': USER_AGENT,
+        },
+        timeout: 60000,
+    });
+
+    // Only save if we got meaningful content (>1KB to skip empty/template PDFs)
+    if (response.data.length > 1000) {
+        fs.writeFileSync(filePath, response.data);
+        return filePath;
+    }
+
+    return null;
+}
+
+// Full download chain: belge-ek-listele → belge-getir → download
+async function downloadDocument(apiClient, tebligat, filePath) {
+    // Step 1: Get document file info
+    const fileInfo = await getDocumentFiles(apiClient, tebligat.tebligId, tebligat.tebligSecureId);
+    if (!fileInfo.tebligBelge) return null;
+
+    const belge = fileInfo.tebligBelge;
+
+    // Step 2: Get download link
+    const linkResult = await getDocumentLink(apiClient, {
+        id: belge.id,
+        secureId: belge.secureId,
+        belgeTip: belge.belgeTip,
+        tarafId: tebligat.tarafId,
+        tarafSecureId: tebligat.tarafSecureId,
+        uzanti: belge.uzanti,
+        belgeAdi: belge.adi,
+    });
+
+    if (!linkResult.reportLink) return null;
+
+    // Step 3: Download — adjust extension based on actual file type
+    const ext = belge.uzanti || 'pdf';
+    const actualPath = filePath.replace(/\.[^.]+$/, `.${ext}`);
+
+    return await downloadFile(linkResult.reportLink, actualPath);
+}
+
+// Map GİB API DTO → our internal tebligat format (matches saveTebligatlar expectations)
+function mapTebligatDto(dto) {
+    return {
+        sender: dto.kurumAciklama || 'GİB',
+        subUnit: dto.altKurum || '',
+        documentType: dto.belgeTuruAciklama || '',
+        subject: `${dto.belgeTuruAciklama || ''} - ${dto.altKurum || ''}`.trim() || 'Tebligat',
+        documentNo: dto.belgeNo || '',
+        status: dto.mukellefOkumaZamani ? 'Okunmuş' : 'Okunmamış',
+        date: dto.tebligZamani || dto.gonderimZamani || '',
+        sendDate: dto.gonderimZamani || '',
+        notificationDate: dto.tebligZamani || '',
+        readDate: dto.mukellefOkumaZamani || '',
+        documentUrl: null,
+        documentPath: null,
+        // GİB identifiers for document download chain
+        tarafId: dto.tarafId,
+        tarafSecureId: dto.tarafSecureId,
+        tebligId: dto.tebligId,
+        tebligSecureId: dto.tebligSecureId,
+    };
+}
+
+module.exports = {
+    createApiClient,
+    listTebligatlar,
+    fetchAllTebligatlar,
+    getDocumentFiles,
+    getDocumentLink,
+    downloadFile,
+    downloadDocument,
+    mapTebligatDto,
+};

@@ -11,6 +11,7 @@ const GIB_LOGIN_URL = 'https://dijital.gib.gov.tr/portal/login';
 
 const settings = require('../settings');
 const logger = require('../logger');
+const gibApiClient = require('./gibApiClient');
 
 // Get documents directory path (does NOT create it — call ensureDir before saving)
 const getDocumentsDir = (clientId, firmName, dateStr) => {
@@ -571,52 +572,19 @@ const loginAndFetch = async (
         if (onStatus) onStatus({ message: `  → ${msg}`, type: 'process', firmId: client.id });
     };
 
-    // API Discovery: Log all XHR/fetch requests to find GIB's dispatch API
-    const apiLog = [];
-    page.on('request', (req) => {
-        const url = req.url();
-        const method = req.method();
-        if (
-            url.includes('gib.gov.tr') &&
-            (method === 'POST' ||
-                url.includes('api') ||
-                url.includes('dispatch') ||
-                url.includes('service') ||
-                url.includes('tebligat'))
-        ) {
-            apiLog.push({
-                url,
-                method,
-                postData: req.postData()?.substring(0, 500) || null,
-                headers: req.headers(),
-                timestamp: new Date().toISOString(),
-            });
-        }
-    });
+    // Capture Bearer token from GİB login response for direct API access
+    let bearerToken = null;
     page.on('response', async (resp) => {
-        const url = resp.url();
-        if (
-            url.includes('gib.gov.tr') &&
-            (url.includes('api') ||
-                url.includes('dispatch') ||
-                url.includes('service') ||
-                url.includes('tebligat') ||
-                resp.headers()['content-type']?.includes('json'))
-        ) {
-            let body = '';
+        if (resp.url().includes('/apigateway/auth/tdvd/login') && resp.status() === 200) {
             try {
-                body = (await resp.text()).substring(0, 1000);
+                const body = await resp.json();
+                if (body.token && body.result !== false) {
+                    bearerToken = body.token;
+                    logger.debug('[API] Bearer token captured from login response');
+                }
             } catch {
-                /* consumed */
+                /* response body already consumed */
             }
-            apiLog.push({
-                type: 'response',
-                url,
-                status: resp.status(),
-                contentType: resp.headers()['content-type'] || '',
-                body,
-                timestamp: new Date().toISOString(),
-            });
         }
     });
 
@@ -676,7 +644,72 @@ const loginAndFetch = async (
         throw new Error('Giriş başarısız - CAPTCHA veya kimlik bilgileri yanlış olabilir.');
     }
 
-    // Navigate to E-Tebligat
+    // Direct API mode: use HTTP calls instead of Puppeteer scraping (20x faster)
+    if (bearerToken) {
+        try {
+            const apiClient = gibApiClient.createApiClient(bearerToken);
+            status('API ile tebligatlar çekiliyor...');
+
+            let allDtos = [];
+            if (isFirstScan) {
+                const [nonArchived, archived] = await Promise.all([
+                    gibApiClient.fetchAllTebligatlar(apiClient),
+                    gibApiClient.fetchAllTebligatlar(apiClient, { arsivDurum: 1 }),
+                ]);
+                allDtos = [...nonArchived, ...archived];
+            } else {
+                allDtos = await gibApiClient.fetchAllTebligatlar(apiClient);
+            }
+
+            const mapped = allDtos.map(gibApiClient.mapTebligatDto);
+            status(`${mapped.length} tebligat bulundu (API), dökümanlar indiriliyor...`);
+
+            for (let i = 0; i < mapped.length; i++) {
+                if (scanCancelled) break;
+
+                const teb = mapped[i];
+                const docsDir = getDocumentsDir(
+                    client.id,
+                    client.firm_name,
+                    teb.date || teb.notificationDate || teb.sendDate
+                );
+                const safeDocNo = (teb.documentNo || 'doc').replace(/[^a-zA-Z0-9-_]/g, '_');
+                const filePath = path.join(docsDir, `tebligat_${safeDocNo}.pdf`);
+
+                if (fs.existsSync(filePath)) {
+                    teb.documentPath = filePath;
+                    teb._newDownload = false;
+                    continue;
+                }
+
+                status(
+                    `Döküman indiriliyor (${i + 1}/${mapped.length}): ${teb.documentNo || '?'}...`
+                );
+
+                try {
+                    const dlPath = await gibApiClient.downloadDocument(apiClient, teb, filePath);
+                    if (dlPath) {
+                        teb.documentPath = dlPath;
+                        teb._newDownload = true;
+                    }
+                } catch (dlErr) {
+                    logger.debug(`[API DL] ${teb.documentNo}: ${dlErr.message}`);
+                }
+
+                if (i < mapped.length - 1) {
+                    await randomDelay(...HUMAN_DELAYS.betweenDocuments);
+                }
+            }
+
+            status(`Tarama tamamlandı: ${mapped.length} tebligat (API).`);
+            return mapped;
+        } catch (apiErr) {
+            logger.debug('[API] API mode failed, falling back to Puppeteer:', apiErr.message);
+            status('API hatası, tarayıcı moduna geçiliyor...');
+        }
+    }
+
+    // Fallback: Puppeteer-based scraping (Navigate to E-Tebligat)
     const eTebligatLink = await page.evaluate(() => {
         const links = Array.from(document.querySelectorAll('a'));
         const link = links.find(
@@ -970,16 +1003,6 @@ const loginAndFetch = async (
     }
 
     status(`Tarama tamamlandı: ${allTebligatlarFromAllTabs.length} tebligat.`);
-    // Save API discovery log for analysis
-    if (apiLog.length > 0) {
-        try {
-            const logPath = path.join(app.getPath('userData'), `api_discovery_${client.id}.json`);
-            fs.writeFileSync(logPath, JSON.stringify(apiLog, null, 2));
-            logger.debug(`[API Discovery] Saved ${apiLog.length} requests to ${logPath}`);
-        } catch {
-            /* ignore write errors */
-        }
-    }
 
     return allTebligatlarFromAllTabs;
 };
@@ -1502,6 +1525,21 @@ async function fetchSingleDocument(tebligat, apiKey) {
         const page = await browser.newPage();
         await page.setUserAgent(USER_AGENT);
 
+        // Capture Bearer token from login response
+        let bearerToken = null;
+        page.on('response', async (resp) => {
+            if (resp.url().includes('/apigateway/auth/tdvd/login') && resp.status() === 200) {
+                try {
+                    const body = await resp.json();
+                    if (body.token && body.result !== false) {
+                        bearerToken = body.token;
+                    }
+                } catch {
+                    /* consumed */
+                }
+            }
+        });
+
         // Login
         await ensureLoginForm(page);
         await page.type('#userid', client.gib_user_code);
@@ -1533,7 +1571,27 @@ async function fetchSingleDocument(tebligat, apiKey) {
         await new Promise((r) => setTimeout(r, 2000));
         if (page.url().includes('/login')) throw new Error('GIB girişi başarısız');
 
-        // Navigate to e-tebligat
+        // API mode: find matching tebligat and download via HTTP
+        if (bearerToken) {
+            try {
+                const apiClient = gibApiClient.createApiClient(bearerToken);
+                const allDtos = await gibApiClient.fetchAllTebligatlar(apiClient);
+
+                // Match by belgeNo (document_no)
+                const match = allDtos.find((dto) => dto.belgeNo === tebligat.document_no);
+                if (match) {
+                    const mapped = gibApiClient.mapTebligatDto(match);
+                    const result = await gibApiClient.downloadDocument(apiClient, mapped, filePath);
+                    if (result) return result;
+                }
+
+                logger.debug('[fetchSingleDocument] No API match found, falling back to Puppeteer');
+            } catch (apiErr) {
+                logger.debug('[fetchSingleDocument] API failed:', apiErr.message);
+            }
+        }
+
+        // Fallback: Puppeteer-based DOM download
         await page
             .goto('https://dijital.gib.gov.tr/portal/e-tebligat', {
                 waitUntil: 'networkidle0',
@@ -1542,7 +1600,6 @@ async function fetchSingleDocument(tebligat, apiKey) {
             .catch(() => {});
         await new Promise((r) => setTimeout(r, 2000));
 
-        // Find table selector
         const tableSelectors = [
             'table tbody tr',
             '[role="row"]',
@@ -1564,7 +1621,6 @@ async function fetchSingleDocument(tebligat, apiKey) {
         }
         if (!foundSelector) throw new Error('Tebligat tablosu bulunamadı');
 
-        // Find matching row across pages
         let found = false;
         for (let pageNum = 0; pageNum < 20 && !found; pageNum++) {
             const matchIndex = await page.evaluate(
