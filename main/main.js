@@ -29,24 +29,36 @@ if (app.isPackaged) {
 }
 const logger = require('./logger');
 
+// Log rotation: rotate error.log when it exceeds 5MB
+const MAX_ERROR_LOG_SIZE = 5 * 1024 * 1024;
+const appendErrorLog = (logPath, logEntry) => {
+    try {
+        const stats = fs.statSync(logPath);
+        if (stats.size > MAX_ERROR_LOG_SIZE) {
+            const bakPath = logPath + '.bak';
+            if (fs.existsSync(bakPath)) fs.unlinkSync(bakPath);
+            fs.renameSync(logPath, bakPath);
+        }
+    } catch {
+        /* file doesn't exist yet — fine */
+    }
+    fs.appendFileSync(logPath, logEntry);
+};
+
 // Global error handlers
 process.on('uncaughtException', (error) => {
     console.error('[FATAL] Uncaught Exception:', error.message);
     console.error(error.stack);
-    // Log to file for debugging
     const logPath = path.join(app.getPath('userData'), 'error.log');
     const timestamp = new Date().toISOString();
-    const logEntry = `[${timestamp}] UNCAUGHT: ${error.message}\n${error.stack}\n\n`;
-    fs.appendFileSync(logPath, logEntry);
+    appendErrorLog(logPath, `[${timestamp}] UNCAUGHT: ${error.message}\n${error.stack}\n\n`);
 });
 
 process.on('unhandledRejection', (reason, _promise) => {
     console.error('[ERROR] Unhandled Promise Rejection:', reason);
-    // Log to file for debugging
     const logPath = path.join(app.getPath('userData'), 'error.log');
     const timestamp = new Date().toISOString();
-    const logEntry = `[${timestamp}] UNHANDLED_REJECTION: ${reason}\n\n`;
-    fs.appendFileSync(logPath, logEntry);
+    appendErrorLog(logPath, `[${timestamp}] UNHANDLED_REJECTION: ${reason}\n\n`);
 });
 const supabase = require('./supabase');
 const licenseManager = require('./license');
@@ -657,7 +669,8 @@ ipcMain.handle('open-checkout', async (event, params) => {
     urlParams.set('name', name);
     if (phone) urlParams.set('phone', phone);
 
-    const checkoutUrl = `https://muhasebeasistani.com/billing/checkout?${urlParams.toString()}`;
+    const billingBase = process.env.BILLING_URL || 'https://muhasebeasistani.com/billing';
+    const checkoutUrl = `${billingBase}/checkout?${urlParams.toString()}`;
 
     const checkoutWindow = new BrowserWindow({
         width: 500,
@@ -724,7 +737,11 @@ ipcMain.handle('open-billing-portal', async (event, packageId) => {
 });
 
 ipcMain.handle('open-forgot-password', async () => {
-    const forgotPasswordUrl = 'https://muhasebeasistani.com/forgot-password';
+    const siteBase = (process.env.BILLING_URL || 'https://muhasebeasistani.com/billing').replace(
+        /\/billing\/?$/,
+        ''
+    );
+    const forgotPasswordUrl = `${siteBase}/forgot-password`;
     const forgotWindow = new BrowserWindow({
         width: 480,
         height: 420,
