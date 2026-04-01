@@ -571,6 +571,55 @@ const loginAndFetch = async (
         if (onStatus) onStatus({ message: `  → ${msg}`, type: 'process', firmId: client.id });
     };
 
+    // API Discovery: Log all XHR/fetch requests to find GIB's dispatch API
+    const apiLog = [];
+    page.on('request', (req) => {
+        const url = req.url();
+        const method = req.method();
+        if (
+            url.includes('gib.gov.tr') &&
+            (method === 'POST' ||
+                url.includes('api') ||
+                url.includes('dispatch') ||
+                url.includes('service') ||
+                url.includes('tebligat'))
+        ) {
+            apiLog.push({
+                url,
+                method,
+                postData: req.postData()?.substring(0, 500) || null,
+                headers: req.headers(),
+                timestamp: new Date().toISOString(),
+            });
+        }
+    });
+    page.on('response', async (resp) => {
+        const url = resp.url();
+        if (
+            url.includes('gib.gov.tr') &&
+            (url.includes('api') ||
+                url.includes('dispatch') ||
+                url.includes('service') ||
+                url.includes('tebligat') ||
+                resp.headers()['content-type']?.includes('json'))
+        ) {
+            let body = '';
+            try {
+                body = (await resp.text()).substring(0, 1000);
+            } catch {
+                /* consumed */
+            }
+            apiLog.push({
+                type: 'response',
+                url,
+                status: resp.status(),
+                contentType: resp.headers()['content-type'] || '',
+                body,
+                timestamp: new Date().toISOString(),
+            });
+        }
+    });
+
     await page.type('#userid', client.gib_user_code);
     await page.type('#sifre', password);
 
@@ -921,6 +970,17 @@ const loginAndFetch = async (
     }
 
     status(`Tarama tamamlandı: ${allTebligatlarFromAllTabs.length} tebligat.`);
+    // Save API discovery log for analysis
+    if (apiLog.length > 0) {
+        try {
+            const logPath = path.join(app.getPath('userData'), `api_discovery_${client.id}.json`);
+            fs.writeFileSync(logPath, JSON.stringify(apiLog, null, 2));
+            logger.debug(`[API Discovery] Saved ${apiLog.length} requests to ${logPath}`);
+        } catch {
+            /* ignore write errors */
+        }
+    }
+
     return allTebligatlarFromAllTabs;
 };
 
