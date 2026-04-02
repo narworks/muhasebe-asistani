@@ -94,14 +94,57 @@ const Account: React.FC = () => {
                         <span
                             className={`px-2 py-0.5 text-xs font-medium rounded ${
                                 subscription.isActive
-                                    ? 'bg-emerald-500/20 text-emerald-400'
+                                    ? subscription.isTrial
+                                        ? 'bg-amber-500/20 text-amber-400'
+                                        : 'bg-emerald-500/20 text-emerald-400'
                                     : 'bg-red-500/20 text-red-400'
                             }`}
                         >
-                            {subscription.isActive ? 'Pro' : 'Pasif'}
+                            {subscription.isActive
+                                ? subscription.isTrial
+                                    ? 'Deneme'
+                                    : 'Pro'
+                                : 'Pasif'}
                         </span>
                     )}
                 </div>
+
+                {/* Trial Banner */}
+                {subscription?.isTrial && subscription.trialEndsAt && (
+                    <div
+                        className={`rounded-lg p-3 text-sm ${
+                            subscription.isActive
+                                ? 'bg-amber-500/10 border border-amber-500/20'
+                                : 'bg-red-500/10 border border-red-500/20'
+                        }`}
+                    >
+                        {subscription.isActive ? (
+                            <p className="text-amber-300">
+                                14 g&uuml;nl&uuml;k &uuml;cretsiz deneme aktif &mdash;{' '}
+                                <strong>
+                                    {Math.max(
+                                        0,
+                                        Math.ceil(
+                                            (new Date(subscription.trialEndsAt).getTime() -
+                                                Date.now()) /
+                                                (1000 * 60 * 60 * 24)
+                                        )
+                                    )}{' '}
+                                    g&uuml;n kald&#305;
+                                </strong>
+                            </p>
+                        ) : (
+                            <div>
+                                <p className="text-red-300 font-medium">
+                                    Deneme s&uuml;reniz doldu.
+                                </p>
+                                <p className="text-red-400/70 text-xs mt-1">
+                                    &Ouml;zellikleri kullanmaya devam etmek i&ccedil;in abone olun.
+                                </p>
+                            </div>
+                        )}
+                    </div>
+                )}
 
                 {subscription?.isActive && credits && (
                     <>

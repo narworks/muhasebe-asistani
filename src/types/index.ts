@@ -123,6 +123,8 @@ export interface Subscription {
     plan: string | null;
     expiresAt: string | null;
     status: string;
+    isTrial: boolean;
+    trialEndsAt: string | null;
 }
 
 // User types

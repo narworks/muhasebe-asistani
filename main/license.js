@@ -24,6 +24,8 @@ const defaultState = {
     subscriptionStatus: 'inactive',
     plan: null,
     expiresAt: null,
+    isTrial: false,
+    trialEndsAt: null,
     lastCheckAt: null,
     credits: {
         monthlyRemaining: 0,
@@ -118,6 +120,8 @@ const setStateFromSubscription = (subscription) => {
     state.subscriptionStatus = subscription.status || 'inactive';
     state.plan = subscription.plan_type || subscription.plan || 'pro'; // Support both field names
     state.expiresAt = subscription.end_date || subscription.expires_at || null; // Support both field names
+    state.isTrial = subscription.is_trial || false;
+    state.trialEndsAt = subscription.trial_ends_at || null;
     state.lastCheckAt = new Date().toISOString();
 
     persistState();
@@ -330,6 +334,8 @@ const getSubscriptionStatus = () => {
         plan: state.plan || null,
         expiresAt: state.expiresAt || null,
         status: state.subscriptionStatus || 'inactive',
+        isTrial: state.isTrial || false,
+        trialEndsAt: state.trialEndsAt || null,
     };
 };
 

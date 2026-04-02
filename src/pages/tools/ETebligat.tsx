@@ -295,8 +295,21 @@ const ETebligat: React.FC = () => {
         try {
             const sub = await window.electronAPI.getSubscriptionStatus();
             if (!sub.isActive) {
-                addLog('Aktif aboneliğiniz bulunmamaktadır. Lütfen abone olun.', 'error');
+                if (sub.isTrial) {
+                    addLog('Deneme süreniz dolmuştur. Tarama yapabilmek için abone olun.', 'error');
+                } else {
+                    addLog('Aktif aboneliğiniz bulunmamaktadır. Lütfen abone olun.', 'error');
+                }
                 return;
+            }
+            if (sub.isTrial && sub.trialEndsAt) {
+                const daysLeft = Math.max(
+                    0,
+                    Math.ceil(
+                        (new Date(sub.trialEndsAt).getTime() - Date.now()) / (1000 * 60 * 60 * 24)
+                    )
+                );
+                addLog(`Deneme sürümü — ${daysLeft} gün kaldı.`, 'info');
             }
         } catch (err) {
             addLog('Abonelik durumu doğrulanamadı.', 'error');
