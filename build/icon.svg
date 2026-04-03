@@ -1,101 +1,72 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
   <defs>
     <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" style="stop-color:#0f172a"/>
-      <stop offset="100%" style="stop-color:#1e293b"/>
+      <stop offset="0%" style="stop-color:#0c1425"/>
+      <stop offset="100%" style="stop-color:#162033"/>
     </linearGradient>
-    <linearGradient id="circuit" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" style="stop-color:#06b6d4"/>
-      <stop offset="100%" style="stop-color:#0ea5e9"/>
+    <linearGradient id="accent" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#22d3ee"/>
+      <stop offset="50%" style="stop-color:#06b6d4"/>
+      <stop offset="100%" style="stop-color:#0891b2"/>
     </linearGradient>
+    <linearGradient id="glow" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#67e8f9"/>
+      <stop offset="100%" style="stop-color:#06b6d4"/>
+    </linearGradient>
+    <filter id="shadow">
+      <feDropShadow dx="0" dy="4" stdDeviation="8" flood-color="#06b6d4" flood-opacity="0.4"/>
+    </filter>
+    <filter id="innerGlow">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="6" result="blur"/>
+      <feFlood flood-color="#22d3ee" flood-opacity="0.15"/>
+      <feComposite in2="blur" operator="in"/>
+      <feMerge>
+        <feMergeNode/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
   </defs>
 
-  <!-- Background rounded square -->
-  <rect width="512" height="512" rx="96" fill="url(#bg)"/>
+  <!-- Background -->
+  <rect width="512" height="512" rx="108" fill="url(#bg)"/>
 
-  <!-- Circuit traces - background pattern -->
-  <g stroke="#06b6d4" stroke-width="1.5" fill="none" opacity="0.15">
-    <line x1="40" y1="120" x2="160" y2="120"/>
-    <line x1="352" y1="120" x2="472" y2="120"/>
-    <line x1="40" y1="392" x2="160" y2="392"/>
-    <line x1="352" y1="392" x2="472" y2="392"/>
-    <line x1="120" y1="40" x2="120" y2="160"/>
-    <line x1="392" y1="40" x2="392" y2="160"/>
-    <line x1="120" y1="352" x2="120" y2="472"/>
-    <line x1="392" y1="352" x2="392" y2="472"/>
-    <line x1="40" y1="200" x2="130" y2="256"/>
-    <line x1="472" y1="200" x2="382" y2="256"/>
-    <line x1="40" y1="312" x2="130" y2="256"/>
-    <line x1="472" y1="312" x2="382" y2="256"/>
-    <line x1="200" y1="40" x2="200" y2="130"/>
-    <line x1="312" y1="40" x2="312" y2="130"/>
-    <line x1="200" y1="382" x2="200" y2="472"/>
-    <line x1="312" y1="382" x2="312" y2="472"/>
+  <!-- Subtle grid pattern -->
+  <g stroke="#06b6d4" stroke-width="0.5" opacity="0.06">
+    <line x1="0" y1="128" x2="512" y2="128"/>
+    <line x1="0" y1="256" x2="512" y2="256"/>
+    <line x1="0" y1="384" x2="512" y2="384"/>
+    <line x1="128" y1="0" x2="128" y2="512"/>
+    <line x1="256" y1="0" x2="256" y2="512"/>
+    <line x1="384" y1="0" x2="384" y2="512"/>
   </g>
 
-  <!-- Circuit nodes (dots) - background -->
-  <g fill="#06b6d4" opacity="0.25">
-    <circle cx="40" cy="120" r="3"/>
-    <circle cx="472" cy="120" r="3"/>
-    <circle cx="40" cy="392" r="3"/>
-    <circle cx="472" cy="392" r="3"/>
-    <circle cx="120" cy="40" r="3"/>
-    <circle cx="392" cy="40" r="3"/>
-    <circle cx="120" cy="472" r="3"/>
-    <circle cx="392" cy="472" r="3"/>
-    <circle cx="160" cy="120" r="5"/>
-    <circle cx="352" cy="120" r="5"/>
-    <circle cx="160" cy="392" r="5"/>
-    <circle cx="352" cy="392" r="5"/>
-    <circle cx="120" cy="160" r="5"/>
-    <circle cx="392" cy="160" r="5"/>
-    <circle cx="120" cy="352" r="5"/>
-    <circle cx="392" cy="352" r="5"/>
-    <circle cx="200" cy="40" r="3"/>
-    <circle cx="312" cy="40" r="3"/>
-    <circle cx="200" cy="472" r="3"/>
-    <circle cx="312" cy="472" r="3"/>
+  <!-- Corner accents -->
+  <g fill="#06b6d4" opacity="0.12">
+    <rect x="48" y="48" width="32" height="3" rx="1.5"/>
+    <rect x="48" y="48" width="3" height="32" rx="1.5"/>
+    <rect x="432" y="48" width="32" height="3" rx="1.5"/>
+    <rect x="461" y="48" width="3" height="32" rx="1.5"/>
+    <rect x="48" y="461" width="32" height="3" rx="1.5"/>
+    <rect x="48" y="432" width="3" height="32" rx="1.5"/>
+    <rect x="432" y="461" width="32" height="3" rx="1.5"/>
+    <rect x="461" y="432" width="3" height="32" rx="1.5"/>
   </g>
 
-  <!-- MA Letters - circuit board style with thick traces -->
-  <g fill="none" stroke-linecap="round" stroke-linejoin="round">
-    <!-- M letter traces -->
-    <path d="M 110 350 L 110 170 L 195 270 L 280 170 L 280 350"
-          stroke="url(#circuit)" stroke-width="28"/>
+  <!-- MA Letters - Bold filled style -->
+  <g filter="shadow">
+    <!-- M letter - filled, bold -->
+    <path d="M 68 370 L 68 152 C 68 148 71 145 75 145 L 100 145 C 104 145 107 147 109 150 L 188 268 L 267 150 C 269 147 272 145 276 145 L 301 145 C 305 145 308 148 308 152 L 308 370 C 308 374 305 377 301 377 L 276 377 C 272 377 269 374 269 370 L 269 230 L 198 336 C 195 340 189 340 186 336 L 107 230 L 107 370 C 107 374 104 377 100 377 L 75 377 C 71 377 68 374 68 370 Z"
+          fill="url(#glow)"/>
 
-    <!-- A letter traces -->
-    <path d="M 300 350 L 365 170 L 430 350 M 320 285 L 410 285"
-          stroke="url(#circuit)" stroke-width="28"/>
+    <!-- A letter - filled, bold -->
+    <path d="M 348 370 C 346 374 343 377 339 377 L 312 377 C 307 377 304 373 305 368 L 382 152 C 383 148 387 145 391 145 L 418 145 C 422 145 426 148 427 152 L 504 368 C 505 373 502 377 497 377 L 470 377 C 466 377 463 374 461 370 L 449 340 L 360 340 Z M 373 305 L 436 305 L 405 210 Z"
+          fill="url(#glow)"/>
   </g>
 
-  <!-- Circuit nodes on letters -->
-  <g>
-    <!-- M nodes -->
-    <circle cx="110" cy="170" r="10" fill="#06b6d4"/>
-    <circle cx="110" cy="350" r="10" fill="#06b6d4"/>
-    <circle cx="195" cy="270" r="12" fill="#22d3ee"/>
-    <circle cx="280" cy="170" r="10" fill="#06b6d4"/>
-    <circle cx="280" cy="350" r="10" fill="#06b6d4"/>
-    <!-- A nodes -->
-    <circle cx="300" cy="350" r="10" fill="#06b6d4"/>
-    <circle cx="365" cy="170" r="12" fill="#22d3ee"/>
-    <circle cx="430" cy="350" r="10" fill="#06b6d4"/>
-    <circle cx="320" cy="285" r="10" fill="#06b6d4"/>
-    <circle cx="410" cy="285" r="10" fill="#06b6d4"/>
-  </g>
+  <!-- Accent dot between M and A -->
+  <circle cx="328" cy="370" r="6" fill="#22d3ee" opacity="0.6"/>
 
-  <!-- Glow effects on key nodes -->
-  <g opacity="0.3">
-    <circle cx="195" cy="270" r="24" fill="#22d3ee"/>
-    <circle cx="365" cy="170" r="24" fill="#22d3ee"/>
-  </g>
-
-  <!-- Connecting traces from letters to edge circuit -->
-  <g stroke="#06b6d4" stroke-width="1.5" fill="none" opacity="0.2">
-    <line x1="110" y1="170" x2="120" y2="160"/>
-    <line x1="280" y1="170" x2="312" y2="130"/>
-    <line x1="110" y1="350" x2="120" y2="352"/>
-    <line x1="430" cy="350" x2="392" y2="352"/>
-    <line x1="365" y1="170" x2="392" y2="160"/>
-  </g>
+  <!-- Top accent line -->
+  <rect x="180" y="108" width="152" height="3" rx="1.5" fill="#06b6d4" opacity="0.25"/>
+  <rect x="180" y="401" width="152" height="3" rx="1.5" fill="#06b6d4" opacity="0.25"/>
 </svg>
