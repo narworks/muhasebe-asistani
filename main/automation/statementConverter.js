@@ -20,8 +20,10 @@ async function convert(fileBuffer, mimeType, prompt, apiKey) {
         fileContent = data.text;
     } else if (
         mimeType === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
+        mimeType === 'application/vnd.ms-excel' ||
         mimeType.includes('sheet') ||
-        mimeType.includes('excel')
+        mimeType.includes('excel') ||
+        mimeType.includes('xlsx')
     ) {
         const workbook = new ExcelJS.Workbook();
         await workbook.xlsx.load(fileBuffer);
@@ -36,10 +38,28 @@ async function convert(fileBuffer, mimeType, prompt, apiKey) {
             );
         });
         fileContent = rows.join('\n');
-    } else if (mimeType === 'text/plain') {
+    } else if (mimeType === 'text/plain' || mimeType === 'text/csv' || mimeType.includes('csv')) {
         fileContent = fileBuffer.toString('utf-8');
     } else {
-        throw new Error('Desteklenmeyen dosya formatı.');
+        // Last resort: try xlsx parse, fall back to text
+        try {
+            const workbook = new ExcelJS.Workbook();
+            await workbook.xlsx.load(fileBuffer);
+            const worksheet = workbook.worksheets[0];
+            const rows = [];
+            worksheet.eachRow((row) => {
+                rows.push(
+                    row.values
+                        .slice(1)
+                        .map((v) => (v != null ? String(v) : ''))
+                        .join(',')
+                );
+            });
+            fileContent = rows.join('\n');
+        } catch {
+            // Not xlsx either — try as plain text
+            fileContent = fileBuffer.toString('utf-8');
+        }
     }
 
     // 2. Create a smart prompt for Gemini

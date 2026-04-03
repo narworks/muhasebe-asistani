@@ -612,6 +612,12 @@ ipcMain.handle('delete-client-history', async (event, clientId) => {
 // Statement Converter
 ipcMain.handle('convert-statement', async (event, data) => {
     const { fileBuffer, mimeType, prompt } = data;
+    console.log(
+        '[convert-statement] mimeType:',
+        JSON.stringify(mimeType),
+        'bufferLen:',
+        fileBuffer?.length
+    );
     validation.validateStatementInput(data);
 
     if (!licenseManager.hasActiveSubscription()) {

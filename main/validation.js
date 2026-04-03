@@ -183,6 +183,8 @@ function validateStatementInput(data) {
         'image/jpg',
         'text/plain',
         'text/csv',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'application/vnd.ms-excel',
     ];
     if (mimeType && !validMimeTypes.includes(mimeType)) {
         throw new Error('Desteklenmeyen dosya formatı.');

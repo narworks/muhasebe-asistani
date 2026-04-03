@@ -288,7 +288,31 @@ const StatementConverter: React.FC = () => {
         if (conversionResult) {
             try {
                 const rows = conversionResult.trim().split('\n');
-                const data = rows.map((row) => row.split(','));
+                // Auto-detect delimiter: try comma, semicolon, tab
+                const firstRow = rows[0] || '';
+                const delimiter = firstRow.includes('\t')
+                    ? '\t'
+                    : firstRow.includes(';')
+                      ? ';'
+                      : ',';
+                const data = rows.map((row) => {
+                    // Handle quoted fields (e.g. "1.500,00")
+                    const cells: string[] = [];
+                    let current = '';
+                    let inQuotes = false;
+                    for (const ch of row) {
+                        if (ch === '"') {
+                            inQuotes = !inQuotes;
+                        } else if (ch === delimiter && !inQuotes) {
+                            cells.push(current);
+                            current = '';
+                        } else {
+                            current += ch;
+                        }
+                    }
+                    cells.push(current);
+                    return cells;
+                });
                 setParsedResult(data);
             } catch {
                 setError('Sonuç verisi ayrıştırılamadı.');
