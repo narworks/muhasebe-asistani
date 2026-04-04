@@ -322,6 +322,29 @@ const signOut = async () => {
     return { error };
 };
 
+/**
+ * Kullanıcının aktif modüllerini getirir
+ * @param {string} userId - Kullanıcı UUID
+ * @returns {Promise<{modules: string[], error}>}
+ */
+const getUserModules = async (userId) => {
+    const client = getClient();
+    const { data, error } = await client
+        .from('subscription_modules')
+        .select('module_id, status, expires_at')
+        .eq('user_id', userId)
+        .eq('status', 'active');
+
+    if (error) {
+        console.error('Failed to get user modules:', error.message);
+        return { modules: [], error };
+    }
+
+    const now = new Date();
+    const active = (data || []).filter((m) => !m.expires_at || new Date(m.expires_at) > now);
+    return { modules: active.map((m) => m.module_id), error: null };
+};
+
 module.exports = {
     init,
     getClient,
@@ -335,5 +358,6 @@ module.exports = {
     getCredits,
     deductCredits,
     refundCredits,
+    getUserModules,
     signOut,
 };

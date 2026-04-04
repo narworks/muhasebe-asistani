@@ -137,6 +137,8 @@ const StatementConverter: React.FC = () => {
     const [subscriptionStatus, setSubscriptionStatus] = useState<{
         isActive: boolean;
         status: string;
+        isTrial?: boolean;
+        modules?: string[];
     } | null>(null);
 
     const { currentUser } = useAuth();
@@ -454,7 +456,9 @@ const StatementConverter: React.FC = () => {
     };
 
     // Show subscription inactive screen
-    if (subscriptionStatus && !subscriptionStatus.isActive) {
+    const hasExcelModule =
+        subscriptionStatus?.isTrial || subscriptionStatus?.modules?.includes('excel_assistant');
+    if (subscriptionStatus && (!subscriptionStatus.isActive || !hasExcelModule)) {
         return (
             <div>
                 <div className="flex justify-between items-center mb-8">

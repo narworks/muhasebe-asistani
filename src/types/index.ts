@@ -125,6 +125,7 @@ export interface Subscription {
     status: string;
     isTrial: boolean;
     trialEndsAt: string | null;
+    modules: string[];
 }
 
 // User types

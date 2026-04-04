@@ -302,6 +302,10 @@ const ETebligat: React.FC = () => {
                 }
                 return;
             }
+            if (!sub.isTrial && !sub.modules?.includes('e_tebligat')) {
+                addLog('E-Tebligat modülü aktif değil. Lütfen abone olun.', 'error');
+                return;
+            }
             if (sub.isTrial && sub.trialEndsAt) {
                 const daysLeft = Math.max(
                     0,

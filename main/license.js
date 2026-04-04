@@ -26,6 +26,7 @@ const defaultState = {
     expiresAt: null,
     isTrial: false,
     trialEndsAt: null,
+    modules: [],
     lastCheckAt: null,
     credits: {
         monthlyRemaining: 0,
@@ -194,6 +195,10 @@ const login = async ({ email, password }) => {
 
             setStateFromSubscription(subscription);
 
+            // Modül bilgilerini çek
+            const { modules } = await supabase.getUserModules(user.id);
+            state.modules = modules || [];
+
             // Device info güncelle
             await supabase.updateDeviceInfo(user.id, deviceId, appVersion);
         }
@@ -244,6 +249,10 @@ const checkLicense = async () => {
         }
 
         setStateFromSubscription(subscription);
+
+        // Modül bilgilerini çek
+        const { modules } = await supabase.getUserModules(state.userId);
+        state.modules = modules || [];
 
         // Kredi bakiyesini senkronize et
         await syncCredits();
@@ -324,6 +333,16 @@ const getGraceRemainingMs = () => {
 };
 
 /**
+ * Belirli bir modüle erişim kontrolü
+ */
+const hasModuleAccess = (moduleId) => {
+    ensureLoaded();
+    if (!hasActiveSubscription()) return false;
+    if (state.isTrial) return true;
+    return (state.modules || []).includes(moduleId);
+};
+
+/**
  * Subscription durumunu döndürür
  */
 const getSubscriptionStatus = () => {
@@ -336,6 +355,7 @@ const getSubscriptionStatus = () => {
         status: state.subscriptionStatus || 'inactive',
         isTrial: state.isTrial || false,
         trialEndsAt: state.trialEndsAt || null,
+        modules: state.modules || [],
     };
 };
 
@@ -588,6 +608,7 @@ module.exports = {
     checkLicense,
     logout,
     hasActiveSubscription,
+    hasModuleAccess,
     getGraceRemainingMs,
     getSubscriptionStatus,
     getBillingUrl,

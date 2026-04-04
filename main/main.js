@@ -117,8 +117,8 @@ const createWindow = () => {
 
 // Helper: run scan with status updates
 const runScanWithUpdates = async () => {
-    if (!licenseManager.hasActiveSubscription()) {
-        logger.debug('[Scheduler] Skipping scan - no active subscription');
+    if (!licenseManager.hasModuleAccess('e_tebligat')) {
+        logger.debug('[Scheduler] Skipping scan - e_tebligat module not active');
         return;
     }
 
@@ -277,8 +277,8 @@ ipcMain.handle('get-user-info', async () => {
 
 // Start Scan (fresh)
 ipcMain.on('start-scan', async (event) => {
-    if (!licenseManager.hasActiveSubscription()) {
-        event.reply('scan-error', 'Üyelik aktif değil! Lütfen giriş yapınız.');
+    if (!licenseManager.hasModuleAccess('e_tebligat')) {
+        event.reply('scan-error', 'E-Tebligat modülü aktif değil. Lütfen abone olun.');
         return;
     }
 
@@ -332,8 +332,8 @@ ipcMain.on('start-scan', async (event) => {
 
 // Resume Scan (continue from where stopped)
 ipcMain.on('resume-scan', async (event) => {
-    if (!licenseManager.hasActiveSubscription()) {
-        event.reply('scan-error', 'Üyelik aktif değil! Lütfen giriş yapınız.');
+    if (!licenseManager.hasModuleAccess('e_tebligat')) {
+        event.reply('scan-error', 'E-Tebligat modülü aktif değil. Lütfen abone olun.');
         return;
     }
 
@@ -620,8 +620,8 @@ ipcMain.handle('convert-statement', async (event, data) => {
     );
     validation.validateStatementInput(data);
 
-    if (!licenseManager.hasActiveSubscription()) {
-        throw new Error('Aktif aboneliğiniz bulunmamaktadır. Lütfen abone olun.');
+    if (!licenseManager.hasModuleAccess('excel_assistant')) {
+        throw new Error('Excel Asistanı modülü aktif değil. Lütfen abone olun.');
     }
 
     const apiKey = process.env.GEMINI_API_KEY;
