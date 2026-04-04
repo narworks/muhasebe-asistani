@@ -91,21 +91,37 @@ const Account: React.FC = () => {
                 <div className="flex items-center justify-between">
                     <h2 className="text-base font-semibold text-white">Abonelik</h2>
                     {subscription && (
-                        <span
-                            className={`px-2 py-0.5 text-xs font-medium rounded ${
-                                subscription.isActive
+                        <div className="flex items-center gap-1.5">
+                            {subscription.isActive &&
+                                !subscription.isTrial &&
+                                subscription.modules?.map((m) => (
+                                    <span
+                                        key={m}
+                                        className={`px-2 py-0.5 text-xs font-medium rounded ${
+                                            m === 'e_tebligat'
+                                                ? 'bg-sky-500/20 text-sky-400'
+                                                : 'bg-indigo-500/20 text-indigo-400'
+                                        }`}
+                                    >
+                                        {m === 'e_tebligat' ? 'Tebligat' : 'Excel'}
+                                    </span>
+                                ))}
+                            <span
+                                className={`px-2 py-0.5 text-xs font-medium rounded ${
+                                    subscription.isActive
+                                        ? subscription.isTrial
+                                            ? 'bg-amber-500/20 text-amber-400'
+                                            : 'bg-emerald-500/20 text-emerald-400'
+                                        : 'bg-red-500/20 text-red-400'
+                                }`}
+                            >
+                                {subscription.isActive
                                     ? subscription.isTrial
-                                        ? 'bg-amber-500/20 text-amber-400'
-                                        : 'bg-emerald-500/20 text-emerald-400'
-                                    : 'bg-red-500/20 text-red-400'
-                            }`}
-                        >
-                            {subscription.isActive
-                                ? subscription.isTrial
-                                    ? 'Deneme'
-                                    : 'Pro'
-                                : 'Pasif'}
-                        </span>
+                                        ? 'Deneme'
+                                        : 'Aktif'
+                                    : 'Pasif'}
+                            </span>
+                        </div>
                     )}
                 </div>
 
