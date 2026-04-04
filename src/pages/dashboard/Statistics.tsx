@@ -371,7 +371,7 @@ const Statistics: React.FC = () => {
                                 colorClass="bg-indigo-500"
                             />
                             <p className="mt-4 font-semibold text-slate-300 group-hover:text-white transition-colors text-sm">
-                                Ekstre
+                                Excel
                             </p>
                             <p className="text-xs text-slate-500">{statementConverterUses} işlem</p>
                         </div>

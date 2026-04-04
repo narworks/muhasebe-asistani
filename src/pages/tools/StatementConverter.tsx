@@ -460,7 +460,7 @@ const StatementConverter: React.FC = () => {
                 <div className="flex justify-between items-center mb-8">
                     <div>
                         <h1 className="text-3xl md:text-4xl font-bold text-white mb-2">
-                            Banka Ekstresi Dönüştürücü
+                            Excel Asistan&#305;
                         </h1>
                         <p className="text-slate-400 text-lg">
                             Dosyanızı yükleyin ve yapay zekaya ne yapması gerektiğini söyleyin.
@@ -523,7 +523,7 @@ const StatementConverter: React.FC = () => {
             <div className="flex justify-between items-center mb-8">
                 <div>
                     <h1 className="text-3xl md:text-4xl font-bold text-white mb-2">
-                        Banka Ekstresi Dönüştürücü
+                        Excel Asistan&#305;
                     </h1>
                     <p className="text-slate-400 text-lg">
                         Dosyanızı yükleyin ve yapay zekaya ne yapması gerektiğini söyleyin.

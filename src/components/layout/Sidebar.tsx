@@ -142,7 +142,7 @@ const Sidebar: React.FC = () => {
                         }
                     >
                         <WrenchIcon />
-                        <span>Ekstre Dönüştürücü</span>
+                        <span>Excel Asistan&#305;</span>
                     </NavLink>
                     <NavLink
                         to="/tools/e-tebligat"
