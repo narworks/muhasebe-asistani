@@ -1,7 +1,7 @@
 import React, { useState, useRef, DragEvent, useEffect, ReactNode } from 'react';
 import { useAuth } from '../../context/AuthContext';
+import { useNavigate } from 'react-router-dom';
 import Card from '../../components/ui/Card';
-import SubscriptionModal from '../../components/SubscriptionModal';
 
 // --- ICONS ---
 // (Icons omitted for brevity - same as before)
@@ -142,7 +142,7 @@ const StatementConverter: React.FC = () => {
         modules?: string[];
         plan?: string | null;
     } | null>(null);
-    const [showSubModal, setShowSubModal] = useState(false);
+    const navigateTo = useNavigate();
 
     const { currentUser } = useAuth();
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -500,18 +500,11 @@ const StatementConverter: React.FC = () => {
                             <span className="text-amber-400 font-medium">Pasif</span>
                         </p>
                         <button
-                            onClick={() => setShowSubModal(true)}
+                            onClick={() => navigateTo('/subscription')}
                             className="inline-flex items-center px-6 py-3 bg-sky-500 hover:bg-sky-600 text-white font-semibold rounded-lg transition-colors"
                         >
-                            Mod&uuml;l Sat&#305;n Al
+                            Abonelik Sayfas&#305;na Git
                         </button>
-                        <SubscriptionModal
-                            isOpen={showSubModal}
-                            onClose={() => setShowSubModal(false)}
-                            subscription={subscriptionStatus}
-                            currentUserEmail={currentUser?.email || ''}
-                            defaultModule="excel_assistant"
-                        />
                     </div>
                 </Card>
             </div>

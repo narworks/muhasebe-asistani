@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { clientCreateSchema, clientEditSchema, validateForm } from '../../lib/validations';
 import type { ScheduleStatus, Client, Tebligat, ScanUpdate } from '../../types';
+import { useNavigate } from 'react-router-dom';
 import LegalConsentModal from '../../components/LegalConsentModal';
-import SubscriptionModal from '../../components/SubscriptionModal';
 
 interface ClientGroup {
     client_id: number;
@@ -78,7 +78,7 @@ const ETebligat: React.FC = () => {
         modules?: string[];
         plan?: string | null;
     } | null>(null);
-    const [showSubModal, setShowSubModal] = useState(false);
+    const navigateTo = useNavigate();
 
     // Rate limits
     const [rateLimits, setRateLimits] = useState({
@@ -839,18 +839,11 @@ const ETebligat: React.FC = () => {
                             <span className="text-amber-600 font-medium">Pasif</span>
                         </p>
                         <button
-                            onClick={() => setShowSubModal(true)}
+                            onClick={() => navigateTo('/subscription')}
                             className="inline-flex items-center px-6 py-3 bg-sky-500 hover:bg-sky-600 text-white font-semibold rounded-lg transition-colors"
                         >
-                            Mod&uuml;l Sat&#305;n Al
+                            Abonelik Sayfasına Git
                         </button>
-                        <SubscriptionModal
-                            isOpen={showSubModal}
-                            onClose={() => setShowSubModal(false)}
-                            subscription={subscriptionStatus}
-                            currentUserEmail=""
-                            defaultModule="e_tebligat"
-                        />
                     </div>
                 </div>
             </div>

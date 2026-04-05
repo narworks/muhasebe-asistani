@@ -4,6 +4,7 @@ import Register from './pages/auth/Register';
 import DashboardHome from './pages/dashboard/DashboardHome';
 import Account from './pages/dashboard/Account';
 import Statistics from './pages/dashboard/Statistics';
+import Subscription from './pages/dashboard/Subscription';
 import StatementConverter from './pages/tools/StatementConverter';
 import ETebligat from './pages/tools/ETebligat';
 import ProtectedRoute from './components/ProtectedRoute';
@@ -11,26 +12,27 @@ import MainLayout from './components/layout/MainLayout';
 import ErrorBoundary from './components/ErrorBoundary';
 
 function App() {
-  return (
-    <ErrorBoundary>
-    <Routes>
-      {/* Public Routes */}
-      <Route path="/login" element={<Login />} />
-      <Route path="/register" element={<Register />} />
+    return (
+        <ErrorBoundary>
+            <Routes>
+                {/* Public Routes */}
+                <Route path="/login" element={<Login />} />
+                <Route path="/register" element={<Register />} />
 
-      {/* Protected Routes */}
-      <Route element={<ProtectedRoute />}>
-        <Route element={<MainLayout />}>
-          <Route path="/" element={<DashboardHome />} />
-          <Route path="/account" element={<Account />} />
-          <Route path="/statistics" element={<Statistics />} />
-          <Route path="/tools/statement-converter" element={<StatementConverter />} />
-          <Route path="/tools/e-tebligat" element={<ETebligat />} />
-        </Route>
-      </Route>
-    </Routes>
-    </ErrorBoundary>
-  );
+                {/* Protected Routes */}
+                <Route element={<ProtectedRoute />}>
+                    <Route element={<MainLayout />}>
+                        <Route path="/" element={<DashboardHome />} />
+                        <Route path="/account" element={<Account />} />
+                        <Route path="/statistics" element={<Statistics />} />
+                        <Route path="/subscription" element={<Subscription />} />
+                        <Route path="/tools/statement-converter" element={<StatementConverter />} />
+                        <Route path="/tools/e-tebligat" element={<ETebligat />} />
+                    </Route>
+                </Route>
+            </Routes>
+        </ErrorBoundary>
+    );
 }
 
 export default App;

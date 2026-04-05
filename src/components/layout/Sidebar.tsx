@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 
@@ -100,9 +100,59 @@ const MailIcon = () => (
     </svg>
 );
 
+// Lock icon for inactive modules
+const LockIcon = () => (
+    <svg
+        xmlns="http://www.w3.org/2000/svg"
+        className="h-4 w-4 text-slate-600"
+        fill="none"
+        viewBox="0 0 24 24"
+        stroke="currentColor"
+    >
+        <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
+        />
+    </svg>
+);
+
+// Credit card icon for subscription
+const CreditCardIcon = () => (
+    <svg
+        xmlns="http://www.w3.org/2000/svg"
+        className="h-6 w-6"
+        fill="none"
+        viewBox="0 0 24 24"
+        stroke="currentColor"
+    >
+        <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"
+        />
+    </svg>
+);
+
 const Sidebar: React.FC = () => {
     const { currentUser, logout } = useAuth();
     const navigate = useNavigate();
+    const [modules, setModules] = useState<string[]>([]);
+    const [isTrial, setIsTrial] = useState(false);
+
+    useEffect(() => {
+        window.electronAPI
+            .getSubscriptionStatus()
+            .then((sub) => {
+                setModules(sub.modules || []);
+                setIsTrial(sub.isTrial || false);
+            })
+            .catch(() => {});
+    }, []);
+
+    const hasModule = (id: string) => isTrial || modules.includes(id);
 
     const navLinkClasses =
         'flex items-center space-x-3 px-4 py-3 rounded-lg transition-colors duration-200';
@@ -135,24 +185,46 @@ const Sidebar: React.FC = () => {
                         <BarChartIcon />
                         <span>Ana Panel</span>
                     </NavLink>
-                    <NavLink
-                        to="/tools/statement-converter"
-                        className={({ isActive }) =>
-                            `${navLinkClasses} ${isActive ? activeLinkClasses : inactiveLinkClasses}`
-                        }
-                    >
-                        <WrenchIcon />
-                        <span>Excel Asistan&#305;</span>
-                    </NavLink>
-                    <NavLink
-                        to="/tools/e-tebligat"
-                        className={({ isActive }) =>
-                            `${navLinkClasses} ${isActive ? activeLinkClasses : inactiveLinkClasses}`
-                        }
-                    >
-                        <MailIcon />
-                        <span>E-Tebligat</span>
-                    </NavLink>
+                    {hasModule('excel_assistant') ? (
+                        <NavLink
+                            to="/tools/statement-converter"
+                            className={({ isActive }) =>
+                                `${navLinkClasses} ${isActive ? activeLinkClasses : inactiveLinkClasses}`
+                            }
+                        >
+                            <WrenchIcon />
+                            <span>Excel Asistanı</span>
+                        </NavLink>
+                    ) : (
+                        <button
+                            onClick={() => navigate('/subscription')}
+                            className={`${navLinkClasses} text-slate-600 hover:text-slate-400 w-full`}
+                        >
+                            <WrenchIcon />
+                            <span className="flex-1 text-left">Excel Asistanı</span>
+                            <LockIcon />
+                        </button>
+                    )}
+                    {hasModule('e_tebligat') ? (
+                        <NavLink
+                            to="/tools/e-tebligat"
+                            className={({ isActive }) =>
+                                `${navLinkClasses} ${isActive ? activeLinkClasses : inactiveLinkClasses}`
+                            }
+                        >
+                            <MailIcon />
+                            <span>E-Tebligat</span>
+                        </NavLink>
+                    ) : (
+                        <button
+                            onClick={() => navigate('/subscription')}
+                            className={`${navLinkClasses} text-slate-600 hover:text-slate-400 w-full`}
+                        >
+                            <MailIcon />
+                            <span className="flex-1 text-left">E-Tebligat</span>
+                            <LockIcon />
+                        </button>
+                    )}
                     <NavLink
                         to="/statistics"
                         className={({ isActive }) =>
@@ -161,6 +233,15 @@ const Sidebar: React.FC = () => {
                     >
                         <ChartPieIcon />
                         <span>İstatistikler</span>
+                    </NavLink>
+                    <NavLink
+                        to="/subscription"
+                        className={({ isActive }) =>
+                            `${navLinkClasses} ${isActive ? activeLinkClasses : inactiveLinkClasses}`
+                        }
+                    >
+                        <CreditCardIcon />
+                        <span>Abonelik</span>
                     </NavLink>
                 </nav>
             </div>
