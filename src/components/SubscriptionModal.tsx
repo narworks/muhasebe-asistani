@@ -4,14 +4,14 @@ import React, { useState, useEffect } from 'react';
 const MODULES = {
     excel_assistant: {
         id: 'excel_assistant',
-        name: 'Excel Asistan\u0131',
+        name: 'Excel Asistanı',
         shortName: 'Excel',
         price: 2500,
         color: 'indigo',
         features: [
-            'Excel, CSV, PDF d\u00f6n\u00fc\u015ft\u00fcrme',
-            'Ak\u0131ll\u0131 veri i\u015fleme ve \u015fablonlar',
-            'Sonu\u00e7lar\u0131 Excel olarak indirme',
+            'Excel, CSV, PDF dönüştürme',
+            'Akıllı veri işleme ve şablonlar',
+            'Sonuçları Excel olarak indirme',
         ],
     },
     e_tebligat: {
@@ -21,9 +21,9 @@ const MODULES = {
         price: 5000,
         color: 'sky',
         features: [
-            'Otomatik G\u0130B e-tebligat tarama',
-            'D\u00f6k\u00fcman indirme ve ar\u015fivleme',
-            '\u00c7oklu m\u00fckellef y\u00f6netimi',
+            'Otomatik GİB e-tebligat tarama',
+            'Döküman indirme ve arşivleme',
+            'Çoklu mükellef yönetimi',
         ],
     },
 };
@@ -143,16 +143,12 @@ const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
             });
             if (response.ok) {
                 handleClose();
-                alert(
-                    'Ba\u015fvurunuz al\u0131nd\u0131! Banka hesap bilgileri email adresinize g\u00f6nderilecektir.'
-                );
+                alert('Başvurunuz alındı! Banka hesap bilgileri email adresinize gönderilecektir.');
             } else {
-                alert('Bir hata olu\u015ftu. L\u00fctfen tekrar deneyin.');
+                alert('Bir hata oluştu. Lütfen tekrar deneyin.');
             }
         } catch {
-            alert(
-                'Ba\u011flant\u0131 hatas\u0131. L\u00fctfen internet ba\u011flant\u0131n\u0131z\u0131 kontrol edin.'
-            );
+            alert('Bağlantı hatası. Lütfen internet bağlantınızı kontrol edin.');
         } finally {
             setSubmitting(false);
         }
@@ -182,7 +178,7 @@ const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
         </button>
     );
 
-    // Aktif Abone G\u00f6r\u00fcn\u00fcm\u00fc
+    // Aktif Abone Görünümü
     if (subscription?.isActive) {
         const monthlyPercent = credits
             ? Math.round((credits.monthlyUsed / credits.monthlyLimit) * 100)
@@ -225,7 +221,7 @@ const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
                             <>
                                 <div>
                                     <div className="flex justify-between text-xs text-slate-400 mb-1">
-                                        <span>Ayl\u0131k Kredi</span>
+                                        <span>Aylık Kredi</span>
                                         <span className="text-white">
                                             {credits.monthlyRemaining.toLocaleString('tr-TR')} /{' '}
                                             {credits.monthlyLimit.toLocaleString('tr-TR')}
@@ -275,7 +271,7 @@ const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
                             onClick={() => window.electronAPI.openBillingPortal()}
                             className="flex-1 bg-sky-500 hover:bg-sky-600 text-white text-sm font-medium py-2 rounded-lg transition-colors"
                         >
-                            Y\u00f6netim
+                            Yönetim
                         </button>
                     </div>
                 </div>
@@ -283,15 +279,13 @@ const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
         );
     }
 
-    // Step 1: Mod\u00fcl Se\u00e7imi
+    // Step 1: Modül Seçimi
     if (step === 'plan') {
         return (
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
                 <div className="bg-slate-900 border border-slate-700 rounded-lg shadow-lg w-full max-w-lg relative">
                     <div className="flex items-center justify-between p-4 border-b border-slate-700">
-                        <h2 className="text-base font-semibold text-white">
-                            Mod\u00fcl Se\u00e7in
-                        </h2>
+                        <h2 className="text-base font-semibold text-white">Modül Seçin</h2>
                         <CloseButton />
                     </div>
 
@@ -309,31 +303,27 @@ const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
                             <div className="flex items-center justify-between mb-2">
                                 <div className="flex items-center gap-2">
                                     <span className="text-xs font-semibold px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400">
-                                        T\u00dcM MOD\u00dcLLER
+                                        TÜM MODÜLLER
                                     </span>
                                     <span className="text-xs font-semibold px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400">
-                                        EN \u0130Y\u0130 F\u0130YAT
+                                        EN İYİ FİYAT
                                     </span>
                                 </div>
                                 <div className="flex items-baseline gap-1">
-                                    <span className="text-2xl font-bold text-white">
-                                        6.000\u20ba
-                                    </span>
-                                    <span className="text-slate-400 text-sm">/y\u0131l</span>
+                                    <span className="text-2xl font-bold text-white">6.000₺</span>
+                                    <span className="text-slate-400 text-sm">/yıl</span>
                                     <span className="text-sm text-slate-500 line-through ml-1">
-                                        7.500\u20ba
+                                        7.500₺
                                     </span>
                                 </div>
                             </div>
                             <p className="text-sm font-semibold text-white mb-1">Tam Paket</p>
                             <p className="text-xs text-emerald-400">
-                                1.500\u20ba tasarruf \u2022 5.000 ayl\u0131k kredi
+                                1.500₺ tasarruf • 5.000 aylık kredi
                             </p>
                         </button>
 
-                        <p className="text-center text-xs text-slate-500">
-                            veya tek mod\u00fcl se\u00e7in
-                        </p>
+                        <p className="text-center text-xs text-slate-500">veya tek modül seçin</p>
 
                         <div className="grid grid-cols-2 gap-3">
                             {Object.entries(MODULES).map(([id, mod]) => (
@@ -350,16 +340,16 @@ const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
                                     <span
                                         className={`text-xs font-semibold px-2 py-0.5 rounded bg-${mod.color}-500/20 text-${mod.color}-400`}
                                     >
-                                        MOD\u00dcL
+                                        MODÜL
                                     </span>
                                     <p className="text-sm font-semibold text-white mt-2">
                                         {mod.name}
                                     </p>
                                     <div className="flex items-baseline gap-1 mt-1">
                                         <span className="text-lg font-bold text-white">
-                                            {mod.price.toLocaleString('tr-TR')}\u20ba
+                                            {mod.price.toLocaleString('tr-TR')}₺
                                         </span>
-                                        <span className="text-slate-400 text-xs">/y\u0131l</span>
+                                        <span className="text-slate-400 text-xs">/yıl</span>
                                     </div>
                                     <ul className="mt-2 space-y-1">
                                         {mod.features.map((f, i) => (
@@ -380,8 +370,8 @@ const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
                             onClick={() => setStep('payment')}
                             className="w-full bg-sky-500 hover:bg-sky-600 text-white font-medium py-3 rounded-lg transition-colors mt-2"
                         >
-                            Devam Et \u2014 {getPlanLabel(selectedPlan)} (
-                            {getPrice(selectedPlan).toLocaleString('tr-TR')}\u20ba/y\u0131l)
+                            Devam Et — {getPlanLabel(selectedPlan)} (
+                            {getPrice(selectedPlan).toLocaleString('tr-TR')}₺/yıl)
                         </button>
                     </div>
                 </div>
@@ -389,7 +379,7 @@ const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
         );
     }
 
-    // Step 2: \u00d6deme Bilgileri + Y\u00f6ntem
+    // Step 2: Ödeme Bilgileri + Yöntem
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
             <div className="bg-slate-900 border border-slate-700 rounded-lg shadow-lg w-full max-w-sm relative">
@@ -423,7 +413,7 @@ const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
                                 {getPlanLabel(selectedPlan)}
                             </span>
                             <span className="text-white font-semibold">
-                                {getPrice(selectedPlan).toLocaleString('tr-TR')}\u20ba/y\u0131l
+                                {getPrice(selectedPlan).toLocaleString('tr-TR')}₺/yıl
                             </span>
                         </div>
                     </div>
@@ -439,7 +429,7 @@ const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
                                 value={formData.name}
                                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                                 className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white text-sm focus:outline-none focus:border-sky-500"
-                                placeholder="Ad\u0131n\u0131z Soyad\u0131n\u0131z"
+                                placeholder="Adınız Soyadınız"
                             />
                         </div>
                         <div>
@@ -479,20 +469,19 @@ const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
                             disabled={!formData.name || !formData.email}
                             className="w-full py-2.5 bg-sky-500 hover:bg-sky-600 disabled:bg-slate-700 disabled:text-slate-500 text-white rounded-lg font-medium text-sm flex items-center justify-center gap-2 transition-colors"
                         >
-                            Kredi Kart\u0131 ile \u00d6de
+                            Kredi Kartı ile Öde
                         </button>
                         <button
                             onClick={handleBankTransfer}
                             disabled={!formData.name || !formData.email || submitting}
                             className="w-full py-2.5 bg-slate-700 hover:bg-slate-600 disabled:bg-slate-800 disabled:text-slate-500 text-white rounded-lg font-medium text-sm flex items-center justify-center gap-2 transition-colors"
                         >
-                            {submitting ? 'G\u00f6nderiliyor...' : 'Havale/EFT ile \u00d6de'}
+                            {submitting ? 'Gönderiliyor...' : 'Havale/EFT ile Öde'}
                         </button>
                     </div>
 
                     <p className="text-[10px] text-slate-500 text-center mt-3">
-                        \u00d6deme i\u015flemleri iyzico g\u00fcvencesi ile
-                        ger\u00e7ekle\u015ftirilmektedir.
+                        Ödeme işlemleri iyzico güvencesi ile gerçekleştirilmektedir.
                     </p>
                 </div>
             </div>
