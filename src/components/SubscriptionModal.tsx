@@ -1,19 +1,59 @@
 import React, { useState, useEffect } from 'react';
 
+// Module definitions — single source of truth for desktop app
+const MODULES = {
+    excel_assistant: {
+        id: 'excel_assistant',
+        name: 'Excel Asistan\u0131',
+        shortName: 'Excel',
+        price: 2500,
+        color: 'indigo',
+        features: [
+            'Excel, CSV, PDF d\u00f6n\u00fc\u015ft\u00fcrme',
+            'Ak\u0131ll\u0131 veri i\u015fleme ve \u015fablonlar',
+            'Sonu\u00e7lar\u0131 Excel olarak indirme',
+        ],
+    },
+    e_tebligat: {
+        id: 'e_tebligat',
+        name: 'E-Tebligat Kontrol',
+        shortName: 'Tebligat',
+        price: 5000,
+        color: 'sky',
+        features: [
+            'Otomatik G\u0130B e-tebligat tarama',
+            'D\u00f6k\u00fcman indirme ve ar\u015fivleme',
+            '\u00c7oklu m\u00fckellef y\u00f6netimi',
+        ],
+    },
+};
+
+const BUNDLE_PRICE = 6000;
+const ALL_MODULE_IDS = Object.keys(MODULES);
+
+type PlanChoice = 'excel_assistant' | 'e_tebligat' | 'bundle';
+type Step = 'plan' | 'payment';
+
 interface SubscriptionModalProps {
     isOpen: boolean;
     onClose: () => void;
-    subscription: { isActive: boolean; plan: string | null; status: string } | null;
+    subscription: {
+        isActive: boolean;
+        plan?: string | null;
+        status: string;
+        isTrial?: boolean;
+        modules?: string[];
+    } | null;
     currentUserEmail: string;
+    defaultModule?: string;
 }
-
-type Step = 'plan' | 'payment' | 'form';
 
 const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
     isOpen,
     onClose,
     subscription,
     currentUserEmail,
+    defaultModule,
 }) => {
     const [credits, setCredits] = useState<{
         monthlyRemaining: number;
@@ -23,7 +63,9 @@ const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
         totalRemaining: number;
         resetAt: string | null;
     } | null>(null);
-    const [billingPeriod, setBillingPeriod] = useState<'monthly' | 'annual'>('annual');
+    const [selectedPlan, setSelectedPlan] = useState<PlanChoice>(
+        (defaultModule as PlanChoice) || 'bundle'
+    );
     const [step, setStep] = useState<Step>('plan');
     const [formData, setFormData] = useState({
         name: '',
@@ -39,12 +81,12 @@ const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
                 .then(setCredits)
                 .catch(() => {});
         }
-        // Reset to plan step when modal opens
         if (isOpen && !subscription?.isActive) {
             setStep('plan');
+            setSelectedPlan((defaultModule as PlanChoice) || 'bundle');
             setFormData((prev) => ({ ...prev, email: currentUserEmail || '' }));
         }
-    }, [isOpen, subscription, currentUserEmail]);
+    }, [isOpen, subscription, currentUserEmail, defaultModule]);
 
     if (!isOpen) return null;
 
@@ -53,34 +95,33 @@ const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
         onClose();
     };
 
-    const purchaseCredits = async () => {
-        try {
-            await window.electronAPI.purchaseCredits();
-        } catch (error) {
-            console.error('Credit purchase portal could not be opened', error);
-        }
+    const getPrice = (plan: PlanChoice): number => {
+        if (plan === 'bundle') return BUNDLE_PRICE;
+        return MODULES[plan]?.price || 0;
+    };
+
+    const getPlanId = (plan: PlanChoice): string => {
+        if (plan === 'bundle') return 'plan-bundle-annual';
+        return `plan-${plan === 'excel_assistant' ? 'excel' : 'etebligat'}-annual`;
+    };
+
+    const getPlanLabel = (plan: PlanChoice): string => {
+        if (plan === 'bundle') return 'Tam Paket';
+        return MODULES[plan]?.name || plan;
     };
 
     const handleCreditCardPayment = async () => {
         if (!formData.name || !formData.email) return;
-
-        // Open checkout page with user info
-        const params = new URLSearchParams();
-        params.set('plan', billingPeriod === 'annual' ? 'plan-pro-annual' : 'plan-pro-monthly');
-        params.set('period', billingPeriod);
-        params.set('email', formData.email);
-        params.set('name', formData.name);
-        if (formData.phone) params.set('phone', formData.phone);
-
-        const checkoutUrl = `https://muhasebeasistani.com/billing/checkout?${params.toString()}`;
-
         try {
-            await window.electronAPI.openBillingPortal(
-                `checkout:${billingPeriod === 'annual' ? 'plan-pro-annual' : 'plan-pro'}`
-            );
+            await window.electronAPI.openCheckout({
+                plan: getPlanId(selectedPlan),
+                period: 'annual',
+                email: formData.email,
+                name: formData.name,
+                phone: formData.phone,
+            });
         } catch {
-            // Fallback: open in billing portal window
-            window.open(checkoutUrl, '_blank');
+            // Fallback
         }
         handleClose();
     };
@@ -88,81 +129,103 @@ const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
     const handleBankTransfer = async () => {
         if (!formData.name || !formData.email) return;
         setSubmitting(true);
-
         try {
-            // Send contact form to API
             const response = await fetch('https://muhasebeasistani.com/api/contact', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     ...formData,
-                    plan: 'pro',
-                    billingPeriod,
+                    plan: getPlanId(selectedPlan),
+                    planLabel: getPlanLabel(selectedPlan),
+                    price: getPrice(selectedPlan),
                     source: 'desktop_app',
                 }),
             });
-
             if (response.ok) {
-                setStep('plan');
                 handleClose();
-                // Show success message (could use a toast)
-                alert('Başvurunuz alındı! Banka hesap bilgileri email adresinize gönderilecektir.');
+                alert(
+                    'Ba\u015fvurunuz al\u0131nd\u0131! Banka hesap bilgileri email adresinize g\u00f6nderilecektir.'
+                );
             } else {
-                alert('Bir hata oluştu. Lütfen tekrar deneyin.');
+                alert('Bir hata olu\u015ftu. L\u00fctfen tekrar deneyin.');
             }
         } catch {
-            alert('Bağlantı hatası. Lütfen internet bağlantınızı kontrol edin.');
+            alert(
+                'Ba\u011flant\u0131 hatas\u0131. L\u00fctfen internet ba\u011flant\u0131n\u0131z\u0131 kontrol edin.'
+            );
         } finally {
             setSubmitting(false);
         }
     };
 
-    const monthlyPercent = credits
-        ? Math.round((credits.monthlyUsed / credits.monthlyLimit) * 100)
-        : 0;
+    const CheckIcon = () => (
+        <svg
+            className="w-4 h-4 text-emerald-400 flex-shrink-0"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+        >
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+        </svg>
+    );
 
-    const remainingPercent = 100 - monthlyPercent;
+    const CloseButton = () => (
+        <button onClick={handleClose} className="text-slate-400 hover:text-white transition-colors">
+            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M6 18L18 6M6 6l12 12"
+                />
+            </svg>
+        </button>
+    );
 
-    // Aktif Abone Görünümü
+    // Aktif Abone G\u00f6r\u00fcn\u00fcm\u00fc
     if (subscription?.isActive) {
+        const monthlyPercent = credits
+            ? Math.round((credits.monthlyUsed / credits.monthlyLimit) * 100)
+            : 0;
+
         return (
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
                 <div className="bg-slate-900 border border-slate-700 rounded-lg shadow-lg w-full max-w-sm relative">
-                    {/* Header */}
                     <div className="flex items-center justify-between p-4 border-b border-slate-700">
                         <div className="flex items-center gap-2">
                             <h2 className="text-base font-semibold text-white">Abonelik</h2>
-                            <span className="text-xs font-medium text-emerald-400 bg-emerald-400/10 px-2 py-0.5 rounded">
-                                Pro
-                            </span>
+                            {subscription.modules && subscription.modules.length > 0 && (
+                                <div className="flex gap-1">
+                                    {subscription.modules.length >= ALL_MODULE_IDS.length ? (
+                                        <span className="text-xs font-medium text-emerald-400 bg-emerald-400/10 px-2 py-0.5 rounded">
+                                            Tam Paket
+                                        </span>
+                                    ) : (
+                                        subscription.modules.map((m) => (
+                                            <span
+                                                key={m}
+                                                className={`text-xs font-medium px-2 py-0.5 rounded ${
+                                                    m === 'e_tebligat'
+                                                        ? 'text-sky-400 bg-sky-400/10'
+                                                        : 'text-indigo-400 bg-indigo-400/10'
+                                                }`}
+                                            >
+                                                {MODULES[m as keyof typeof MODULES]?.shortName || m}
+                                            </span>
+                                        ))
+                                    )}
+                                </div>
+                            )}
                         </div>
-                        <button
-                            onClick={handleClose}
-                            className="text-slate-400 hover:text-white transition-colors"
-                        >
-                            <svg
-                                className="h-5 w-5"
-                                fill="none"
-                                viewBox="0 0 24 24"
-                                stroke="currentColor"
-                            >
-                                <path
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                    strokeWidth={2}
-                                    d="M6 18L18 6M6 6l12 12"
-                                />
-                            </svg>
-                        </button>
+                        <CloseButton />
                     </div>
 
-                    {/* Kredi Bilgileri */}
                     <div className="p-4 space-y-3">
                         {credits && (
                             <>
                                 <div>
                                     <div className="flex justify-between text-xs text-slate-400 mb-1">
-                                        <span>Aylık Kredi</span>
+                                        <span>Ayl\u0131k Kredi</span>
                                         <span className="text-white">
                                             {credits.monthlyRemaining.toLocaleString('tr-TR')} /{' '}
                                             {credits.monthlyLimit.toLocaleString('tr-TR')}
@@ -177,7 +240,9 @@ const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
                                                       ? 'bg-amber-500'
                                                       : 'bg-emerald-500'
                                             }`}
-                                            style={{ width: `${Math.min(100, remainingPercent)}%` }}
+                                            style={{
+                                                width: `${Math.min(100, 100 - monthlyPercent)}%`,
+                                            }}
                                         />
                                     </div>
                                 </div>
@@ -195,20 +260,13 @@ const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
                                         {credits.totalRemaining.toLocaleString('tr-TR')} kredi
                                     </span>
                                 </div>
-                                {credits.resetAt && (
-                                    <p className="text-xs text-slate-500">
-                                        Yenileme:{' '}
-                                        {new Date(credits.resetAt).toLocaleDateString('tr-TR')}
-                                    </p>
-                                )}
                             </>
                         )}
                     </div>
 
-                    {/* Aksiyon Butonları */}
                     <div className="flex gap-2 p-4 border-t border-slate-700">
                         <button
-                            onClick={purchaseCredits}
+                            onClick={() => window.electronAPI.purchaseCredits()}
                             className="flex-1 bg-slate-700 hover:bg-slate-600 text-white text-sm font-medium py-2 rounded-lg transition-colors"
                         >
                             Ek Kredi Al
@@ -217,7 +275,7 @@ const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
                             onClick={() => window.electronAPI.openBillingPortal()}
                             className="flex-1 bg-sky-500 hover:bg-sky-600 text-white text-sm font-medium py-2 rounded-lg transition-colors"
                         >
-                            Yönetim
+                            Y\u00f6netim
                         </button>
                     </div>
                 </div>
@@ -225,88 +283,105 @@ const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
         );
     }
 
-    // Pasif Kullanıcı - Plan Seçimi (Step 1)
+    // Step 1: Mod\u00fcl Se\u00e7imi
     if (step === 'plan') {
         return (
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-                <div className="bg-slate-900 border border-slate-700 rounded-lg shadow-lg w-full max-w-sm relative">
-                    {/* Header */}
+                <div className="bg-slate-900 border border-slate-700 rounded-lg shadow-lg w-full max-w-lg relative">
                     <div className="flex items-center justify-between p-4 border-b border-slate-700">
-                        <h2 className="text-base font-semibold text-white">Abonelik</h2>
-                        <button
-                            onClick={handleClose}
-                            className="text-slate-400 hover:text-white transition-colors"
-                        >
-                            <svg
-                                className="h-5 w-5"
-                                fill="none"
-                                viewBox="0 0 24 24"
-                                stroke="currentColor"
-                            >
-                                <path
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                    strokeWidth={2}
-                                    d="M6 18L18 6M6 6l12 12"
-                                />
-                            </svg>
-                        </button>
+                        <h2 className="text-base font-semibold text-white">
+                            Mod\u00fcl Se\u00e7in
+                        </h2>
+                        <CloseButton />
                     </div>
 
-                    <div className="p-5">
-                        {/* Plan Başlığı */}
-                        <div className="text-center mb-5">
-                            <h3 className="text-lg font-semibold text-white">
-                                Muhasebe Asistanı Pro
-                            </h3>
-                            <p className="text-slate-400 text-sm mt-1">5.000 aylık kredi dahil</p>
-                        </div>
-
-                        {/* Fiyat Gösterimi */}
-                        <div className="text-center mb-5">
-                            <div className="text-3xl font-bold text-white">
-                                {billingPeriod === 'monthly' ? '500₺' : '5.000₺'}
-                                <span className="text-lg font-normal text-slate-400">
-                                    /{billingPeriod === 'monthly' ? 'ay' : 'yıl'}
-                                </span>
+                    <div className="p-5 space-y-3">
+                        {/* Tam Paket */}
+                        <button
+                            type="button"
+                            onClick={() => setSelectedPlan('bundle')}
+                            className={`w-full text-left rounded-xl p-4 border-2 transition-all ${
+                                selectedPlan === 'bundle'
+                                    ? 'border-emerald-500 bg-emerald-500/10'
+                                    : 'border-slate-700 bg-slate-800/50 hover:border-slate-600'
+                            }`}
+                        >
+                            <div className="flex items-center justify-between mb-2">
+                                <div className="flex items-center gap-2">
+                                    <span className="text-xs font-semibold px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400">
+                                        T\u00dcM MOD\u00dcLLER
+                                    </span>
+                                    <span className="text-xs font-semibold px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400">
+                                        EN \u0130Y\u0130 F\u0130YAT
+                                    </span>
+                                </div>
+                                <div className="flex items-baseline gap-1">
+                                    <span className="text-2xl font-bold text-white">
+                                        6.000\u20ba
+                                    </span>
+                                    <span className="text-slate-400 text-sm">/y\u0131l</span>
+                                    <span className="text-sm text-slate-500 line-through ml-1">
+                                        7.500\u20ba
+                                    </span>
+                                </div>
                             </div>
-                            {billingPeriod === 'annual' && (
-                                <p className="text-emerald-400 text-sm mt-1">
-                                    Yıllık ödemede 1.000₺ tasarruf
-                                </p>
-                            )}
+                            <p className="text-sm font-semibold text-white mb-1">Tam Paket</p>
+                            <p className="text-xs text-emerald-400">
+                                1.500\u20ba tasarruf \u2022 5.000 ayl\u0131k kredi
+                            </p>
+                        </button>
+
+                        <p className="text-center text-xs text-slate-500">
+                            veya tek mod\u00fcl se\u00e7in
+                        </p>
+
+                        <div className="grid grid-cols-2 gap-3">
+                            {Object.entries(MODULES).map(([id, mod]) => (
+                                <button
+                                    key={id}
+                                    type="button"
+                                    onClick={() => setSelectedPlan(id as PlanChoice)}
+                                    className={`text-left rounded-xl p-4 border-2 transition-all ${
+                                        selectedPlan === id
+                                            ? `border-${mod.color}-500 bg-${mod.color}-500/10`
+                                            : 'border-slate-700 bg-slate-800/50 hover:border-slate-600'
+                                    }`}
+                                >
+                                    <span
+                                        className={`text-xs font-semibold px-2 py-0.5 rounded bg-${mod.color}-500/20 text-${mod.color}-400`}
+                                    >
+                                        MOD\u00dcL
+                                    </span>
+                                    <p className="text-sm font-semibold text-white mt-2">
+                                        {mod.name}
+                                    </p>
+                                    <div className="flex items-baseline gap-1 mt-1">
+                                        <span className="text-lg font-bold text-white">
+                                            {mod.price.toLocaleString('tr-TR')}\u20ba
+                                        </span>
+                                        <span className="text-slate-400 text-xs">/y\u0131l</span>
+                                    </div>
+                                    <ul className="mt-2 space-y-1">
+                                        {mod.features.map((f, i) => (
+                                            <li
+                                                key={i}
+                                                className="flex items-start gap-1.5 text-xs text-slate-400"
+                                            >
+                                                <CheckIcon />
+                                                <span>{f}</span>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                </button>
+                            ))}
                         </div>
 
-                        {/* Aylık/Yıllık Toggle */}
-                        <div className="flex bg-slate-800 rounded-lg p-1 mb-5">
-                            <button
-                                onClick={() => setBillingPeriod('monthly')}
-                                className={`flex-1 py-2 text-sm font-medium rounded-md transition-all ${
-                                    billingPeriod === 'monthly'
-                                        ? 'bg-slate-700 text-white'
-                                        : 'text-slate-400 hover:text-white'
-                                }`}
-                            >
-                                Aylık
-                            </button>
-                            <button
-                                onClick={() => setBillingPeriod('annual')}
-                                className={`flex-1 py-2 text-sm font-medium rounded-md transition-all ${
-                                    billingPeriod === 'annual'
-                                        ? 'bg-slate-700 text-white'
-                                        : 'text-slate-400 hover:text-white'
-                                }`}
-                            >
-                                Yıllık
-                            </button>
-                        </div>
-
-                        {/* Devam Et Butonu */}
                         <button
                             onClick={() => setStep('payment')}
-                            className="w-full bg-sky-500 hover:bg-sky-600 text-white font-medium py-2.5 rounded-lg transition-colors"
+                            className="w-full bg-sky-500 hover:bg-sky-600 text-white font-medium py-3 rounded-lg transition-colors mt-2"
                         >
-                            Devam Et
+                            Devam Et \u2014 {getPlanLabel(selectedPlan)} (
+                            {getPrice(selectedPlan).toLocaleString('tr-TR')}\u20ba/y\u0131l)
                         </button>
                     </div>
                 </div>
@@ -314,141 +389,115 @@ const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
         );
     }
 
-    // Pasif Kullanıcı - Ödeme Yöntemi Seçimi (Step 2)
-    if (step === 'payment') {
-        return (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-                <div className="bg-slate-900 border border-slate-700 rounded-lg shadow-lg w-full max-w-sm relative">
-                    {/* Header */}
-                    <div className="flex items-center justify-between p-4 border-b border-slate-700">
-                        <button
-                            onClick={() => setStep('plan')}
-                            className="text-slate-400 hover:text-white transition-colors flex items-center gap-1"
+    // Step 2: \u00d6deme Bilgileri + Y\u00f6ntem
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+            <div className="bg-slate-900 border border-slate-700 rounded-lg shadow-lg w-full max-w-sm relative">
+                <div className="flex items-center justify-between p-4 border-b border-slate-700">
+                    <button
+                        onClick={() => setStep('plan')}
+                        className="text-slate-400 hover:text-white transition-colors flex items-center gap-1"
+                    >
+                        <svg
+                            className="h-4 w-4"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke="currentColor"
                         >
-                            <svg
-                                className="h-4 w-4"
-                                fill="none"
-                                viewBox="0 0 24 24"
-                                stroke="currentColor"
-                            >
-                                <path
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                    strokeWidth={2}
-                                    d="M15 19l-7-7 7-7"
-                                />
-                            </svg>
-                            Geri
+                            <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M15 19l-7-7 7-7"
+                            />
+                        </svg>
+                        Geri
+                    </button>
+                    <CloseButton />
+                </div>
+
+                <div className="p-5">
+                    <div className="bg-slate-800 rounded-lg p-3 mb-5">
+                        <div className="flex justify-between items-center">
+                            <span className="text-slate-400 text-sm">
+                                {getPlanLabel(selectedPlan)}
+                            </span>
+                            <span className="text-white font-semibold">
+                                {getPrice(selectedPlan).toLocaleString('tr-TR')}\u20ba/y\u0131l
+                            </span>
+                        </div>
+                    </div>
+
+                    <div className="space-y-3 mb-5">
+                        <div>
+                            <label className="block text-xs font-medium text-slate-400 mb-1">
+                                Ad Soyad *
+                            </label>
+                            <input
+                                type="text"
+                                required
+                                value={formData.name}
+                                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                                className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white text-sm focus:outline-none focus:border-sky-500"
+                                placeholder="Ad\u0131n\u0131z Soyad\u0131n\u0131z"
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-xs font-medium text-slate-400 mb-1">
+                                Email *
+                            </label>
+                            <input
+                                type="email"
+                                required
+                                value={formData.email}
+                                onChange={(e) =>
+                                    setFormData({ ...formData, email: e.target.value })
+                                }
+                                className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white text-sm focus:outline-none focus:border-sky-500"
+                                placeholder="ornek@email.com"
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-xs font-medium text-slate-400 mb-1">
+                                Telefon
+                            </label>
+                            <input
+                                type="tel"
+                                value={formData.phone}
+                                onChange={(e) =>
+                                    setFormData({ ...formData, phone: e.target.value })
+                                }
+                                className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white text-sm focus:outline-none focus:border-sky-500"
+                                placeholder="0532 123 45 67 (opsiyonel)"
+                            />
+                        </div>
+                    </div>
+
+                    <div className="space-y-2">
+                        <button
+                            onClick={handleCreditCardPayment}
+                            disabled={!formData.name || !formData.email}
+                            className="w-full py-2.5 bg-sky-500 hover:bg-sky-600 disabled:bg-slate-700 disabled:text-slate-500 text-white rounded-lg font-medium text-sm flex items-center justify-center gap-2 transition-colors"
+                        >
+                            Kredi Kart\u0131 ile \u00d6de
                         </button>
                         <button
-                            onClick={handleClose}
-                            className="text-slate-400 hover:text-white transition-colors"
+                            onClick={handleBankTransfer}
+                            disabled={!formData.name || !formData.email || submitting}
+                            className="w-full py-2.5 bg-slate-700 hover:bg-slate-600 disabled:bg-slate-800 disabled:text-slate-500 text-white rounded-lg font-medium text-sm flex items-center justify-center gap-2 transition-colors"
                         >
-                            <svg
-                                className="h-5 w-5"
-                                fill="none"
-                                viewBox="0 0 24 24"
-                                stroke="currentColor"
-                            >
-                                <path
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                    strokeWidth={2}
-                                    d="M6 18L18 6M6 6l12 12"
-                                />
-                            </svg>
+                            {submitting ? 'G\u00f6nderiliyor...' : 'Havale/EFT ile \u00d6de'}
                         </button>
                     </div>
 
-                    <div className="p-5">
-                        {/* Seçilen Plan Özeti */}
-                        <div className="bg-slate-800 rounded-lg p-3 mb-5">
-                            <div className="flex justify-between items-center">
-                                <span className="text-slate-400 text-sm">Pro Abonelik</span>
-                                <span className="text-white font-semibold">
-                                    {billingPeriod === 'monthly' ? '500₺/ay' : '5.000₺/yıl'}
-                                </span>
-                            </div>
-                        </div>
-
-                        {/* Kullanıcı Bilgileri Formu */}
-                        <div className="space-y-3 mb-5">
-                            <div>
-                                <label className="block text-xs font-medium text-slate-400 mb-1">
-                                    Ad Soyad *
-                                </label>
-                                <input
-                                    type="text"
-                                    required
-                                    value={formData.name}
-                                    onChange={(e) =>
-                                        setFormData({ ...formData, name: e.target.value })
-                                    }
-                                    className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white text-sm focus:outline-none focus:border-sky-500"
-                                    placeholder="Adınız Soyadınız"
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-xs font-medium text-slate-400 mb-1">
-                                    Email *
-                                </label>
-                                <input
-                                    type="email"
-                                    required
-                                    value={formData.email}
-                                    onChange={(e) =>
-                                        setFormData({ ...formData, email: e.target.value })
-                                    }
-                                    className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white text-sm focus:outline-none focus:border-sky-500"
-                                    placeholder="ornek@email.com"
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-xs font-medium text-slate-400 mb-1">
-                                    Telefon
-                                </label>
-                                <input
-                                    type="tel"
-                                    value={formData.phone}
-                                    onChange={(e) =>
-                                        setFormData({ ...formData, phone: e.target.value })
-                                    }
-                                    className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white text-sm focus:outline-none focus:border-sky-500"
-                                    placeholder="0532 123 45 67 (opsiyonel)"
-                                />
-                            </div>
-                        </div>
-
-                        {/* Ödeme Yöntemi Butonları */}
-                        <div className="space-y-2">
-                            <button
-                                onClick={handleCreditCardPayment}
-                                disabled={!formData.name || !formData.email}
-                                className="w-full py-2.5 bg-sky-500 hover:bg-sky-600 disabled:bg-slate-700 disabled:text-slate-500 text-white rounded-lg font-medium text-sm flex items-center justify-center gap-2 transition-colors"
-                            >
-                                <span>💳</span>
-                                Kredi Kartı ile Öde
-                            </button>
-                            <button
-                                onClick={handleBankTransfer}
-                                disabled={!formData.name || !formData.email || submitting}
-                                className="w-full py-2.5 bg-slate-700 hover:bg-slate-600 disabled:bg-slate-800 disabled:text-slate-500 text-white rounded-lg font-medium text-sm flex items-center justify-center gap-2 transition-colors"
-                            >
-                                <span>🏦</span>
-                                {submitting ? 'Gönderiliyor...' : 'Havale/EFT ile Öde'}
-                            </button>
-                        </div>
-
-                        <p className="text-[10px] text-slate-500 text-center mt-3">
-                            Ödeme işlemleri güvenli altyapı ile gerçekleştirilmektedir.
-                        </p>
-                    </div>
+                    <p className="text-[10px] text-slate-500 text-center mt-3">
+                        \u00d6deme i\u015flemleri iyzico g\u00fcvencesi ile
+                        ger\u00e7ekle\u015ftirilmektedir.
+                    </p>
                 </div>
             </div>
-        );
-    }
-
-    return null;
+        </div>
+    );
 };
 
 export default SubscriptionModal;

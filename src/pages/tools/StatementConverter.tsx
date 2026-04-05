@@ -1,6 +1,7 @@
 import React, { useState, useRef, DragEvent, useEffect, ReactNode } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import Card from '../../components/ui/Card';
+import SubscriptionModal from '../../components/SubscriptionModal';
 
 // --- ICONS ---
 // (Icons omitted for brevity - same as before)
@@ -139,7 +140,9 @@ const StatementConverter: React.FC = () => {
         status: string;
         isTrial?: boolean;
         modules?: string[];
+        plan?: string | null;
     } | null>(null);
+    const [showSubModal, setShowSubModal] = useState(false);
 
     const { currentUser } = useAuth();
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -497,25 +500,18 @@ const StatementConverter: React.FC = () => {
                             <span className="text-amber-400 font-medium">Pasif</span>
                         </p>
                         <button
-                            onClick={() => window.electronAPI.openBillingPortal()}
+                            onClick={() => setShowSubModal(true)}
                             className="inline-flex items-center px-6 py-3 bg-sky-500 hover:bg-sky-600 text-white font-semibold rounded-lg transition-colors"
                         >
-                            <svg
-                                xmlns="http://www.w3.org/2000/svg"
-                                className="h-5 w-5 mr-2"
-                                fill="none"
-                                viewBox="0 0 24 24"
-                                stroke="currentColor"
-                            >
-                                <path
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                    strokeWidth={2}
-                                    d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"
-                                />
-                            </svg>
-                            Abonelik Satın Al
+                            Mod&uuml;l Sat&#305;n Al
                         </button>
+                        <SubscriptionModal
+                            isOpen={showSubModal}
+                            onClose={() => setShowSubModal(false)}
+                            subscription={subscriptionStatus}
+                            currentUserEmail={currentUser?.email || ''}
+                            defaultModule="excel_assistant"
+                        />
                     </div>
                 </Card>
             </div>
