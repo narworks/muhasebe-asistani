@@ -411,11 +411,10 @@ const Subscription: React.FC = () => {
                     <div className="flex gap-2">
                         <button
                             onClick={handleCreditCard}
-                            disabled={true}
-                            title="iyzico entegrasyonu aktifleştirildiğinde kullanılabilir"
+                            disabled={!formData.name || !formData.email}
                             className="flex-1 py-2.5 bg-sky-500 hover:bg-sky-600 disabled:bg-slate-700 disabled:text-slate-500 text-white rounded-lg font-medium text-sm transition-colors"
                         >
-                            Kredi Kartı (Yakında)
+                            Kredi Kartı ile Öde
                         </button>
                         <button
                             onClick={handleBankTransfer}

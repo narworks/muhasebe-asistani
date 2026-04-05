@@ -110,8 +110,7 @@ const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
         return MODULES[plan]?.name || plan;
     };
 
-    // TODO: Re-enable when iyzico is active
-    const _handleCreditCardPayment = async () => {
+    const handleCreditCardPayment = async () => {
         if (!formData.name || !formData.email) return;
         try {
             await window.electronAPI.openCheckout({
@@ -466,11 +465,11 @@ const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
 
                     <div className="space-y-2">
                         <button
-                            disabled={true}
-                            title="iyzico entegrasyonu aktifleştirildiğinde kullanılabilir"
+                            onClick={handleCreditCardPayment}
+                            disabled={!formData.name || !formData.email}
                             className="w-full py-2.5 bg-sky-500 hover:bg-sky-600 disabled:bg-slate-700 disabled:text-slate-500 text-white rounded-lg font-medium text-sm flex items-center justify-center gap-2 transition-colors"
                         >
-                            Kredi Kartı (Yakında)
+                            Kredi Kartı ile Öde
                         </button>
                         <button
                             onClick={handleBankTransfer}
