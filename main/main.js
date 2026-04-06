@@ -674,11 +674,11 @@ ipcMain.handle('open-checkout', async (event, params) => {
     const checkoutUrl = `${billingBase}/checkout?${urlParams.toString()}`;
 
     const checkoutWindow = new BrowserWindow({
-        width: 500,
-        height: 600,
+        width: 520,
+        height: 700,
         parent: mainWindow,
         modal: true,
-        resizable: false,
+        resizable: true,
         title: 'Güvenli Ödeme',
         webPreferences: {
             nodeIntegration: false,
@@ -686,7 +686,11 @@ ipcMain.handle('open-checkout', async (event, params) => {
         },
     });
 
+    logger.debug('[Checkout] Opening:', checkoutUrl);
     checkoutWindow.loadURL(checkoutUrl);
+    checkoutWindow.webContents.on('did-fail-load', (event, errorCode, errorDesc, validatedURL) => {
+        logger.debug('[Checkout] Load failed:', errorCode, errorDesc, validatedURL);
+    });
     checkoutWindow.on('closed', async () => {
         await licenseManager.checkLicense();
         if (mainWindow && !mainWindow.isDestroyed()) {

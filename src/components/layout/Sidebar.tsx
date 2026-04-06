@@ -153,9 +153,11 @@ const Sidebar: React.FC = () => {
                 .catch(() => {});
         };
         fetchModules();
-        // Retry after 3s in case login flow hasn't completed yet
-        const timer = setTimeout(fetchModules, 3000);
-        return () => clearTimeout(timer);
+        // Retry periodically until modules are loaded
+        const interval = setInterval(() => {
+            fetchModules();
+        }, 5000);
+        return () => clearInterval(interval);
     }, [currentUser]);
 
     const hasModule = (id: string) => isTrial || modules.includes(id);
