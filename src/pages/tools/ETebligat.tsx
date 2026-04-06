@@ -2490,11 +2490,11 @@ const ETebligat: React.FC = () => {
                             if (groupDetails.length === 0) return null;
                             return (
                                 <div key={gIdx}>
-                                    <div className="px-5 py-3 bg-gray-50 border-b border-gray-100 sticky top-0">
-                                        <span className="text-sm font-semibold text-gray-700">
+                                    <div className="px-5 py-3 bg-slate-700 border-b border-slate-600 sticky top-0">
+                                        <span className="text-sm font-bold text-white">
                                             {group.clientName}
                                         </span>
-                                        <span className="ml-2 text-xs text-emerald-600 font-medium">
+                                        <span className="ml-2 text-xs bg-emerald-500 text-white px-2 py-0.5 rounded-full font-medium">
                                             {groupDetails.length} yeni
                                         </span>
                                     </div>

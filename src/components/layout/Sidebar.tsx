@@ -141,6 +141,9 @@ const Sidebar: React.FC = () => {
     const navigate = useNavigate();
     const [modules, setModules] = useState<string[]>([]);
     const [isTrial, setIsTrial] = useState(false);
+    const [supportOpen, setSupportOpen] = useState(false);
+    const [supportSubject, setSupportSubject] = useState('');
+    const [supportMessage, setSupportMessage] = useState('');
 
     useEffect(() => {
         const fetchModules = () => {
@@ -251,8 +254,106 @@ const Sidebar: React.FC = () => {
                         <CreditCardIcon />
                         <span>Abonelik</span>
                     </NavLink>
+                    <button
+                        onClick={() => setSupportOpen(true)}
+                        className={`${navLinkClasses} ${inactiveLinkClasses} w-full`}
+                    >
+                        <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            className="h-6 w-6"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke="currentColor"
+                        >
+                            <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M18.364 5.636l-3.536 3.536m0 5.656l3.536 3.536M9.172 9.172L5.636 5.636m3.536 9.192l-3.536 3.536M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-5 0a4 4 0 11-8 0 4 4 0 018 0z"
+                            />
+                        </svg>
+                        <span>Destek</span>
+                    </button>
                 </nav>
             </div>
+
+            {/* Support Modal */}
+            {supportOpen && (
+                <div
+                    className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center"
+                    onClick={() => setSupportOpen(false)}
+                >
+                    <div
+                        className="bg-slate-800 rounded-xl border border-slate-700 w-full max-w-md mx-4 p-6"
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <h3 className="text-lg font-bold text-white mb-1">Destek Talebi</h3>
+                        <p className="text-sm text-slate-400 mb-4">
+                            Sorular&#305;n&#305;z veya sorunlar&#305;n&#305;z i&ccedil;in bize
+                            yaz&#305;n.
+                        </p>
+                        <div className="space-y-3">
+                            <div>
+                                <label className="block text-xs font-semibold text-slate-400 mb-1">
+                                    Konu
+                                </label>
+                                <input
+                                    type="text"
+                                    value={supportSubject}
+                                    onChange={(e) => setSupportSubject(e.target.value)}
+                                    className="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-500 focus:border-sky-500 focus:outline-none"
+                                    placeholder="&Ouml;rn: Tarama hatas&#305;"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-semibold text-slate-400 mb-1">
+                                    Mesaj
+                                </label>
+                                <textarea
+                                    value={supportMessage}
+                                    onChange={(e) => setSupportMessage(e.target.value)}
+                                    rows={5}
+                                    className="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-500 focus:border-sky-500 focus:outline-none resize-none"
+                                    placeholder="Sorununuzu detayl&#305; a&ccedil;&#305;klay&#305;n..."
+                                />
+                            </div>
+                        </div>
+                        <div className="flex justify-end gap-3 mt-5">
+                            <button
+                                onClick={() => setSupportOpen(false)}
+                                className="px-4 py-2 text-sm text-slate-400 hover:text-white transition-colors"
+                            >
+                                Vazge&ccedil;
+                            </button>
+                            <a
+                                href={`mailto:destek@muhasebeasistani.com?subject=${encodeURIComponent(supportSubject || 'Destek Talebi')}&body=${encodeURIComponent(supportMessage)}`}
+                                onClick={() => {
+                                    setSupportOpen(false);
+                                    setSupportSubject('');
+                                    setSupportMessage('');
+                                }}
+                                className="inline-flex items-center gap-2 bg-sky-600 hover:bg-sky-700 text-white font-semibold px-5 py-2 rounded-lg text-sm transition-colors"
+                            >
+                                <svg
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    className="h-4 w-4"
+                                    fill="none"
+                                    viewBox="0 0 24 24"
+                                    stroke="currentColor"
+                                >
+                                    <path
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                        strokeWidth={2}
+                                        d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
+                                    />
+                                </svg>
+                                G&ouml;nder
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* User Profile & Logout Section */}
             <div className="mt-auto pt-4 border-t border-slate-700">
