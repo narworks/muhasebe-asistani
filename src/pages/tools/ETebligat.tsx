@@ -4,10 +4,17 @@ import type { ScheduleStatus, Client, Tebligat, ScanUpdate } from '../../types';
 import { useNavigate } from 'react-router-dom';
 import LegalConsentModal from '../../components/LegalConsentModal';
 
+interface ScanGroup {
+    scanDate: string; // ISO date string (truncated to minute)
+    scanLabel: string; // Display format
+    tebligatlar: Tebligat[];
+}
+
 interface ClientGroup {
     client_id: number;
     firm_name: string;
     tebligatlar: Tebligat[];
+    scanGroups: ScanGroup[];
 }
 
 const ETebligat: React.FC = () => {
@@ -104,14 +111,20 @@ const ETebligat: React.FC = () => {
     const [importing, setImporting] = useState(false);
     const importFileRef = useRef<HTMLInputElement>(null);
 
+    // Client limit
+    const [clientLimit, setClientLimit] = useState<{
+        totalAdded: number;
+        maxClients: number;
+        remaining: number;
+    } | null>(null);
+
     // Legal consent
     const [showLegalConsent, setShowLegalConsent] = useState(false);
     const [legalConsentAccepted, setLegalConsentAccepted] = useState(true); // assume true until checked
 
     // Accordion & Pagination state
     const [expandedClients, setExpandedClients] = useState<Set<number>>(new Set());
-    const [clientPages, setClientPages] = useState<Record<number, number>>({});
-    const ITEMS_PER_PAGE = 10;
+    const [expandedScans, setExpandedScans] = useState<Set<string>>(new Set());
 
     const fetchTebligatlar = async () => {
         setLoadingTebligatlar(true);
@@ -150,6 +163,15 @@ const ETebligat: React.FC = () => {
             setClients(data || []);
         } catch (err) {
             console.error('Mükellef listesi alınamadı', err);
+        }
+    };
+
+    const fetchClientLimit = async () => {
+        try {
+            const limit = await window.electronAPI.getClientLimit();
+            setClientLimit(limit);
+        } catch {
+            // Limit check failed, ignore
         }
     };
 
@@ -230,6 +252,7 @@ const ETebligat: React.FC = () => {
     }, []);
     useEffect(() => {
         fetchClients();
+        fetchClientLimit();
     }, []);
     useEffect(() => {
         window.electronAPI
@@ -514,6 +537,7 @@ const ETebligat: React.FC = () => {
             setClientForm({ firm_name: '', tax_number: '', gib_user_code: '', gib_password: '' });
             setEditingClientId(null);
             await fetchClients();
+            fetchClientLimit();
         } catch (err: unknown) {
             setClientErrors({
                 _form: err instanceof Error ? err.message : 'Mükellef kaydedilemedi.',
@@ -562,6 +586,7 @@ const ETebligat: React.FC = () => {
             setImportResult(result);
             if (result.saved > 0) {
                 await fetchClients();
+                fetchClientLimit();
             }
         } catch (err) {
             setImportResult({
@@ -691,26 +716,13 @@ const ETebligat: React.FC = () => {
         });
     };
 
-    // Get page for a client
-    const getClientPage = (clientId: number) => clientPages[clientId] || 1;
-
-    // Set page for a client
-    const setClientPage = (clientId: number, page: number) => {
-        setClientPages((prev) => ({ ...prev, [clientId]: page }));
-    };
-
-    // Format date from document number or raw date
-    const formatDisplayDate = (row: Tebligat) => {
-        // If we have created_at, use it for display
-        if (row.created_at) {
-            try {
-                const date = new Date(row.created_at);
-                return date.toLocaleDateString('tr-TR');
-            } catch {
-                return row.created_at;
-            }
-        }
-        return '-';
+    const toggleScanAccordion = (key: string) => {
+        setExpandedScans((prev) => {
+            const newSet = new Set(prev);
+            if (newSet.has(key)) newSet.delete(key);
+            else newSet.add(key);
+            return newSet;
+        });
     };
 
     const handleExportCsv = async () => {
@@ -798,7 +810,7 @@ const ETebligat: React.FC = () => {
         return true;
     });
 
-    // Group tebligatlar by client
+    // Group tebligatlar by client, then by scan date
     const groupedByClient = filteredTebligatlar.reduce(
         (acc, row) => {
             const clientId = row.client_id;
@@ -807,6 +819,7 @@ const ETebligat: React.FC = () => {
                     client_id: clientId,
                     firm_name: row.firm_name ?? '',
                     tebligatlar: [],
+                    scanGroups: [],
                 };
             }
             acc[clientId].tebligatlar.push(row);
@@ -814,6 +827,41 @@ const ETebligat: React.FC = () => {
         },
         {} as Record<number, ClientGroup>
     );
+
+    // Build scan groups for each client
+    for (const group of Object.values(groupedByClient)) {
+        const byDate: Record<string, Tebligat[]> = {};
+        for (const t of group.tebligatlar) {
+            // Group by created_at date (truncated to day)
+            const dateKey = t.created_at
+                ? new Date(t.created_at).toLocaleDateString('tr-TR', {
+                      day: '2-digit',
+                      month: '2-digit',
+                      year: 'numeric',
+                  })
+                : 'Tarih bilinmiyor';
+            if (!byDate[dateKey]) byDate[dateKey] = [];
+            byDate[dateKey].push(t);
+        }
+        group.scanGroups = Object.entries(byDate)
+            .map(([dateLabel, items]) => {
+                const firstDate = items[0]?.created_at;
+                const timeLabel = firstDate
+                    ? new Date(firstDate).toLocaleTimeString('tr-TR', {
+                          hour: '2-digit',
+                          minute: '2-digit',
+                      })
+                    : '';
+                return {
+                    scanDate: firstDate || '',
+                    scanLabel: `${dateLabel} - ${timeLabel}`,
+                    tebligatlar: items,
+                };
+            })
+            .sort(
+                (a, b) => new Date(b.scanDate || 0).getTime() - new Date(a.scanDate || 0).getTime()
+            );
+    }
 
     const clientGroups: ClientGroup[] = (Object.values(groupedByClient) as ClientGroup[]).sort(
         (a, b) => (a.firm_name || '').localeCompare(b.firm_name || '', 'tr')
@@ -1118,9 +1166,29 @@ const ETebligat: React.FC = () => {
             <div className="bg-white p-6 rounded-lg shadow-md flex-1 flex flex-col">
                 {/* Mükellef Yönetimi */}
                 <div className="mb-8">
-                    <h2 className="text-lg font-semibold mb-2">Mükellef Yönetimi</h2>
+                    <div className="flex items-center justify-between mb-2">
+                        <h2 className="text-lg font-semibold">M&uuml;kellef Y&ouml;netimi</h2>
+                        {clientLimit && (
+                            <div className="flex items-center gap-2">
+                                <span
+                                    className={`text-sm font-medium ${clientLimit.remaining <= 10 ? 'text-red-500' : 'text-gray-500'}`}
+                                >
+                                    {clientLimit.remaining} / {clientLimit.maxClients} hak
+                                    kald&#305;
+                                </span>
+                                <div className="w-24 h-2 bg-gray-200 rounded-full overflow-hidden">
+                                    <div
+                                        className={`h-full rounded-full transition-all ${clientLimit.remaining <= 10 ? 'bg-red-500' : 'bg-emerald-500'}`}
+                                        style={{
+                                            width: `${Math.min((clientLimit.totalAdded / clientLimit.maxClients) * 100, 100)}%`,
+                                        }}
+                                    />
+                                </div>
+                            </div>
+                        )}
+                    </div>
                     <p className="text-sm text-gray-500 mb-4">
-                        Tarama için mükellef bilgilerini kaydedin.
+                        Tarama i&ccedil;in m&uuml;kellef bilgilerini kaydedin.
                     </p>
 
                     <form
@@ -2010,21 +2078,21 @@ const ETebligat: React.FC = () => {
                             </div>
                             <button
                                 onClick={handleExportExcel}
-                                className="text-xs font-semibold text-emerald-600 hover:text-emerald-700 disabled:text-emerald-300"
+                                className="text-xs font-semibold px-2.5 py-1 rounded border border-emerald-500/30 text-emerald-600 hover:bg-emerald-50 disabled:opacity-40"
                                 disabled={filteredTebligatlar.length === 0}
                             >
                                 Excel&apos;e Aktar
                             </button>
                             <button
                                 onClick={handleExportCsv}
-                                className="text-xs font-semibold text-emerald-600 hover:text-emerald-700 disabled:text-emerald-300"
+                                className="text-xs font-semibold px-2.5 py-1 rounded border border-emerald-500/30 text-emerald-600 hover:bg-emerald-50 disabled:opacity-40"
                                 disabled={filteredTebligatlar.length === 0}
                             >
                                 CSV&apos;ye Aktar
                             </button>
                             <button
                                 onClick={fetchTebligatlar}
-                                className="text-xs font-semibold text-indigo-600 hover:text-indigo-700"
+                                className="text-xs font-semibold px-2.5 py-1 rounded border border-indigo-500/30 text-indigo-600 hover:bg-indigo-50"
                             >
                                 Yenile
                             </button>
@@ -2101,15 +2169,6 @@ const ETebligat: React.FC = () => {
                                 <div className="space-y-3">
                                     {clientGroups.map((group) => {
                                         const isExpanded = expandedClients.has(group.client_id);
-                                        const currentPage = getClientPage(group.client_id);
-                                        const totalPages = Math.ceil(
-                                            group.tebligatlar.length / ITEMS_PER_PAGE
-                                        );
-                                        const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
-                                        const paginatedItems = group.tebligatlar.slice(
-                                            startIndex,
-                                            startIndex + ITEMS_PER_PAGE
-                                        );
 
                                         return (
                                             <div
@@ -2157,264 +2216,245 @@ const ETebligat: React.FC = () => {
                                                     </span>
                                                 </button>
 
-                                                {/* Accordion Content */}
+                                                {/* Accordion Content — Scan Date Sub-Accordions */}
                                                 {isExpanded && (
-                                                    <div className="bg-white">
-                                                        <div className="overflow-x-auto">
-                                                            <table className="min-w-full text-sm text-left text-gray-700">
-                                                                <thead className="bg-gray-100 text-xs uppercase text-gray-500">
-                                                                    <tr>
-                                                                        <th className="px-4 py-2">
-                                                                            Tarama Tarihi
-                                                                        </th>
-                                                                        <th className="px-4 py-2">
-                                                                            Belge No
-                                                                        </th>
-                                                                        <th className="px-4 py-2">
-                                                                            Gönderen
-                                                                        </th>
-                                                                        <th className="px-4 py-2">
-                                                                            Konu
-                                                                        </th>
-                                                                        <th className="px-4 py-2">
-                                                                            Durum
-                                                                        </th>
-                                                                        <th className="px-4 py-2">
-                                                                            Döküman
-                                                                        </th>
-                                                                    </tr>
-                                                                </thead>
-                                                                <tbody>
-                                                                    {paginatedItems.map((row) => (
-                                                                        <tr
-                                                                            key={row.id}
-                                                                            className="border-t border-gray-200 hover:bg-gray-50 cursor-pointer"
-                                                                            onClick={() =>
-                                                                                setSelectedTebligat(
-                                                                                    row
-                                                                                )
-                                                                            }
-                                                                        >
-                                                                            <td className="px-4 py-2 whitespace-nowrap">
-                                                                                {formatDisplayDate(
-                                                                                    row
-                                                                                )}
-                                                                            </td>
-                                                                            <td className="px-4 py-2 whitespace-nowrap text-xs font-mono">
-                                                                                {row.document_no ||
-                                                                                    row.tebligat_date ||
-                                                                                    '-'}
-                                                                            </td>
-                                                                            <td className="px-4 py-2 whitespace-nowrap">
-                                                                                {row.sender || '-'}
-                                                                            </td>
-                                                                            <td className="px-4 py-2 max-w-xs truncate">
-                                                                                {row.subject || '-'}
-                                                                            </td>
-                                                                            <td className="px-4 py-2 whitespace-nowrap">
-                                                                                <span
-                                                                                    className={`px-2 py-1 text-xs rounded-full ${
-                                                                                        row.status ===
-                                                                                        'Tebligat yok'
-                                                                                            ? 'bg-gray-100 text-gray-600'
-                                                                                            : row.status
-                                                                                                    ?.toLowerCase()
-                                                                                                    .includes(
-                                                                                                        'okundu'
-                                                                                                    )
-                                                                                              ? 'bg-green-100 text-green-700'
-                                                                                              : 'bg-amber-100 text-amber-700'
-                                                                                    }`}
-                                                                                >
-                                                                                    {row.status ||
-                                                                                        '-'}
-                                                                                </span>
-                                                                            </td>
-                                                                            <td
-                                                                                className="px-4 py-2 whitespace-nowrap"
-                                                                                onClick={(e) =>
-                                                                                    e.stopPropagation()
-                                                                                }
-                                                                            >
-                                                                                {row.document_path ? (
-                                                                                    <div className="flex gap-2">
-                                                                                        <button
-                                                                                            onClick={() =>
-                                                                                                handleOpenDocument(
-                                                                                                    row.document_path!
-                                                                                                )
-                                                                                            }
-                                                                                            className="text-sky-600 hover:text-sky-700"
-                                                                                            title="Dökümanı Aç"
-                                                                                        >
-                                                                                            <svg
-                                                                                                xmlns="http://www.w3.org/2000/svg"
-                                                                                                className="h-5 w-5"
-                                                                                                fill="none"
-                                                                                                viewBox="0 0 24 24"
-                                                                                                stroke="currentColor"
-                                                                                            >
-                                                                                                <path
-                                                                                                    strokeLinecap="round"
-                                                                                                    strokeLinejoin="round"
-                                                                                                    strokeWidth={
-                                                                                                        2
-                                                                                                    }
-                                                                                                    d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
-                                                                                                />
-                                                                                                <path
-                                                                                                    strokeLinecap="round"
-                                                                                                    strokeLinejoin="round"
-                                                                                                    strokeWidth={
-                                                                                                        2
-                                                                                                    }
-                                                                                                    d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
-                                                                                                />
-                                                                                            </svg>
-                                                                                        </button>
-                                                                                        <button
-                                                                                            onClick={() =>
-                                                                                                handleShareDocument(
-                                                                                                    row.document_path!
-                                                                                                )
-                                                                                            }
-                                                                                            className="text-emerald-600 hover:text-emerald-700"
-                                                                                            title="Klasörde Göster"
-                                                                                        >
-                                                                                            <svg
-                                                                                                xmlns="http://www.w3.org/2000/svg"
-                                                                                                className="h-5 w-5"
-                                                                                                fill="none"
-                                                                                                viewBox="0 0 24 24"
-                                                                                                stroke="currentColor"
-                                                                                            >
-                                                                                                <path
-                                                                                                    strokeLinecap="round"
-                                                                                                    strokeLinejoin="round"
-                                                                                                    strokeWidth={
-                                                                                                        2
-                                                                                                    }
-                                                                                                    d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"
-                                                                                                />
-                                                                                            </svg>
-                                                                                        </button>
-                                                                                    </div>
-                                                                                ) : (
-                                                                                    <button
-                                                                                        onClick={() =>
-                                                                                            handleFetchDocument(
-                                                                                                row.id
-                                                                                            )
-                                                                                        }
-                                                                                        disabled={
-                                                                                            fetchingDocumentId ===
-                                                                                            row.id
-                                                                                        }
-                                                                                        className="text-amber-500 hover:text-amber-600 disabled:opacity-50 disabled:cursor-not-allowed"
-                                                                                        title="Dökümanı GIB'den getir"
-                                                                                    >
-                                                                                        {fetchingDocumentId ===
-                                                                                        row.id ? (
-                                                                                            <svg
-                                                                                                className="animate-spin h-4 w-4"
-                                                                                                xmlns="http://www.w3.org/2000/svg"
-                                                                                                fill="none"
-                                                                                                viewBox="0 0 24 24"
-                                                                                            >
-                                                                                                <circle
-                                                                                                    className="opacity-25"
-                                                                                                    cx="12"
-                                                                                                    cy="12"
-                                                                                                    r="10"
-                                                                                                    stroke="currentColor"
-                                                                                                    strokeWidth="4"
-                                                                                                />
-                                                                                                <path
-                                                                                                    className="opacity-75"
-                                                                                                    fill="currentColor"
-                                                                                                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-                                                                                                />
-                                                                                            </svg>
-                                                                                        ) : (
-                                                                                            <svg
-                                                                                                xmlns="http://www.w3.org/2000/svg"
-                                                                                                className="h-4 w-4"
-                                                                                                fill="none"
-                                                                                                viewBox="0 0 24 24"
-                                                                                                stroke="currentColor"
-                                                                                            >
-                                                                                                <path
-                                                                                                    strokeLinecap="round"
-                                                                                                    strokeLinejoin="round"
-                                                                                                    strokeWidth={
-                                                                                                        2
-                                                                                                    }
-                                                                                                    d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
-                                                                                                />
-                                                                                            </svg>
-                                                                                        )}
-                                                                                    </button>
-                                                                                )}
-                                                                            </td>
-                                                                        </tr>
-                                                                    ))}
-                                                                </tbody>
-                                                            </table>
-                                                        </div>
-
-                                                        {/* Pagination */}
-                                                        {totalPages > 1 && (
-                                                            <div className="flex items-center justify-between px-4 py-3 border-t border-gray-200 bg-gray-50">
-                                                                <span className="text-xs text-gray-500">
-                                                                    {startIndex + 1}-
-                                                                    {Math.min(
-                                                                        startIndex + ITEMS_PER_PAGE,
-                                                                        group.tebligatlar.length
-                                                                    )}{' '}
-                                                                    / {group.tebligatlar.length}
-                                                                </span>
-                                                                <div className="flex gap-1">
+                                                    <div className="bg-white divide-y divide-gray-100">
+                                                        {group.scanGroups.map((scan, scanIdx) => {
+                                                            const scanKey = `${group.client_id}-${scanIdx}`;
+                                                            const isScanExpanded =
+                                                                expandedScans.has(scanKey);
+                                                            return (
+                                                                <div key={scanKey}>
                                                                     <button
-                                                                        onClick={(e) => {
-                                                                            e.stopPropagation();
-                                                                            setClientPage(
-                                                                                group.client_id,
-                                                                                Math.max(
-                                                                                    1,
-                                                                                    currentPage - 1
-                                                                                )
-                                                                            );
-                                                                        }}
-                                                                        disabled={currentPage === 1}
-                                                                        className="px-3 py-1.5 text-xs font-medium rounded border border-gray-300 bg-white text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100"
-                                                                    >
-                                                                        Önceki
-                                                                    </button>
-                                                                    <span className="px-3 py-1 text-xs font-medium text-gray-700">
-                                                                        {currentPage} / {totalPages}
-                                                                    </span>
-                                                                    <button
-                                                                        onClick={(e) => {
-                                                                            e.stopPropagation();
-                                                                            setClientPage(
-                                                                                group.client_id,
-                                                                                Math.min(
-                                                                                    totalPages,
-                                                                                    currentPage + 1
-                                                                                )
-                                                                            );
-                                                                        }}
-                                                                        disabled={
-                                                                            currentPage ===
-                                                                            totalPages
+                                                                        onClick={() =>
+                                                                            toggleScanAccordion(
+                                                                                scanKey
+                                                                            )
                                                                         }
-                                                                        className="px-3 py-1.5 text-xs font-medium rounded border border-gray-300 bg-white text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100"
+                                                                        className={`w-full px-5 py-2.5 flex items-center justify-between text-left ${isScanExpanded ? 'bg-gray-50' : 'hover:bg-gray-50'}`}
                                                                     >
-                                                                        Sonraki
+                                                                        <div className="flex items-center gap-2">
+                                                                            <svg
+                                                                                xmlns="http://www.w3.org/2000/svg"
+                                                                                className={`h-3 w-3 text-gray-400 transition-transform ${isScanExpanded ? 'rotate-90' : ''}`}
+                                                                                fill="none"
+                                                                                viewBox="0 0 24 24"
+                                                                                stroke="currentColor"
+                                                                            >
+                                                                                <path
+                                                                                    strokeLinecap="round"
+                                                                                    strokeLinejoin="round"
+                                                                                    strokeWidth={2}
+                                                                                    d="M9 5l7 7-7 7"
+                                                                                />
+                                                                            </svg>
+                                                                            <span className="text-sm text-gray-700">
+                                                                                Tarama:{' '}
+                                                                                {scan.scanLabel}
+                                                                            </span>
+                                                                        </div>
+                                                                        <span className="text-xs text-gray-500">
+                                                                            {
+                                                                                scan.tebligatlar
+                                                                                    .length
+                                                                            }{' '}
+                                                                            tebligat
+                                                                        </span>
                                                                     </button>
+                                                                    {isScanExpanded && (
+                                                                        <div className="overflow-x-auto">
+                                                                            <table className="min-w-full text-sm text-left text-gray-700">
+                                                                                <thead className="bg-gray-100 text-xs uppercase text-gray-500">
+                                                                                    <tr>
+                                                                                        <th className="px-4 py-2">
+                                                                                            Belge No
+                                                                                        </th>
+                                                                                        <th className="px-4 py-2">
+                                                                                            G&ouml;nderen
+                                                                                        </th>
+                                                                                        <th className="px-4 py-2">
+                                                                                            Konu
+                                                                                        </th>
+                                                                                        <th className="px-4 py-2">
+                                                                                            Durum
+                                                                                        </th>
+                                                                                        <th className="px-4 py-2">
+                                                                                            D&ouml;k&uuml;man
+                                                                                        </th>
+                                                                                    </tr>
+                                                                                </thead>
+                                                                                <tbody>
+                                                                                    {scan.tebligatlar.map(
+                                                                                        (row) => (
+                                                                                            <tr
+                                                                                                key={
+                                                                                                    row.id
+                                                                                                }
+                                                                                                className="border-t border-gray-200 hover:bg-gray-50 cursor-pointer"
+                                                                                                onClick={() =>
+                                                                                                    setSelectedTebligat(
+                                                                                                        row
+                                                                                                    )
+                                                                                                }
+                                                                                            >
+                                                                                                <td className="px-4 py-2 whitespace-nowrap text-xs font-mono">
+                                                                                                    {row.document_no ||
+                                                                                                        '-'}
+                                                                                                </td>
+                                                                                                <td className="px-4 py-2 whitespace-nowrap">
+                                                                                                    {row.sender ||
+                                                                                                        '-'}
+                                                                                                </td>
+                                                                                                <td className="px-4 py-2 max-w-xs truncate">
+                                                                                                    {row.subject ||
+                                                                                                        '-'}
+                                                                                                </td>
+                                                                                                <td className="px-4 py-2 whitespace-nowrap">
+                                                                                                    <span
+                                                                                                        className={`px-2 py-1 text-xs rounded-full ${row.status === 'Tebligat yok' ? 'bg-gray-100 text-gray-600' : row.status?.toLowerCase().includes('okundu') ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}
+                                                                                                    >
+                                                                                                        {row.status ||
+                                                                                                            '-'}
+                                                                                                    </span>
+                                                                                                </td>
+                                                                                                <td
+                                                                                                    className="px-4 py-2 whitespace-nowrap"
+                                                                                                    onClick={(
+                                                                                                        e
+                                                                                                    ) =>
+                                                                                                        e.stopPropagation()
+                                                                                                    }
+                                                                                                >
+                                                                                                    {row.document_path ? (
+                                                                                                        <div className="flex gap-2">
+                                                                                                            <button
+                                                                                                                onClick={() =>
+                                                                                                                    handleOpenDocument(
+                                                                                                                        row.document_path!
+                                                                                                                    )
+                                                                                                                }
+                                                                                                                className="text-sky-600 hover:text-sky-700"
+                                                                                                                title="A&ccedil;"
+                                                                                                            >
+                                                                                                                <svg
+                                                                                                                    xmlns="http://www.w3.org/2000/svg"
+                                                                                                                    className="h-4 w-4"
+                                                                                                                    fill="none"
+                                                                                                                    viewBox="0 0 24 24"
+                                                                                                                    stroke="currentColor"
+                                                                                                                >
+                                                                                                                    <path
+                                                                                                                        strokeLinecap="round"
+                                                                                                                        strokeLinejoin="round"
+                                                                                                                        strokeWidth={
+                                                                                                                            2
+                                                                                                                        }
+                                                                                                                        d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                                                                                                                    />
+                                                                                                                    <path
+                                                                                                                        strokeLinecap="round"
+                                                                                                                        strokeLinejoin="round"
+                                                                                                                        strokeWidth={
+                                                                                                                            2
+                                                                                                                        }
+                                                                                                                        d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
+                                                                                                                    />
+                                                                                                                </svg>
+                                                                                                            </button>
+                                                                                                            <button
+                                                                                                                onClick={() =>
+                                                                                                                    handleShareDocument(
+                                                                                                                        row.document_path!
+                                                                                                                    )
+                                                                                                                }
+                                                                                                                className="text-emerald-600 hover:text-emerald-700"
+                                                                                                                title="Klas&ouml;r"
+                                                                                                            >
+                                                                                                                <svg
+                                                                                                                    xmlns="http://www.w3.org/2000/svg"
+                                                                                                                    className="h-4 w-4"
+                                                                                                                    fill="none"
+                                                                                                                    viewBox="0 0 24 24"
+                                                                                                                    stroke="currentColor"
+                                                                                                                >
+                                                                                                                    <path
+                                                                                                                        strokeLinecap="round"
+                                                                                                                        strokeLinejoin="round"
+                                                                                                                        strokeWidth={
+                                                                                                                            2
+                                                                                                                        }
+                                                                                                                        d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"
+                                                                                                                    />
+                                                                                                                </svg>
+                                                                                                            </button>
+                                                                                                        </div>
+                                                                                                    ) : (
+                                                                                                        <button
+                                                                                                            onClick={() =>
+                                                                                                                handleFetchDocument(
+                                                                                                                    row.id
+                                                                                                                )
+                                                                                                            }
+                                                                                                            disabled={
+                                                                                                                fetchingDocumentId ===
+                                                                                                                row.id
+                                                                                                            }
+                                                                                                            className="text-amber-500 hover:text-amber-600 disabled:opacity-50"
+                                                                                                            title="&#304;ndir"
+                                                                                                        >
+                                                                                                            {fetchingDocumentId ===
+                                                                                                            row.id ? (
+                                                                                                                <svg
+                                                                                                                    className="animate-spin h-4 w-4"
+                                                                                                                    xmlns="http://www.w3.org/2000/svg"
+                                                                                                                    fill="none"
+                                                                                                                    viewBox="0 0 24 24"
+                                                                                                                >
+                                                                                                                    <circle
+                                                                                                                        className="opacity-25"
+                                                                                                                        cx="12"
+                                                                                                                        cy="12"
+                                                                                                                        r="10"
+                                                                                                                        stroke="currentColor"
+                                                                                                                        strokeWidth="4"
+                                                                                                                    />
+                                                                                                                    <path
+                                                                                                                        className="opacity-75"
+                                                                                                                        fill="currentColor"
+                                                                                                                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                                                                                                                    />
+                                                                                                                </svg>
+                                                                                                            ) : (
+                                                                                                                <svg
+                                                                                                                    xmlns="http://www.w3.org/2000/svg"
+                                                                                                                    className="h-4 w-4"
+                                                                                                                    fill="none"
+                                                                                                                    viewBox="0 0 24 24"
+                                                                                                                    stroke="currentColor"
+                                                                                                                >
+                                                                                                                    <path
+                                                                                                                        strokeLinecap="round"
+                                                                                                                        strokeLinejoin="round"
+                                                                                                                        strokeWidth={
+                                                                                                                            2
+                                                                                                                        }
+                                                                                                                        d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
+                                                                                                                    />
+                                                                                                                </svg>
+                                                                                                            )}
+                                                                                                        </button>
+                                                                                                    )}
+                                                                                                </td>
+                                                                                            </tr>
+                                                                                        )
+                                                                                    )}
+                                                                                </tbody>
+                                                                            </table>
+                                                                        </div>
+                                                                    )}
                                                                 </div>
-                                                            </div>
-                                                        )}
+                                                            );
+                                                        })}
                                                     </div>
                                                 )}
                                             </div>
