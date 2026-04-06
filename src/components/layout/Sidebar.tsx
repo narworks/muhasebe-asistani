@@ -147,6 +147,7 @@ const Sidebar: React.FC = () => {
     const [supportSending, setSupportSending] = useState(false);
     const [supportSent, setSupportSent] = useState(false);
     const [supportError, setSupportError] = useState('');
+    const [changelogOpen, setChangelogOpen] = useState(false);
 
     useEffect(() => {
         const fetchModules = () => {
@@ -188,6 +189,7 @@ const Sidebar: React.FC = () => {
                 <div className="text-2xl font-bold text-white mb-10 text-center">
                     <span className="text-sky-400">MA</span> Kutu
                 </div>
+                {/* Main navigation */}
                 <nav className="flex flex-col space-y-2">
                     <NavLink
                         to="/"
@@ -207,7 +209,7 @@ const Sidebar: React.FC = () => {
                             }
                         >
                             <WrenchIcon />
-                            <span>Excel Asistanı</span>
+                            <span>Excel Asistan&#305;</span>
                         </NavLink>
                     ) : (
                         <button
@@ -215,7 +217,7 @@ const Sidebar: React.FC = () => {
                             className={`${navLinkClasses} text-slate-600 hover:text-slate-400 w-full`}
                         >
                             <WrenchIcon />
-                            <span className="flex-1 text-left">Excel Asistanı</span>
+                            <span className="flex-1 text-left">Excel Asistan&#305;</span>
                             <LockIcon />
                         </button>
                     )}
@@ -239,45 +241,51 @@ const Sidebar: React.FC = () => {
                             <LockIcon />
                         </button>
                     )}
-                    <NavLink
-                        to="/statistics"
-                        className={({ isActive }) =>
-                            `${navLinkClasses} ${isActive ? activeLinkClasses : inactiveLinkClasses}`
-                        }
-                    >
-                        <ChartPieIcon />
-                        <span>İstatistikler</span>
-                    </NavLink>
-                    <NavLink
-                        to="/subscription"
-                        className={({ isActive }) =>
-                            `${navLinkClasses} ${isActive ? activeLinkClasses : inactiveLinkClasses}`
-                        }
-                    >
-                        <CreditCardIcon />
-                        <span>Abonelik</span>
-                    </NavLink>
-                    <button
-                        onClick={() => setSupportOpen(true)}
-                        className={`${navLinkClasses} ${inactiveLinkClasses} w-full`}
-                    >
-                        <svg
-                            xmlns="http://www.w3.org/2000/svg"
-                            className="h-6 w-6"
-                            fill="none"
-                            viewBox="0 0 24 24"
-                            stroke="currentColor"
-                        >
-                            <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth={2}
-                                d="M18.364 5.636l-3.536 3.536m0 5.656l3.536 3.536M9.172 9.172L5.636 5.636m3.536 9.192l-3.536 3.536M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-5 0a4 4 0 11-8 0 4 4 0 018 0z"
-                            />
-                        </svg>
-                        <span>Destek</span>
-                    </button>
                 </nav>
+
+                {/* Secondary navigation — bottom aligned */}
+                <div className="mt-auto pt-4 border-t border-slate-700/50">
+                    <nav className="flex flex-col space-y-1">
+                        <NavLink
+                            to="/statistics"
+                            className={({ isActive }) =>
+                                `${navLinkClasses} text-sm ${isActive ? activeLinkClasses : inactiveLinkClasses}`
+                            }
+                        >
+                            <ChartPieIcon />
+                            <span>&#304;statistikler</span>
+                        </NavLink>
+                        <NavLink
+                            to="/subscription"
+                            className={({ isActive }) =>
+                                `${navLinkClasses} text-sm ${isActive ? activeLinkClasses : inactiveLinkClasses}`
+                            }
+                        >
+                            <CreditCardIcon />
+                            <span>Abonelik</span>
+                        </NavLink>
+                        <button
+                            onClick={() => setSupportOpen(true)}
+                            className={`${navLinkClasses} text-sm ${inactiveLinkClasses} w-full`}
+                        >
+                            <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                className="h-5 w-5"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                stroke="currentColor"
+                            >
+                                <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth={2}
+                                    d="M18.364 5.636l-3.536 3.536m0 5.656l3.536 3.536M9.172 9.172L5.636 5.636m3.536 9.192l-3.536 3.536M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-5 0a4 4 0 11-8 0 4 4 0 018 0z"
+                                />
+                            </svg>
+                            <span>Destek</span>
+                        </button>
+                    </nav>
+                </div>
             </div>
 
             {/* Support Modal */}
@@ -452,8 +460,79 @@ const Sidebar: React.FC = () => {
                         </button>
                     </div>
                 </div>
-                <p className="text-center text-xs text-slate-600 mt-2">v{__APP_VERSION__}</p>
+                <button
+                    onClick={() => setChangelogOpen(true)}
+                    className="mx-auto mt-2 flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-800 border border-slate-700 text-xs text-slate-400 hover:text-white hover:border-slate-500 transition-colors"
+                >
+                    <span>v{__APP_VERSION__}</span>
+                </button>
             </div>
+
+            {/* Changelog Modal */}
+            {changelogOpen && (
+                <div
+                    className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center"
+                    onClick={() => setChangelogOpen(false)}
+                >
+                    <div
+                        className="bg-slate-800 rounded-xl border border-slate-700 w-full max-w-lg mx-4 p-6 max-h-[80vh] overflow-y-auto"
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <div className="flex items-center justify-between mb-4">
+                            <h3 className="text-lg font-bold text-white">
+                                De&#287;i&#351;iklikler &mdash; v{__APP_VERSION__}
+                            </h3>
+                            <button
+                                onClick={() => setChangelogOpen(false)}
+                                className="text-slate-400 hover:text-white text-sm"
+                            >
+                                Kapat
+                            </button>
+                        </div>
+                        <div className="space-y-3 text-sm text-slate-300">
+                            <div className="flex gap-2">
+                                <span className="text-emerald-400 font-bold mt-0.5">+</span>
+                                <span>
+                                    Yeni tebligat paneli &mdash; tarama sonras&#305; sa&#287;da
+                                    detayl&#305; panel a&ccedil;&#305;l&#305;r
+                                </span>
+                            </div>
+                            <div className="flex gap-2">
+                                <span className="text-emerald-400 font-bold mt-0.5">+</span>
+                                <span>
+                                    Tarama ge&ccedil;mi&#351;i &mdash; her taramada
+                                    &ldquo;yeni/eski&rdquo; say&#305;lar&#305;
+                                    g&ouml;r&uuml;n&uuml;r
+                                </span>
+                            </div>
+                            <div className="flex gap-2">
+                                <span className="text-emerald-400 font-bold mt-0.5">+</span>
+                                <span>Excel&apos;den toplu m&uuml;kellef aktar&#305;m&#305;</span>
+                            </div>
+                            <div className="flex gap-2">
+                                <span className="text-emerald-400 font-bold mt-0.5">+</span>
+                                <span>M&uuml;kellef ekleme limiti (200 hak) ve sayac&#305;</span>
+                            </div>
+                            <div className="flex gap-2">
+                                <span className="text-emerald-400 font-bold mt-0.5">+</span>
+                                <span>Uygulama i&ccedil;i destek formu</span>
+                            </div>
+                            <div className="flex gap-2">
+                                <span className="text-sky-400 font-bold mt-0.5">~</span>
+                                <span>Daha b&uuml;y&uuml;k pencere boyutu (1440x960)</span>
+                            </div>
+                            <div className="flex gap-2">
+                                <span className="text-sky-400 font-bold mt-0.5">~</span>
+                                <span>M&uuml;kerrer m&uuml;kellef ekleme engeli</span>
+                            </div>
+                            <div className="flex gap-2">
+                                <span className="text-red-400 font-bold mt-0.5">-</span>
+                                <span>Vekalet sorgu sistemi kald&#305;r&#305;ld&#305;</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
