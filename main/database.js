@@ -340,6 +340,40 @@ function getTebligatlarByClient(clientId) {
     return stmt.all(clientId);
 }
 
+function bulkSaveClients(clients) {
+    if (!db) init();
+
+    const stmt = db.prepare(`
+        INSERT INTO clients (firm_name, tax_number, gib_user_code, gib_password_encrypted)
+        VALUES (@firm_name, @tax_number, @gib_user_code, @encryptedPassword)
+    `);
+
+    const results = { saved: 0, errors: [] };
+
+    for (let i = 0; i < clients.length; i++) {
+        const c = clients[i];
+        try {
+            let encryptedPassword = null;
+            if (c.gib_password && safeStorage.isEncryptionAvailable()) {
+                encryptedPassword = safeStorage.encryptString(c.gib_password);
+            } else if (c.gib_password) {
+                throw new Error('Şifreleme sistemi kullanılamıyor.');
+            }
+            stmt.run({
+                firm_name: c.firm_name,
+                tax_number: c.tax_number || null,
+                gib_user_code: c.gib_user_code || null,
+                encryptedPassword,
+            });
+            results.saved++;
+        } catch (err) {
+            results.errors.push({ row: i + 2, firm_name: c.firm_name, error: err.message });
+        }
+    }
+
+    return results;
+}
+
 module.exports = {
     init,
     saveClient,
@@ -357,4 +391,5 @@ module.exports = {
     deleteTebligat,
     deleteTebligatlarByClient,
     getTebligatlarByClient,
+    bulkSaveClients,
 };

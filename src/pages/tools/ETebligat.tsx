@@ -88,6 +88,16 @@ const ETebligat: React.FC = () => {
         hourlyLimit: 10,
     });
 
+    // Excel import
+    const [importResult, setImportResult] = useState<{
+        saved: number;
+        errors: Array<{ row: number; firm_name: string; error: string }>;
+        parseErrors: Array<{ row: number; error: string }>;
+        limitError?: string;
+    } | null>(null);
+    const [importing, setImporting] = useState(false);
+    const importFileRef = useRef<HTMLInputElement>(null);
+
     // Legal consent
     const [showLegalConsent, setShowLegalConsent] = useState(false);
     const [legalConsentAccepted, setLegalConsentAccepted] = useState(true); // assume true until checked
@@ -514,6 +524,32 @@ const ETebligat: React.FC = () => {
         setClientForm((prev) => ({ ...prev, [field]: value }));
         if (clientErrors[field]) {
             setClientErrors((prev) => ({ ...prev, [field]: '' }));
+        }
+    };
+
+    const handleExcelImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        // Reset file input
+        if (importFileRef.current) importFileRef.current.value = '';
+
+        setImporting(true);
+        setImportResult(null);
+        try {
+            const buffer = await file.arrayBuffer();
+            const result = await window.electronAPI.importClientsFromExcel(buffer);
+            setImportResult(result);
+            if (result.saved > 0) {
+                await fetchClients();
+            }
+        } catch (err) {
+            setImportResult({
+                saved: 0,
+                errors: [],
+                parseErrors: [{ row: 0, error: (err as Error).message }],
+            });
+        } finally {
+            setImporting(false);
         }
     };
 
@@ -1124,28 +1160,87 @@ const ETebligat: React.FC = () => {
                             {clientErrors._form && (
                                 <p className="text-sm text-red-500">{clientErrors._form}</p>
                             )}
-                            <button
-                                type="submit"
-                                disabled={savingClient}
-                                className="ml-auto bg-indigo-600 text-white text-sm font-semibold px-4 py-2 rounded-md hover:bg-indigo-700 disabled:opacity-50"
-                            >
-                                {savingClient
-                                    ? 'Kaydediliyor...'
-                                    : editingClientId
-                                      ? 'Mükellef Güncelle'
-                                      : 'Mükellef Kaydet'}
-                            </button>
-                            {editingClientId && (
+                            <div className="ml-auto flex items-center gap-3">
+                                <input
+                                    ref={importFileRef}
+                                    type="file"
+                                    accept=".xlsx,.xls"
+                                    className="hidden"
+                                    onChange={handleExcelImport}
+                                />
                                 <button
                                     type="button"
-                                    onClick={handleCancelEdit}
-                                    className="ml-3 text-sm text-gray-500 hover:text-gray-700"
+                                    disabled={importing}
+                                    onClick={() => importFileRef.current?.click()}
+                                    className="border border-emerald-600 text-emerald-700 text-sm font-semibold px-4 py-2 rounded-md hover:bg-emerald-50 disabled:opacity-50"
                                 >
-                                    Vazgeç
+                                    {importing ? 'İçe aktarılıyor...' : "Excel'den İçe Aktar"}
                                 </button>
-                            )}
+                                <button
+                                    type="submit"
+                                    disabled={savingClient}
+                                    className="bg-indigo-600 text-white text-sm font-semibold px-4 py-2 rounded-md hover:bg-indigo-700 disabled:opacity-50"
+                                >
+                                    {savingClient
+                                        ? 'Kaydediliyor...'
+                                        : editingClientId
+                                          ? 'Mükellef Güncelle'
+                                          : 'Mükellef Kaydet'}
+                                </button>
+                                {editingClientId && (
+                                    <button
+                                        type="button"
+                                        onClick={handleCancelEdit}
+                                        className="text-sm text-gray-500 hover:text-gray-700"
+                                    >
+                                        Vazgeç
+                                    </button>
+                                )}
+                            </div>
                         </div>
                     </form>
+
+                    {/* Excel Import Sonucu */}
+                    {importResult && (
+                        <div
+                            className={`mt-4 p-4 rounded-lg text-sm ${
+                                importResult.limitError
+                                    ? 'bg-red-50 border border-red-200'
+                                    : importResult.saved > 0
+                                      ? 'bg-green-50 border border-green-200'
+                                      : 'bg-yellow-50 border border-yellow-200'
+                            }`}
+                        >
+                            {importResult.limitError ? (
+                                <p className="text-red-700">{importResult.limitError}</p>
+                            ) : (
+                                <>
+                                    <p className="font-semibold text-gray-800">
+                                        {importResult.saved} mükellef eklendi
+                                        {importResult.errors.length > 0 &&
+                                            `, ${importResult.errors.length} hatalı`}
+                                        {importResult.parseErrors.length > 0 &&
+                                            `, ${importResult.parseErrors.length} satır atlandı`}
+                                    </p>
+                                    {importResult.errors.length > 0 && (
+                                        <ul className="mt-2 text-red-600 list-disc list-inside">
+                                            {importResult.errors.map((e, i) => (
+                                                <li key={i}>
+                                                    Satır {e.row}: {e.firm_name} — {e.error}
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    )}
+                                </>
+                            )}
+                            <button
+                                onClick={() => setImportResult(null)}
+                                className="mt-2 text-xs text-gray-500 hover:text-gray-700"
+                            >
+                                Kapat
+                            </button>
+                        </div>
+                    )}
 
                     <div className="mt-6 overflow-x-auto border border-gray-200 rounded-lg">
                         <table className="min-w-full text-sm text-left text-gray-700">

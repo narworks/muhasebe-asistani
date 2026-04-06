@@ -4,6 +4,8 @@ const ExcelJS = require('exceljs');
 
 // Note: API anahtarı kullanıcıdan alınır ve güvenli şekilde saklanır.
 
+const MAX_CELLS = 50000;
+
 async function convert(fileBuffer, mimeType, prompt, apiKey) {
     if (!apiKey) {
         throw new Error('API anahtarı bulunamadı.');
@@ -28,6 +30,12 @@ async function convert(fileBuffer, mimeType, prompt, apiKey) {
         const workbook = new ExcelJS.Workbook();
         await workbook.xlsx.load(fileBuffer);
         const worksheet = workbook.worksheets[0];
+        const cellCount = worksheet.rowCount * worksheet.columnCount;
+        if (cellCount > MAX_CELLS) {
+            throw new Error(
+                `Bu dosya çok büyük (${cellCount.toLocaleString('tr-TR')} hücre). Maksimum ${MAX_CELLS.toLocaleString('tr-TR')} hücre işlenebilir. Dosyanızı bölerek tekrar deneyin.`
+            );
+        }
         const rows = [];
         worksheet.eachRow((row) => {
             rows.push(
@@ -46,6 +54,12 @@ async function convert(fileBuffer, mimeType, prompt, apiKey) {
             const workbook = new ExcelJS.Workbook();
             await workbook.xlsx.load(fileBuffer);
             const worksheet = workbook.worksheets[0];
+            const cellCount = worksheet.rowCount * worksheet.columnCount;
+            if (cellCount > MAX_CELLS) {
+                throw new Error(
+                    `Bu dosya çok büyük (${cellCount.toLocaleString('tr-TR')} hücre). Maksimum ${MAX_CELLS.toLocaleString('tr-TR')} hücre işlenebilir. Dosyanızı bölerek tekrar deneyin.`
+                );
+            }
             const rows = [];
             worksheet.eachRow((row) => {
                 rows.push(
@@ -56,7 +70,9 @@ async function convert(fileBuffer, mimeType, prompt, apiKey) {
                 );
             });
             fileContent = rows.join('\n');
-        } catch {
+        } catch (err) {
+            // Re-throw cell limit errors
+            if (err.message?.includes('hücre')) throw err;
             // Not xlsx either — try as plain text
             fileContent = fileBuffer.toString('utf-8');
         }

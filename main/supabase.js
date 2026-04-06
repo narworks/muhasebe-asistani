@@ -345,6 +345,47 @@ const getUserModules = async (userId) => {
     return { modules: active.map((m) => m.module_id), error: null };
 };
 
+/**
+ * Mükellef ekleme limitini kontrol eder
+ * @param {string} userId
+ * @returns {Promise<{allowed: boolean, totalAdded: number, maxClients: number, error?}>}
+ */
+const checkClientLimit = async (userId) => {
+    const client = getClient();
+    const { data, error } = await client
+        .from('subscriptions')
+        .select('total_clients_added, max_clients')
+        .eq('user_id', userId)
+        .single();
+
+    if (error) {
+        logger.debug('[Supabase] checkClientLimit error:', error.message);
+        // Hata durumunda izin ver (ağ sorunu kullanıcıyı engellemesin)
+        return { allowed: true, totalAdded: 0, maxClients: 200, error };
+    }
+
+    const totalAdded = data.total_clients_added || 0;
+    const maxClients = data.max_clients || 200;
+    return { allowed: totalAdded < maxClients, totalAdded, maxClients, error: null };
+};
+
+/**
+ * Mükellef ekleme sayacını atomik olarak artırır
+ * @param {string} userId
+ * @returns {Promise<{success: boolean, error?}>}
+ */
+const incrementClientCount = async (userId) => {
+    const client = getClient();
+    const { error } = await client.rpc('increment_client_count', { p_user_id: userId });
+
+    if (error) {
+        logger.debug('[Supabase] incrementClientCount error:', error.message);
+        return { success: false, error };
+    }
+
+    return { success: true, error: null };
+};
+
 module.exports = {
     init,
     getClient,
@@ -359,5 +400,7 @@ module.exports = {
     deductCredits,
     refundCredits,
     getUserModules,
+    checkClientLimit,
+    incrementClientCount,
     signOut,
 };

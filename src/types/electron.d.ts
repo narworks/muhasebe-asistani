@@ -38,6 +38,13 @@ export interface IElectronAPI {
     // Database Operations
     getClients: () => Promise<Client[]>;
     saveClient: (clientData: ClientFormData) => Promise<Client>;
+    getClientLimit: () => Promise<{ totalAdded: number; maxClients: number; remaining: number }>;
+    importClientsFromExcel: (fileBuffer: ArrayBuffer) => Promise<{
+        saved: number;
+        errors: Array<{ row: number; firm_name: string; error: string }>;
+        parseErrors: Array<{ row: number; error: string }>;
+        limitError?: string;
+    }>;
     updateClient: (id: number, clientData: ClientFormData) => Promise<Client>;
     updateClientStatus: (id: number, status: Client['status']) => Promise<ApiResponse>;
     deleteClient: (id: number) => Promise<ApiResponse>;

@@ -499,12 +499,39 @@ ipcMain.handle('get-clients', (_event) => {
     return database.getClients();
 });
 
-ipcMain.handle('save-client', (event, clientData) => {
+ipcMain.handle('save-client', async (event, clientData) => {
     validation.validateClientData(clientData);
+
+    // Check client limit via Supabase
+    const { userId } = licenseManager.getUserInfo();
+    if (userId) {
+        const { allowed, totalAdded, maxClients } = await supabase.checkClientLimit(userId);
+        if (!allowed) {
+            throw new Error(
+                `Mükellef limitinize ulaştınız (${totalAdded}/${maxClients}). Ek mükellef paketi almak için Abonelik sayfasını ziyaret edin.`
+            );
+        }
+    }
+
     const result = database.saveClient(clientData);
+
+    // Increment counter in Supabase (fire-and-forget, don't block save)
+    if (userId) {
+        supabase.incrementClientCount(userId).catch((err) => {
+            logger.debug('[save-client] incrementClientCount error:', err.message);
+        });
+    }
+
     // Refresh schedule when client count changes
     scheduler.refreshSchedule();
     return result;
+});
+
+ipcMain.handle('get-client-limit', async () => {
+    const { userId } = licenseManager.getUserInfo();
+    if (!userId) return { totalAdded: 0, maxClients: 200, remaining: 200 };
+    const { totalAdded, maxClients } = await supabase.checkClientLimit(userId);
+    return { totalAdded, maxClients, remaining: maxClients - totalAdded };
 });
 
 ipcMain.handle('update-client', (event, id, clientData) => {
@@ -528,6 +555,66 @@ ipcMain.handle('delete-client', (event, id) => {
     // Refresh schedule when client count changes
     scheduler.refreshSchedule();
     return result;
+});
+
+// Excel'den toplu mükellef importı
+ipcMain.handle('import-clients-from-excel', async (event, fileBuffer) => {
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(Buffer.from(fileBuffer));
+    const worksheet = workbook.worksheets[0];
+
+    const clients = [];
+    const parseErrors = [];
+
+    worksheet.eachRow((row, rowNumber) => {
+        const values = row.values.slice(1).map((v) => (v != null ? String(v).trim() : ''));
+
+        // İlk satırı header olarak atla
+        if (rowNumber === 1) {
+            return;
+        }
+
+        const [firmName, taxNumber, gibUserCode, gibPassword] = values;
+
+        if (!firmName) {
+            parseErrors.push({ row: rowNumber, error: 'Firma adı boş' });
+            return;
+        }
+
+        clients.push({
+            firm_name: firmName,
+            tax_number: taxNumber || null,
+            gib_user_code: gibUserCode || null,
+            gib_password: gibPassword || null,
+        });
+    });
+
+    // Check client limit before bulk save
+    const { userId } = licenseManager.getUserInfo();
+    if (userId) {
+        const { allowed, totalAdded, maxClients } = await supabase.checkClientLimit(userId);
+        const remaining = maxClients - totalAdded;
+        if (!allowed || clients.length > remaining) {
+            return {
+                saved: 0,
+                errors: [],
+                parseErrors,
+                limitError: `Mükellef limitiniz yetersiz. Kalan: ${remaining}, Eklenmek istenen: ${clients.length}. Ek mükellef paketi almak için Abonelik sayfasını ziyaret edin.`,
+            };
+        }
+    }
+
+    const results = database.bulkSaveClients(clients);
+
+    // Increment Supabase counter for successfully saved clients
+    if (userId && results.saved > 0) {
+        for (let i = 0; i < results.saved; i++) {
+            supabase.incrementClientCount(userId).catch(() => {});
+        }
+    }
+
+    scheduler.refreshSchedule();
+    return { ...results, parseErrors };
 });
 
 ipcMain.handle('get-tebligatlar', () => {

@@ -14,6 +14,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     // Database Operations
     getClients: () => ipcRenderer.invoke('get-clients'),
     saveClient: (clientData) => ipcRenderer.invoke('save-client', clientData),
+    getClientLimit: () => ipcRenderer.invoke('get-client-limit'),
+    importClientsFromExcel: (fileBuffer) =>
+        ipcRenderer.invoke('import-clients-from-excel', fileBuffer),
     updateClient: (id, clientData) => ipcRenderer.invoke('update-client', id, clientData),
     updateClientStatus: (id, status) => ipcRenderer.invoke('update-client-status', id, status),
     deleteClient: (id) => ipcRenderer.invoke('delete-client', id),
