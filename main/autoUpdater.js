@@ -63,12 +63,19 @@ function init(win) {
         checkForUpdates();
     }, 5000);
 
-    // Re-check every 2 hours while app is running
+    // On Windows, check again after 30 seconds (first check sometimes fails)
+    if (process.platform === 'win32') {
+        setTimeout(() => {
+            checkForUpdates();
+        }, 30000);
+    }
+
+    // Re-check every 1 hour while app is running
     setInterval(
         () => {
             checkForUpdates();
         },
-        2 * 60 * 60 * 1000
+        1 * 60 * 60 * 1000
     );
 }
 

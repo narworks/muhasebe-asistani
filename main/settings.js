@@ -112,16 +112,34 @@ const updateSettings = (patch) => {
     return updated;
 };
 
-const ensureEncryptionAvailable = () => {
-    if (!safeStorage.isEncryptionAvailable()) {
-        throw new Error('Şifreleme sistemi bu cihazda kullanılamıyor.');
+const isEncryptionAvailable = () => {
+    try {
+        return safeStorage.isEncryptionAvailable();
+    } catch {
+        return false;
+    }
+};
+
+// Fallback: simple obfuscation when safeStorage unavailable (Windows edge case)
+const obfuscate = (str) => Buffer.from(str).toString('base64');
+const deobfuscate = (str) => {
+    try {
+        return Buffer.from(str, 'base64').toString('utf-8');
+    } catch {
+        return null;
     }
 };
 
 const setEncryptedValue = (key, value) => {
-    ensureEncryptionAvailable();
     const settings = readSettings();
-    settings.encrypted[key] = safeStorage.encryptString(value).toString('base64');
+    if (isEncryptionAvailable()) {
+        settings.encrypted[key] = safeStorage.encryptString(value).toString('base64');
+        settings.encrypted[key + '_method'] = 'safe';
+    } else {
+        // Fallback for Windows when DPAPI unavailable
+        settings.encrypted[key] = obfuscate(value);
+        settings.encrypted[key + '_method'] = 'fallback';
+    }
     writeSettings(settings);
 };
 
@@ -129,9 +147,16 @@ const getEncryptedValue = (key) => {
     const settings = readSettings();
     const encrypted = settings.encrypted[key];
     if (!encrypted) return null;
+    const method = settings.encrypted[key + '_method'];
     try {
+        if (method === 'fallback') {
+            return deobfuscate(encrypted);
+        }
         return safeStorage.decryptString(Buffer.from(encrypted, 'base64'));
     } catch (error) {
+        // Try fallback decode if safe decryption fails
+        const fallback = deobfuscate(encrypted);
+        if (fallback) return fallback;
         console.error('Failed to decrypt value:', error);
         return null;
     }

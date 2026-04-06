@@ -106,11 +106,13 @@ const createWindow = () => {
         return { action: 'deny' };
     });
 
-    // Minimize to tray instead of closing
+    // On macOS: minimize to tray. On Windows/Linux: quit fully to avoid zombie processes
     mainWindow.on('close', (event) => {
-        if (!isQuitting) {
+        if (!isQuitting && process.platform === 'darwin') {
             event.preventDefault();
             mainWindow.hide();
+        } else {
+            isQuitting = true;
         }
     });
 };
