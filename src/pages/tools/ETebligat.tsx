@@ -157,11 +157,16 @@ const ETebligat: React.FC = () => {
                 return;
             }
             if (status.type === 'progress') {
+                // Refresh table when a new client starts (previous client data is saved)
+                if (status.progress.currentClient && status.progress.current > 0) {
+                    fetchTebligatlar();
+                }
                 setScanProgress(status.progress);
                 if (status.progress.insufficientCredits) {
                     setInsufficientCredits(true);
                 }
                 if (status.progress.completed) {
+                    fetchTebligatlar();
                     setScanState(null);
                     setInsufficientCredits(false);
                 }
@@ -1212,14 +1217,14 @@ const ETebligat: React.FC = () => {
                                                 <button
                                                     type="button"
                                                     onClick={() => handleEditClient(client)}
-                                                    className="text-xs text-indigo-600 hover:text-indigo-700"
+                                                    className="text-xs px-2 py-1 rounded border border-indigo-500/30 text-indigo-400 hover:bg-indigo-500/10 transition-colors"
                                                 >
-                                                    Düzenle
+                                                    D&uuml;zenle
                                                 </button>
                                                 <button
                                                     type="button"
                                                     onClick={() => handleToggleClientStatus(client)}
-                                                    className="text-xs text-amber-600 hover:text-amber-700"
+                                                    className="text-xs px-2 py-1 rounded border border-amber-500/30 text-amber-400 hover:bg-amber-500/10 transition-colors"
                                                 >
                                                     {client.status === 'active'
                                                         ? 'Pasif Yap'
@@ -1228,7 +1233,7 @@ const ETebligat: React.FC = () => {
                                                 <button
                                                     type="button"
                                                     onClick={() => handleDeleteClient(client)}
-                                                    className="text-xs text-red-600 hover:text-red-700"
+                                                    className="text-xs px-2 py-1 rounded border border-red-500/30 text-red-400 hover:bg-red-500/10 transition-colors"
                                                 >
                                                     Sil
                                                 </button>
