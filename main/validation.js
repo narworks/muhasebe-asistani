@@ -11,7 +11,9 @@ function validateClientData(data) {
         throw new Error('Geçersiz müşteri verisi.');
     }
 
-    const { name, gib_username, tax_id } = data;
+    const name = data.firm_name || data.name;
+    const gib_username = data.gib_user_code || data.gib_username;
+    const tax_id = data.tax_number || data.tax_id;
 
     // Required fields
     if (!name || typeof name !== 'string' || name.trim().length === 0) {
