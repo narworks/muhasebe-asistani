@@ -354,7 +354,7 @@ const checkClientLimit = async (userId) => {
     const client = getClient();
     const { data, error } = await client
         .from('subscriptions')
-        .select('total_clients_added, max_clients')
+        .select('total_clients_added, max_clients, clients_reset_at, started_at')
         .eq('user_id', userId)
         .single();
 
@@ -362,6 +362,15 @@ const checkClientLimit = async (userId) => {
         logger.debug('[Supabase] checkClientLimit error:', error.message);
         // Hata durumunda izin ver (ağ sorunu kullanıcıyı engellemesin)
         return { allowed: true, totalAdded: 0, maxClients: 200, error };
+    }
+
+    // Yıllık auto-reset: clients_reset_at 1 yıldan eskiyse sayacı s��fırla
+    const resetAt = data.clients_reset_at ? new Date(data.clients_reset_at) : null;
+    const oneYearAgo = new Date(Date.now() - 365 * 24 * 60 * 60 * 1000);
+    if (!resetAt || resetAt < oneYearAgo) {
+        logger.debug('[Supabase] Client count yearly reset triggered');
+        await client.rpc('reset_client_count', { p_user_id: userId }).catch(() => {});
+        return { allowed: true, totalAdded: 0, maxClients: data.max_clients || 200, error: null };
     }
 
     const totalAdded = data.total_clients_added || 0;
