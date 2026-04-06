@@ -1349,27 +1349,30 @@ async function run(onStatusUpdate, apiKey, scanConfig = {}, options = {}, deduct
                     let newTebligatIds = [];
 
                     if (count === 0) {
-                        // Tebligat bulunamadı - "Tebligat yok" kaydı oluştur
-                        const noNotificationRecord = [
-                            {
-                                sender: '-',
-                                subject: '-',
-                                documentNo: '-',
-                                status: 'Tebligat yok',
-                                date: new Date().toLocaleDateString('tr-TR'),
-                                endDate: null,
-                                documentUrl: null,
-                                documentPath: null,
-                            },
-                        ];
-                        const saveResult = database.saveTebligatlar(
-                            client.id,
-                            noNotificationRecord
-                        );
-                        savedCount = saveResult.inserted;
+                        // Only create placeholder if client has no tebligat at all
+                        const existingCount = database.getTebligatlarByClient(client.id).length;
+                        if (existingCount === 0) {
+                            const noNotificationRecord = [
+                                {
+                                    sender: '-',
+                                    subject: '-',
+                                    documentNo: '-',
+                                    status: 'Tebligat yok',
+                                    date: new Date().toLocaleDateString('tr-TR'),
+                                    endDate: null,
+                                    documentUrl: null,
+                                    documentPath: null,
+                                },
+                            ];
+                            const saveResult = database.saveTebligatlar(
+                                client.id,
+                                noNotificationRecord
+                            );
+                            savedCount = saveResult.inserted;
+                        }
                         onStatusUpdate({ type: 'data-updated' });
                         onStatusUpdate({
-                            message: `${client.firm_name}: Tebligat bulunamadı.`,
+                            message: `${client.firm_name}: Yeni tebligat bulunamadı.`,
                             type: 'success',
                             firmId: client.id,
                         });

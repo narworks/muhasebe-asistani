@@ -77,12 +77,30 @@ function init() {
     if (!clientCols.includes('last_full_scan_at')) {
         db.exec('ALTER TABLE clients ADD COLUMN last_full_scan_at TEXT');
     }
+
+    // Migration: Unique constraint on gib_user_code (prevent duplicate clients)
+    db.exec(`
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_clients_gib_user_code
+        ON clients (gib_user_code) WHERE gib_user_code IS NOT NULL AND gib_user_code != ''
+    `);
 }
 
 function saveClient(clientData) {
     if (!db) init();
 
     const { firm_name, tax_number, gib_user_code, gib_password } = clientData;
+
+    // Check for duplicate gib_user_code
+    if (gib_user_code) {
+        const existing = db
+            .prepare('SELECT id, firm_name FROM clients WHERE gib_user_code = ?')
+            .get(gib_user_code);
+        if (existing) {
+            throw new Error(
+                `Bu GİB kullanıcı kodu zaten kayıtlı (${existing.firm_name}). Aynı mükellef tekrar eklenemez.`
+            );
+        }
+    }
 
     // Encrypt password
     let encryptedPassword = null;
@@ -371,7 +389,10 @@ function bulkSaveClients(clients) {
             });
             results.saved++;
         } catch (err) {
-            results.errors.push({ row: i + 2, firm_name: c.firm_name, error: err.message });
+            const msg = err.message?.includes('UNIQUE')
+                ? 'Bu GİB kullanıcı kodu zaten kayıtlı'
+                : err.message;
+            results.errors.push({ row: i + 2, firm_name: c.firm_name, error: msg });
         }
     }
 
