@@ -8,6 +8,7 @@ const {
     dialog,
     shell,
     powerSaveBlocker,
+    screen,
 } = require('electron');
 const fs = require('fs');
 const ExcelJS = require('exceljs');
@@ -80,9 +81,10 @@ let tray = null;
 let isQuitting = false;
 
 const createWindow = () => {
+    const { width: screenW, height: screenH } = screen.getPrimaryDisplay().workAreaSize;
     mainWindow = new BrowserWindow({
-        width: 1440,
-        height: 960,
+        width: Math.min(Math.round(screenW * 0.85), 1600),
+        height: Math.min(Math.round(screenH * 0.9), 1100),
         minWidth: 1024,
         minHeight: 700,
         webPreferences: {

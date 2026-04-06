@@ -1160,8 +1160,8 @@ const ETebligat: React.FC = () => {
                                 />
                             </svg>
                             <h2 className="text-lg font-semibold">M&uuml;kellef Y&ouml;netimi</h2>
-                            <span className="text-xs text-gray-400 font-normal">
-                                ({clients.length} m&uuml;kellef)
+                            <span className="text-xs font-medium bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full">
+                                {clients.length} m&uuml;kellef
                             </span>
                         </div>
                         {clientLimit && (

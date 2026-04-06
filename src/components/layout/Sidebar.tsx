@@ -242,9 +242,11 @@ const Sidebar: React.FC = () => {
                         </button>
                     )}
                 </nav>
+            </div>
 
-                {/* Secondary navigation — bottom aligned */}
-                <div className="mt-auto pt-4 border-t border-slate-700/50">
+            {/* Secondary nav + user — pushed to bottom */}
+            <div className="mt-auto">
+                <div className="pt-4 border-t border-slate-700/50 mb-3">
                     <nav className="flex flex-col space-y-1">
                         <NavLink
                             to="/statistics"
@@ -286,186 +288,192 @@ const Sidebar: React.FC = () => {
                         </button>
                     </nav>
                 </div>
-            </div>
 
-            {/* Support Modal */}
-            {supportOpen && (
-                <div
-                    className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center"
-                    onClick={() => setSupportOpen(false)}
-                >
+                {/* Support Modal */}
+                {supportOpen && (
                     <div
-                        className="bg-slate-800 rounded-xl border border-slate-700 w-full max-w-md mx-4 p-6"
-                        onClick={(e) => e.stopPropagation()}
+                        className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center"
+                        onClick={() => setSupportOpen(false)}
                     >
-                        <h3 className="text-lg font-bold text-white mb-1">Destek Talebi</h3>
-                        <p className="text-sm text-slate-400 mb-4">
-                            Sorular&#305;n&#305;z veya sorunlar&#305;n&#305;z i&ccedil;in bize
-                            yaz&#305;n.
-                        </p>
-                        <div className="space-y-3">
-                            <div>
-                                <label className="block text-xs font-semibold text-slate-400 mb-1">
-                                    Konu
-                                </label>
-                                <input
-                                    type="text"
-                                    value={supportSubject}
-                                    onChange={(e) => setSupportSubject(e.target.value)}
-                                    className="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-500 focus:border-sky-500 focus:outline-none"
-                                    placeholder="&Ouml;rn: Tarama hatas&#305;"
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-xs font-semibold text-slate-400 mb-1">
-                                    Mesaj
-                                </label>
-                                <textarea
-                                    value={supportMessage}
-                                    onChange={(e) => setSupportMessage(e.target.value)}
-                                    rows={5}
-                                    className="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-500 focus:border-sky-500 focus:outline-none resize-none"
-                                    placeholder="Sorununuzu detayl&#305; a&ccedil;&#305;klay&#305;n..."
-                                />
-                            </div>
-                        </div>
-                        {supportSent && (
-                            <div className="mt-3 p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-lg text-sm text-emerald-400">
-                                Destek talebiniz g&ouml;nderildi. En k&#305;sa s&uuml;rede
-                                d&ouml;n&uuml;&#351; yapaca&#287;&#305;z.
-                            </div>
-                        )}
-                        {supportError && (
-                            <div className="mt-3 p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-sm text-red-400">
-                                {supportError}
-                            </div>
-                        )}
-                        <div className="flex justify-end gap-3 mt-5">
-                            <button
-                                onClick={() => {
-                                    setSupportOpen(false);
-                                    setSupportSent(false);
-                                    setSupportError('');
-                                }}
-                                className="px-4 py-2 text-sm text-slate-400 hover:text-white transition-colors"
-                            >
-                                {supportSent ? 'Kapat' : 'Vazge\u00e7'}
-                            </button>
-                            {!supportSent && (
-                                <button
-                                    disabled={
-                                        supportSending ||
-                                        !supportSubject.trim() ||
-                                        !supportMessage.trim()
-                                    }
-                                    onClick={async () => {
-                                        setSupportSending(true);
-                                        setSupportError('');
-                                        try {
-                                            const res = await fetch(
-                                                'https://muhasebeasistani.com/api/support',
-                                                {
-                                                    method: 'POST',
-                                                    headers: { 'Content-Type': 'application/json' },
-                                                    body: JSON.stringify({
-                                                        email: currentUser?.email || '',
-                                                        name: currentUser?.displayName || '',
-                                                        subject: supportSubject,
-                                                        message: supportMessage,
-                                                    }),
-                                                }
-                                            );
-                                            if (res.ok) {
-                                                setSupportSent(true);
-                                                setSupportSubject('');
-                                                setSupportMessage('');
-                                            } else {
-                                                const data = await res.json();
-                                                setSupportError(data.error || 'G\u00f6nderilemedi');
-                                            }
-                                        } catch {
-                                            setSupportError(
-                                                'Ba\u011flant\u0131 hatas\u0131. L\u00fctfen tekrar deneyin.'
-                                            );
-                                        } finally {
-                                            setSupportSending(false);
-                                        }
-                                    }}
-                                    className="inline-flex items-center gap-2 bg-sky-600 hover:bg-sky-700 text-white font-semibold px-5 py-2 rounded-lg text-sm transition-colors disabled:opacity-50"
-                                >
-                                    {supportSending ? (
-                                        <svg
-                                            className="animate-spin h-4 w-4"
-                                            fill="none"
-                                            viewBox="0 0 24 24"
-                                        >
-                                            <circle
-                                                className="opacity-25"
-                                                cx="12"
-                                                cy="12"
-                                                r="10"
-                                                stroke="currentColor"
-                                                strokeWidth="4"
-                                            />
-                                            <path
-                                                className="opacity-75"
-                                                fill="currentColor"
-                                                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-                                            />
-                                        </svg>
-                                    ) : (
-                                        <svg
-                                            xmlns="http://www.w3.org/2000/svg"
-                                            className="h-4 w-4"
-                                            fill="none"
-                                            viewBox="0 0 24 24"
-                                            stroke="currentColor"
-                                        >
-                                            <path
-                                                strokeLinecap="round"
-                                                strokeLinejoin="round"
-                                                strokeWidth={2}
-                                                d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
-                                            />
-                                        </svg>
-                                    )}
-                                    {supportSending ? 'G\u00f6nderiliyor...' : 'G\u00f6nder'}
-                                </button>
-                            )}
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* User Profile & Logout Section */}
-            <div className="mt-auto pt-4 border-t border-slate-700">
-                <div className="p-2 rounded-lg hover:bg-slate-800 transition-colors">
-                    <div className="flex items-center space-x-3">
-                        <div className="w-10 h-10 rounded-full bg-sky-500 flex items-center justify-center font-bold">
-                            {currentUser?.displayName?.charAt(0).toUpperCase() ||
-                                currentUser?.email?.charAt(0).toUpperCase()}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                            <p className="text-sm font-semibold text-white truncate">
-                                {currentUser?.displayName}
-                            </p>
-                            <p className="text-xs text-slate-400 truncate">{currentUser?.email}</p>
-                        </div>
-                        <button
-                            onClick={handleLogout}
-                            title="Çıkış Yap"
-                            className="text-slate-400 hover:text-red-500 transition-colors"
+                        <div
+                            className="bg-slate-800 rounded-xl border border-slate-700 w-full max-w-md mx-4 p-6"
+                            onClick={(e) => e.stopPropagation()}
                         >
-                            <LogoutIcon />
-                        </button>
+                            <h3 className="text-lg font-bold text-white mb-1">Destek Talebi</h3>
+                            <p className="text-sm text-slate-400 mb-4">
+                                Sorular&#305;n&#305;z veya sorunlar&#305;n&#305;z i&ccedil;in bize
+                                yaz&#305;n.
+                            </p>
+                            <div className="space-y-3">
+                                <div>
+                                    <label className="block text-xs font-semibold text-slate-400 mb-1">
+                                        Konu
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={supportSubject}
+                                        onChange={(e) => setSupportSubject(e.target.value)}
+                                        className="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-500 focus:border-sky-500 focus:outline-none"
+                                        placeholder="&Ouml;rn: Tarama hatas&#305;"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-semibold text-slate-400 mb-1">
+                                        Mesaj
+                                    </label>
+                                    <textarea
+                                        value={supportMessage}
+                                        onChange={(e) => setSupportMessage(e.target.value)}
+                                        rows={5}
+                                        className="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-500 focus:border-sky-500 focus:outline-none resize-none"
+                                        placeholder="Sorununuzu detayl&#305; a&ccedil;&#305;klay&#305;n..."
+                                    />
+                                </div>
+                            </div>
+                            {supportSent && (
+                                <div className="mt-3 p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-lg text-sm text-emerald-400">
+                                    Destek talebiniz g&ouml;nderildi. En k&#305;sa s&uuml;rede
+                                    d&ouml;n&uuml;&#351; yapaca&#287;&#305;z.
+                                </div>
+                            )}
+                            {supportError && (
+                                <div className="mt-3 p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-sm text-red-400">
+                                    {supportError}
+                                </div>
+                            )}
+                            <div className="flex justify-end gap-3 mt-5">
+                                <button
+                                    onClick={() => {
+                                        setSupportOpen(false);
+                                        setSupportSent(false);
+                                        setSupportError('');
+                                    }}
+                                    className="px-4 py-2 text-sm text-slate-400 hover:text-white transition-colors"
+                                >
+                                    {supportSent ? 'Kapat' : 'Vazge\u00e7'}
+                                </button>
+                                {!supportSent && (
+                                    <button
+                                        disabled={
+                                            supportSending ||
+                                            !supportSubject.trim() ||
+                                            !supportMessage.trim()
+                                        }
+                                        onClick={async () => {
+                                            setSupportSending(true);
+                                            setSupportError('');
+                                            try {
+                                                const res = await fetch(
+                                                    'https://muhasebeasistani.com/api/support',
+                                                    {
+                                                        method: 'POST',
+                                                        headers: {
+                                                            'Content-Type': 'application/json',
+                                                        },
+                                                        body: JSON.stringify({
+                                                            email: currentUser?.email || '',
+                                                            name: currentUser?.displayName || '',
+                                                            subject: supportSubject,
+                                                            message: supportMessage,
+                                                        }),
+                                                    }
+                                                );
+                                                if (res.ok) {
+                                                    setSupportSent(true);
+                                                    setSupportSubject('');
+                                                    setSupportMessage('');
+                                                } else {
+                                                    const data = await res.json();
+                                                    setSupportError(
+                                                        data.error || 'G\u00f6nderilemedi'
+                                                    );
+                                                }
+                                            } catch {
+                                                setSupportError(
+                                                    'Ba\u011flant\u0131 hatas\u0131. L\u00fctfen tekrar deneyin.'
+                                                );
+                                            } finally {
+                                                setSupportSending(false);
+                                            }
+                                        }}
+                                        className="inline-flex items-center gap-2 bg-sky-600 hover:bg-sky-700 text-white font-semibold px-5 py-2 rounded-lg text-sm transition-colors disabled:opacity-50"
+                                    >
+                                        {supportSending ? (
+                                            <svg
+                                                className="animate-spin h-4 w-4"
+                                                fill="none"
+                                                viewBox="0 0 24 24"
+                                            >
+                                                <circle
+                                                    className="opacity-25"
+                                                    cx="12"
+                                                    cy="12"
+                                                    r="10"
+                                                    stroke="currentColor"
+                                                    strokeWidth="4"
+                                                />
+                                                <path
+                                                    className="opacity-75"
+                                                    fill="currentColor"
+                                                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                                                />
+                                            </svg>
+                                        ) : (
+                                            <svg
+                                                xmlns="http://www.w3.org/2000/svg"
+                                                className="h-4 w-4"
+                                                fill="none"
+                                                viewBox="0 0 24 24"
+                                                stroke="currentColor"
+                                            >
+                                                <path
+                                                    strokeLinecap="round"
+                                                    strokeLinejoin="round"
+                                                    strokeWidth={2}
+                                                    d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
+                                                />
+                                            </svg>
+                                        )}
+                                        {supportSending ? 'G\u00f6nderiliyor...' : 'G\u00f6nder'}
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* Version + User Profile */}
+                <div className="pt-3 border-t border-slate-700">
+                    <button
+                        onClick={() => setChangelogOpen(true)}
+                        className="mx-auto mb-3 flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-800 border border-slate-700 text-xs text-slate-400 hover:text-white hover:border-slate-500 transition-colors"
+                    >
+                        <span>v{__APP_VERSION__}</span>
+                    </button>
+                    <div className="p-2 rounded-lg hover:bg-slate-800 transition-colors">
+                        <div className="flex items-center space-x-3">
+                            <div className="w-10 h-10 rounded-full bg-sky-500 flex items-center justify-center font-bold text-white">
+                                {currentUser?.displayName?.charAt(0).toUpperCase() ||
+                                    currentUser?.email?.charAt(0).toUpperCase()}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                                <p className="text-sm font-semibold text-white truncate">
+                                    {currentUser?.displayName}
+                                </p>
+                                <p className="text-xs text-slate-400 truncate">
+                                    {currentUser?.email}
+                                </p>
+                            </div>
+                            <button
+                                onClick={handleLogout}
+                                title="&#199;&#305;k&#305;&#351; Yap"
+                                className="text-slate-400 hover:text-red-500 transition-colors"
+                            >
+                                <LogoutIcon />
+                            </button>
+                        </div>
                     </div>
                 </div>
-                <button
-                    onClick={() => setChangelogOpen(true)}
-                    className="mx-auto mt-2 flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-800 border border-slate-700 text-xs text-slate-400 hover:text-white hover:border-slate-500 transition-colors"
-                >
-                    <span>v{__APP_VERSION__}</span>
-                </button>
             </div>
 
             {/* Changelog Modal */}
