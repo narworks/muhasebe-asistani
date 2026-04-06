@@ -577,13 +577,28 @@ const loginAndFetch = async (
     page.on('response', async (resp) => {
         if (resp.url().includes('/apigateway/auth/tdvd/login') && resp.status() === 200) {
             try {
-                const body = await resp.json();
+                const text = await resp.text();
+                const body = JSON.parse(text);
                 if (body.token && body.result !== false) {
                     bearerToken = body.token;
                     logger.debug('[API] Bearer token captured from login response');
                 }
-            } catch {
-                /* response body already consumed */
+            } catch (e) {
+                logger.debug('[API] Token capture failed:', e.message);
+            }
+        }
+    });
+    // Also capture token from request Authorization header as fallback
+    page.on('request', (req) => {
+        if (
+            !bearerToken &&
+            req.url().includes('gib.gov.tr/apigateway/') &&
+            req.headers()['authorization']
+        ) {
+            const auth = req.headers()['authorization'];
+            if (auth.startsWith('Bearer ')) {
+                bearerToken = auth.substring(7);
+                logger.debug('[API] Bearer token captured from request header');
             }
         }
     });
@@ -713,7 +728,7 @@ const loginAndFetch = async (
             return mapped;
         } catch (apiErr) {
             logger.debug('[API] API mode failed, falling back to Puppeteer:', apiErr.message);
-            status('API hatası, tarayıcı moduna geçiliyor...');
+            status(`API hatası (${apiErr.message}), tarayıcı moduna geçiliyor...`);
         }
     }
 
@@ -1545,12 +1560,25 @@ async function fetchSingleDocument(tebligat, apiKey) {
         page.on('response', async (resp) => {
             if (resp.url().includes('/apigateway/auth/tdvd/login') && resp.status() === 200) {
                 try {
-                    const body = await resp.json();
+                    const text = await resp.text();
+                    const body = JSON.parse(text);
                     if (body.token && body.result !== false) {
                         bearerToken = body.token;
                     }
                 } catch {
                     /* consumed */
+                }
+            }
+        });
+        page.on('request', (req) => {
+            if (
+                !bearerToken &&
+                req.url().includes('gib.gov.tr/apigateway/') &&
+                req.headers()['authorization']
+            ) {
+                const auth = req.headers()['authorization'];
+                if (auth.startsWith('Bearer ')) {
+                    bearerToken = auth.substring(7);
                 }
             }
         });
