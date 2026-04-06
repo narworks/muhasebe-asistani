@@ -1464,9 +1464,9 @@ const ETebligat: React.FC = () => {
                     )}
                 </div>
 
-                {/* Otomatik Tarama Zamanlama - Modern Design */}
+                {/* Otomatik Tarama Zamanlama */}
                 <div
-                    className={`mb-8 rounded-xl border overflow-hidden ${scheduleConfig.enabled ? 'bg-gradient-to-br from-indigo-50 to-purple-50 border-indigo-100' : 'bg-gray-50 border-gray-200'}`}
+                    className={`mb-4 rounded-xl border overflow-hidden ${scheduleConfig.enabled ? 'bg-gradient-to-br from-indigo-50 to-purple-50 border-indigo-100' : 'bg-gray-50 border-gray-200'}`}
                 >
                     {/* Header */}
                     <div
@@ -1863,14 +1863,11 @@ const ETebligat: React.FC = () => {
                     )}
                 </div>
 
-                {/* İşlem Logları */}
-                <div className="flex justify-between items-center mb-4">
-                    <div>
-                        <h2 className="text-lg font-semibold">İşlem Logları</h2>
-                        <p className="text-sm text-gray-500">
-                            Otomatik sorgulama durumunu buradan takip edebilirsiniz.
-                        </p>
-                    </div>
+                {/* Tarama */}
+                <div className="flex justify-between items-center mb-3">
+                    <p className="text-sm text-gray-500">
+                        Otomatik sorgulama durumunu buradan takip edebilirsiniz.
+                    </p>
 
                     <div className="flex space-x-3">
                         <button
@@ -2031,7 +2028,7 @@ const ETebligat: React.FC = () => {
                     </div>
                 )}
 
-                <div className="bg-gray-900 rounded-lg p-4 font-mono text-xs overflow-y-auto max-h-[200px]">
+                <div className="bg-gray-900 rounded-lg p-3 font-mono text-xs overflow-y-auto max-h-[160px]">
                     {logs.length === 0 ? (
                         <div className="text-gray-500 text-center mt-10">
                             Henüz işlem yapılmadı. Başlamak için butona tıklayın.
@@ -2072,10 +2069,17 @@ const ETebligat: React.FC = () => {
                     <div ref={logsEndRef} />
                 </div>
 
-                {/* Son Tebligatlar */}
-                <div className="mt-6">
+                {/* Tebligat Sonuçları */}
+                <div className="mt-4">
                     <div className="flex items-center justify-between mb-3">
-                        <h2 className="text-lg font-semibold">Son Tebligatlar</h2>
+                        <div className="flex items-center gap-3">
+                            <h2 className="text-lg font-semibold">
+                                Tebligat Sonu&ccedil;lar&#305;
+                            </h2>
+                            <span className="text-xs font-medium bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">
+                                {tebligatlar.length} kay&#305;t
+                            </span>
+                        </div>
                         <div className="flex items-center space-x-3">
                             <div className="flex items-center gap-1">
                                 <button
