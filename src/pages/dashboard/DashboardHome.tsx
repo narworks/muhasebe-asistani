@@ -86,8 +86,7 @@ const DashboardHome: React.FC = () => {
                 </span>
             </h1>
             <p className="text-slate-400 text-lg mb-10">
-                Ara&ccedil; kutunuzdaki ara&ccedil;lar a&scaron;a&gbreve;&imath;da
-                listelenmi&scaron;tir.
+                Ara&#231; kutunuzdaki ara&#231;lar a&#351;a&#287;&#305;da listenmi&#351;tir.
             </p>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
@@ -102,7 +101,7 @@ const DashboardHome: React.FC = () => {
                                     <p className="text-slate-400 mb-4">{tool.description}</p>
                                 </div>
                                 <div className="flex items-center text-sky-400 font-semibold">
-                                    Arac&imath; Kullan <ArrowRightIcon />
+                                    Arac&#305; Kullan <ArrowRightIcon />
                                 </div>
                             </Card>
                         </Link>
