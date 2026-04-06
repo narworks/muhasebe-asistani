@@ -144,6 +144,9 @@ const Sidebar: React.FC = () => {
     const [supportOpen, setSupportOpen] = useState(false);
     const [supportSubject, setSupportSubject] = useState('');
     const [supportMessage, setSupportMessage] = useState('');
+    const [supportSending, setSupportSending] = useState(false);
+    const [supportSent, setSupportSent] = useState(false);
+    const [supportError, setSupportError] = useState('');
 
     useEffect(() => {
         const fetchModules = () => {
@@ -318,38 +321,109 @@ const Sidebar: React.FC = () => {
                                 />
                             </div>
                         </div>
+                        {supportSent && (
+                            <div className="mt-3 p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-lg text-sm text-emerald-400">
+                                Destek talebiniz g&ouml;nderildi. En k&#305;sa s&uuml;rede
+                                d&ouml;n&uuml;&#351; yapaca&#287;&#305;z.
+                            </div>
+                        )}
+                        {supportError && (
+                            <div className="mt-3 p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-sm text-red-400">
+                                {supportError}
+                            </div>
+                        )}
                         <div className="flex justify-end gap-3 mt-5">
                             <button
-                                onClick={() => setSupportOpen(false)}
-                                className="px-4 py-2 text-sm text-slate-400 hover:text-white transition-colors"
-                            >
-                                Vazge&ccedil;
-                            </button>
-                            <a
-                                href={`mailto:destek@muhasebeasistani.com?subject=${encodeURIComponent(supportSubject || 'Destek Talebi')}&body=${encodeURIComponent(supportMessage)}`}
                                 onClick={() => {
                                     setSupportOpen(false);
-                                    setSupportSubject('');
-                                    setSupportMessage('');
+                                    setSupportSent(false);
+                                    setSupportError('');
                                 }}
-                                className="inline-flex items-center gap-2 bg-sky-600 hover:bg-sky-700 text-white font-semibold px-5 py-2 rounded-lg text-sm transition-colors"
+                                className="px-4 py-2 text-sm text-slate-400 hover:text-white transition-colors"
                             >
-                                <svg
-                                    xmlns="http://www.w3.org/2000/svg"
-                                    className="h-4 w-4"
-                                    fill="none"
-                                    viewBox="0 0 24 24"
-                                    stroke="currentColor"
+                                {supportSent ? 'Kapat' : 'Vazge\u00e7'}
+                            </button>
+                            {!supportSent && (
+                                <button
+                                    disabled={
+                                        supportSending ||
+                                        !supportSubject.trim() ||
+                                        !supportMessage.trim()
+                                    }
+                                    onClick={async () => {
+                                        setSupportSending(true);
+                                        setSupportError('');
+                                        try {
+                                            const res = await fetch(
+                                                'https://muhasebeasistani.com/api/support',
+                                                {
+                                                    method: 'POST',
+                                                    headers: { 'Content-Type': 'application/json' },
+                                                    body: JSON.stringify({
+                                                        email: currentUser?.email || '',
+                                                        name: currentUser?.displayName || '',
+                                                        subject: supportSubject,
+                                                        message: supportMessage,
+                                                    }),
+                                                }
+                                            );
+                                            if (res.ok) {
+                                                setSupportSent(true);
+                                                setSupportSubject('');
+                                                setSupportMessage('');
+                                            } else {
+                                                const data = await res.json();
+                                                setSupportError(data.error || 'G\u00f6nderilemedi');
+                                            }
+                                        } catch {
+                                            setSupportError(
+                                                'Ba\u011flant\u0131 hatas\u0131. L\u00fctfen tekrar deneyin.'
+                                            );
+                                        } finally {
+                                            setSupportSending(false);
+                                        }
+                                    }}
+                                    className="inline-flex items-center gap-2 bg-sky-600 hover:bg-sky-700 text-white font-semibold px-5 py-2 rounded-lg text-sm transition-colors disabled:opacity-50"
                                 >
-                                    <path
-                                        strokeLinecap="round"
-                                        strokeLinejoin="round"
-                                        strokeWidth={2}
-                                        d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
-                                    />
-                                </svg>
-                                G&ouml;nder
-                            </a>
+                                    {supportSending ? (
+                                        <svg
+                                            className="animate-spin h-4 w-4"
+                                            fill="none"
+                                            viewBox="0 0 24 24"
+                                        >
+                                            <circle
+                                                className="opacity-25"
+                                                cx="12"
+                                                cy="12"
+                                                r="10"
+                                                stroke="currentColor"
+                                                strokeWidth="4"
+                                            />
+                                            <path
+                                                className="opacity-75"
+                                                fill="currentColor"
+                                                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                                            />
+                                        </svg>
+                                    ) : (
+                                        <svg
+                                            xmlns="http://www.w3.org/2000/svg"
+                                            className="h-4 w-4"
+                                            fill="none"
+                                            viewBox="0 0 24 24"
+                                            stroke="currentColor"
+                                        >
+                                            <path
+                                                strokeLinecap="round"
+                                                strokeLinejoin="round"
+                                                strokeWidth={2}
+                                                d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
+                                            />
+                                        </svg>
+                                    )}
+                                    {supportSending ? 'G\u00f6nderiliyor...' : 'G\u00f6nder'}
+                                </button>
+                            )}
                         </div>
                     </div>
                 </div>
