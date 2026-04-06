@@ -143,14 +143,20 @@ const Sidebar: React.FC = () => {
     const [isTrial, setIsTrial] = useState(false);
 
     useEffect(() => {
-        window.electronAPI
-            .getSubscriptionStatus()
-            .then((sub) => {
-                setModules(sub.modules || []);
-                setIsTrial(sub.isTrial || false);
-            })
-            .catch(() => {});
-    }, []);
+        const fetchModules = () => {
+            window.electronAPI
+                .getSubscriptionStatus()
+                .then((sub) => {
+                    setModules(sub.modules || []);
+                    setIsTrial(sub.isTrial || false);
+                })
+                .catch(() => {});
+        };
+        fetchModules();
+        // Retry after 3s in case login flow hasn't completed yet
+        const timer = setTimeout(fetchModules, 3000);
+        return () => clearTimeout(timer);
+    }, [currentUser]);
 
     const hasModule = (id: string) => isTrial || modules.includes(id);
 
