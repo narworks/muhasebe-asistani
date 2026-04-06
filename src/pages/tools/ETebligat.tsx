@@ -867,6 +867,13 @@ const ETebligat: React.FC = () => {
         (a, b) => (a.firm_name || '').localeCompare(b.firm_name || '', 'tr')
     );
 
+    // Flat set of all new tebligat IDs from last scan (for highlighting)
+    const allNewTebligatIds = new Set(newTebligatPanel.items.flatMap((g) => g.tebligatIds));
+
+    // New tebligat details for the side panel
+    const newTebligatDetails =
+        allNewTebligatIds.size > 0 ? tebligatlar.filter((t) => allNewTebligatIds.has(t.id)) : [];
+
     const resetFilters = () => {
         setFilterClientId('all');
         setFilterStatus('all');
@@ -1126,42 +1133,6 @@ const ETebligat: React.FC = () => {
                 </div>
             )}
             <h1 className="text-2xl font-bold mb-6 text-gray-800">GİB E-Tebligat Otomasyonu</h1>
-
-            {/* Yeni Tebligat Paneli */}
-            {newTebligatPanel.visible && newTebligatPanel.items.length > 0 && (
-                <div className="mb-6 bg-emerald-50 border border-emerald-200 rounded-lg p-4">
-                    <div className="flex items-center justify-between mb-3">
-                        <h3 className="text-sm font-semibold text-emerald-800">
-                            Yeni Bulunan Tebligatlar (
-                            {newTebligatPanel.items.reduce(
-                                (sum, g) => sum + g.tebligatIds.length,
-                                0
-                            )}
-                            )
-                        </h3>
-                        <button
-                            onClick={() =>
-                                setNewTebligatPanel((prev) => ({ ...prev, visible: false }))
-                            }
-                            className="text-xs text-emerald-600 hover:text-emerald-800"
-                        >
-                            Kapat
-                        </button>
-                    </div>
-                    <div className="space-y-2 max-h-48 overflow-y-auto">
-                        {newTebligatPanel.items.map((group, idx) => (
-                            <div key={idx} className="flex items-center gap-2 text-sm">
-                                <span className="font-medium text-gray-700">
-                                    {group.clientName}
-                                </span>
-                                <span className="bg-emerald-200 text-emerald-800 text-xs px-2 py-0.5 rounded-full">
-                                    {group.tebligatIds.length} yeni
-                                </span>
-                            </div>
-                        ))}
-                    </div>
-                </div>
-            )}
 
             <div className="bg-white p-6 rounded-lg shadow-md flex-1 flex flex-col">
                 {/* Mükellef Yönetimi */}
@@ -2223,6 +2194,12 @@ const ETebligat: React.FC = () => {
                                                             const scanKey = `${group.client_id}-${scanIdx}`;
                                                             const isScanExpanded =
                                                                 expandedScans.has(scanKey);
+                                                            const newInScan =
+                                                                scan.tebligatlar.filter((t) =>
+                                                                    allNewTebligatIds.has(t.id)
+                                                                ).length;
+                                                            const oldInScan =
+                                                                scan.tebligatlar.length - newInScan;
                                                             return (
                                                                 <div key={scanKey}>
                                                                     <button
@@ -2253,13 +2230,35 @@ const ETebligat: React.FC = () => {
                                                                                 {scan.scanLabel}
                                                                             </span>
                                                                         </div>
-                                                                        <span className="text-xs text-gray-500">
-                                                                            {
-                                                                                scan.tebligatlar
-                                                                                    .length
-                                                                            }{' '}
-                                                                            tebligat
-                                                                        </span>
+                                                                        <div className="flex items-center gap-2">
+                                                                            {newInScan > 0 && (
+                                                                                <span className="text-xs font-medium text-emerald-600">
+                                                                                    {newInScan} yeni
+                                                                                </span>
+                                                                            )}
+                                                                            {newInScan > 0 &&
+                                                                                oldInScan > 0 && (
+                                                                                    <span className="text-xs text-gray-300">
+                                                                                        &middot;
+                                                                                    </span>
+                                                                                )}
+                                                                            {oldInScan > 0 && (
+                                                                                <span className="text-xs text-gray-400">
+                                                                                    {oldInScan} eski
+                                                                                </span>
+                                                                            )}
+                                                                            {newInScan === 0 &&
+                                                                                oldInScan === 0 && (
+                                                                                    <span className="text-xs text-gray-400">
+                                                                                        {
+                                                                                            scan
+                                                                                                .tebligatlar
+                                                                                                .length
+                                                                                        }{' '}
+                                                                                        tebligat
+                                                                                    </span>
+                                                                                )}
+                                                                        </div>
                                                                     </button>
                                                                     {isScanExpanded && (
                                                                         <div className="overflow-x-auto">
@@ -2290,7 +2289,7 @@ const ETebligat: React.FC = () => {
                                                                                                 key={
                                                                                                     row.id
                                                                                                 }
-                                                                                                className="border-t border-gray-200 hover:bg-gray-50 cursor-pointer"
+                                                                                                className={`border-t border-gray-200 hover:bg-gray-50 cursor-pointer ${allNewTebligatIds.has(row.id) ? 'bg-emerald-50/60 border-l-2 border-l-emerald-400' : ''}`}
                                                                                                 onClick={() =>
                                                                                                     setSelectedTebligat(
                                                                                                         row
@@ -2466,6 +2465,179 @@ const ETebligat: React.FC = () => {
                     )}
                 </div>
             </div>
+
+            {/* Right Side Panel — New Tebligatlar Detail */}
+            {newTebligatPanel.visible && newTebligatDetails.length > 0 && (
+                <div className="fixed top-0 right-0 h-full w-[420px] bg-white shadow-2xl border-l border-gray-200 z-50 flex flex-col">
+                    <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 bg-emerald-50">
+                        <h3 className="text-base font-bold text-emerald-800">
+                            Yeni Tebligatlar ({newTebligatDetails.length})
+                        </h3>
+                        <button
+                            onClick={() =>
+                                setNewTebligatPanel((prev) => ({ ...prev, visible: false }))
+                            }
+                            className="text-sm text-gray-500 hover:text-gray-800 px-2 py-1 rounded hover:bg-gray-100"
+                        >
+                            Kapat
+                        </button>
+                    </div>
+                    <div className="flex-1 overflow-y-auto">
+                        {newTebligatPanel.items.map((group, gIdx) => {
+                            const groupDetails = newTebligatDetails.filter(
+                                (t) => t.client_id === group.clientId
+                            );
+                            if (groupDetails.length === 0) return null;
+                            return (
+                                <div key={gIdx}>
+                                    <div className="px-5 py-3 bg-gray-50 border-b border-gray-100 sticky top-0">
+                                        <span className="text-sm font-semibold text-gray-700">
+                                            {group.clientName}
+                                        </span>
+                                        <span className="ml-2 text-xs text-emerald-600 font-medium">
+                                            {groupDetails.length} yeni
+                                        </span>
+                                    </div>
+                                    <div className="divide-y divide-gray-100">
+                                        {groupDetails.map((t) => (
+                                            <div
+                                                key={t.id}
+                                                className="px-5 py-3 hover:bg-emerald-50/50 cursor-pointer"
+                                                onClick={() => setSelectedTebligat(t)}
+                                            >
+                                                <div className="flex items-start justify-between gap-2">
+                                                    <div className="min-w-0 flex-1">
+                                                        <p className="text-xs font-mono text-gray-500 mb-0.5">
+                                                            {t.document_no || '-'}
+                                                        </p>
+                                                        <p className="text-sm text-gray-800 font-medium truncate">
+                                                            {t.subject || '-'}
+                                                        </p>
+                                                        <p className="text-xs text-gray-500 truncate">
+                                                            {t.sender || '-'}
+                                                        </p>
+                                                    </div>
+                                                    <div
+                                                        className="flex items-center gap-1.5 flex-shrink-0"
+                                                        onClick={(e) => e.stopPropagation()}
+                                                    >
+                                                        {t.document_path ? (
+                                                            <>
+                                                                <button
+                                                                    onClick={() =>
+                                                                        handleOpenDocument(
+                                                                            t.document_path!
+                                                                        )
+                                                                    }
+                                                                    className="p-1 text-sky-600 hover:bg-sky-50 rounded"
+                                                                    title="A&ccedil;"
+                                                                >
+                                                                    <svg
+                                                                        xmlns="http://www.w3.org/2000/svg"
+                                                                        className="h-4 w-4"
+                                                                        fill="none"
+                                                                        viewBox="0 0 24 24"
+                                                                        stroke="currentColor"
+                                                                    >
+                                                                        <path
+                                                                            strokeLinecap="round"
+                                                                            strokeLinejoin="round"
+                                                                            strokeWidth={2}
+                                                                            d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                                                                        />
+                                                                        <path
+                                                                            strokeLinecap="round"
+                                                                            strokeLinejoin="round"
+                                                                            strokeWidth={2}
+                                                                            d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
+                                                                        />
+                                                                    </svg>
+                                                                </button>
+                                                                <button
+                                                                    onClick={() =>
+                                                                        handleShareDocument(
+                                                                            t.document_path!
+                                                                        )
+                                                                    }
+                                                                    className="p-1 text-emerald-600 hover:bg-emerald-50 rounded"
+                                                                    title="Klas&ouml;r"
+                                                                >
+                                                                    <svg
+                                                                        xmlns="http://www.w3.org/2000/svg"
+                                                                        className="h-4 w-4"
+                                                                        fill="none"
+                                                                        viewBox="0 0 24 24"
+                                                                        stroke="currentColor"
+                                                                    >
+                                                                        <path
+                                                                            strokeLinecap="round"
+                                                                            strokeLinejoin="round"
+                                                                            strokeWidth={2}
+                                                                            d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"
+                                                                        />
+                                                                    </svg>
+                                                                </button>
+                                                            </>
+                                                        ) : (
+                                                            <button
+                                                                onClick={() =>
+                                                                    handleFetchDocument(t.id)
+                                                                }
+                                                                disabled={
+                                                                    fetchingDocumentId === t.id
+                                                                }
+                                                                className="p-1 text-amber-500 hover:bg-amber-50 rounded disabled:opacity-50"
+                                                                title="&#304;ndir"
+                                                            >
+                                                                {fetchingDocumentId === t.id ? (
+                                                                    <svg
+                                                                        className="animate-spin h-4 w-4"
+                                                                        fill="none"
+                                                                        viewBox="0 0 24 24"
+                                                                    >
+                                                                        <circle
+                                                                            className="opacity-25"
+                                                                            cx="12"
+                                                                            cy="12"
+                                                                            r="10"
+                                                                            stroke="currentColor"
+                                                                            strokeWidth="4"
+                                                                        />
+                                                                        <path
+                                                                            className="opacity-75"
+                                                                            fill="currentColor"
+                                                                            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                                                                        />
+                                                                    </svg>
+                                                                ) : (
+                                                                    <svg
+                                                                        xmlns="http://www.w3.org/2000/svg"
+                                                                        className="h-4 w-4"
+                                                                        fill="none"
+                                                                        viewBox="0 0 24 24"
+                                                                        stroke="currentColor"
+                                                                    >
+                                                                        <path
+                                                                            strokeLinecap="round"
+                                                                            strokeLinejoin="round"
+                                                                            strokeWidth={2}
+                                                                            d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
+                                                                        />
+                                                                    </svg>
+                                                                )}
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
