@@ -85,7 +85,12 @@ export interface ScanStatus {
 export type ScanUpdate =
     | { type: 'progress'; progress: ScanProgress }
     | { type: 'scan-state'; scanState: ScanState }
-    | { type: 'data-updated' }
+    | {
+          type: 'data-updated';
+          newTebligatIds?: number[];
+          clientId?: number;
+          clientName?: string;
+      }
     | ScanStatus;
 
 // Schedule types

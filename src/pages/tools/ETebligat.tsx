@@ -88,6 +88,12 @@ const ETebligat: React.FC = () => {
         hourlyLimit: 10,
     });
 
+    // New tebligat panel (shows after scan)
+    const [newTebligatPanel, setNewTebligatPanel] = useState<{
+        items: Array<{ clientName: string; clientId: number; tebligatIds: number[] }>;
+        visible: boolean;
+    }>({ items: [], visible: false });
+
     // Excel import
     const [importResult, setImportResult] = useState<{
         saved: number;
@@ -151,6 +157,20 @@ const ETebligat: React.FC = () => {
         const handleUpdate = (status: ScanUpdate) => {
             if (status.type === 'data-updated') {
                 fetchTebligatlar();
+                // Collect new tebligat IDs for the panel
+                if (status.newTebligatIds && status.newTebligatIds.length > 0) {
+                    setNewTebligatPanel((prev) => ({
+                        visible: true,
+                        items: [
+                            ...prev.items,
+                            {
+                                clientName: status.clientName || '',
+                                clientId: status.clientId || 0,
+                                tebligatIds: status.newTebligatIds || [],
+                            },
+                        ],
+                    }));
+                }
                 return;
             }
             if (status.type === 'progress') {
@@ -328,6 +348,7 @@ const ETebligat: React.FC = () => {
         setScanState(null);
         setInsufficientCredits(false);
         setTebligatlar([]); // Listeyi sıfırla
+        setNewTebligatPanel({ items: [], visible: false }); // Reset panel
         addLog('Tarama başlatılıyor...', 'info');
         window.electronAPI.startScan();
     };
@@ -1058,6 +1079,42 @@ const ETebligat: React.FC = () => {
             )}
             <h1 className="text-2xl font-bold mb-6 text-gray-800">GİB E-Tebligat Otomasyonu</h1>
 
+            {/* Yeni Tebligat Paneli */}
+            {newTebligatPanel.visible && newTebligatPanel.items.length > 0 && (
+                <div className="mb-6 bg-emerald-50 border border-emerald-200 rounded-lg p-4">
+                    <div className="flex items-center justify-between mb-3">
+                        <h3 className="text-sm font-semibold text-emerald-800">
+                            Yeni Bulunan Tebligatlar (
+                            {newTebligatPanel.items.reduce(
+                                (sum, g) => sum + g.tebligatIds.length,
+                                0
+                            )}
+                            )
+                        </h3>
+                        <button
+                            onClick={() =>
+                                setNewTebligatPanel((prev) => ({ ...prev, visible: false }))
+                            }
+                            className="text-xs text-emerald-600 hover:text-emerald-800"
+                        >
+                            Kapat
+                        </button>
+                    </div>
+                    <div className="space-y-2 max-h-48 overflow-y-auto">
+                        {newTebligatPanel.items.map((group, idx) => (
+                            <div key={idx} className="flex items-center gap-2 text-sm">
+                                <span className="font-medium text-gray-700">
+                                    {group.clientName}
+                                </span>
+                                <span className="bg-emerald-200 text-emerald-800 text-xs px-2 py-0.5 rounded-full">
+                                    {group.tebligatIds.length} yeni
+                                </span>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+
             <div className="bg-white p-6 rounded-lg shadow-md flex-1 flex flex-col">
                 {/* Mükellef Yönetimi */}
                 <div className="mb-8">
@@ -1249,6 +1306,7 @@ const ETebligat: React.FC = () => {
                                     <th className="px-4 py-2">Firma</th>
                                     <th className="px-4 py-2">Vergi No</th>
                                     <th className="px-4 py-2">GİB Kullanıcı</th>
+                                    <th className="px-4 py-2">Son Tarama</th>
                                     <th className="px-4 py-2">Durum</th>
                                     <th className="px-4 py-2">İşlem</th>
                                 </tr>
@@ -1256,7 +1314,7 @@ const ETebligat: React.FC = () => {
                             <tbody>
                                 {clients.length === 0 ? (
                                     <tr>
-                                        <td className="px-4 py-3 text-gray-500" colSpan={5}>
+                                        <td className="px-4 py-3 text-gray-500" colSpan={6}>
                                             Henüz mükellef eklenmedi.
                                         </td>
                                     </tr>
@@ -1271,6 +1329,19 @@ const ETebligat: React.FC = () => {
                                             </td>
                                             <td className="px-4 py-2 whitespace-nowrap">
                                                 {client.gib_user_code}
+                                            </td>
+                                            <td className="px-4 py-2 whitespace-nowrap text-xs text-gray-500">
+                                                {client.last_full_scan_at
+                                                    ? new Date(
+                                                          client.last_full_scan_at
+                                                      ).toLocaleDateString('tr-TR', {
+                                                          day: '2-digit',
+                                                          month: '2-digit',
+                                                          year: 'numeric',
+                                                          hour: '2-digit',
+                                                          minute: '2-digit',
+                                                      })
+                                                    : '-'}
                                             </td>
                                             <td className="px-4 py-2 whitespace-nowrap">
                                                 {client.status || 'active'}

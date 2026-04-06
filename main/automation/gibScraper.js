@@ -1346,6 +1346,7 @@ async function run(onStatusUpdate, apiKey, scanConfig = {}, options = {}, deduct
 
                     const count = tebligatlar.length;
                     let savedCount = 0;
+                    let newTebligatIds = [];
 
                     if (count === 0) {
                         // Tebligat bulunamadı - "Tebligat yok" kaydı oluştur
@@ -1361,7 +1362,11 @@ async function run(onStatusUpdate, apiKey, scanConfig = {}, options = {}, deduct
                                 documentPath: null,
                             },
                         ];
-                        savedCount = database.saveTebligatlar(client.id, noNotificationRecord);
+                        const saveResult = database.saveTebligatlar(
+                            client.id,
+                            noNotificationRecord
+                        );
+                        savedCount = saveResult.inserted;
                         onStatusUpdate({ type: 'data-updated' });
                         onStatusUpdate({
                             message: `${client.firm_name}: Tebligat bulunamadı.`,
@@ -1375,8 +1380,15 @@ async function run(onStatusUpdate, apiKey, scanConfig = {}, options = {}, deduct
                         const alreadyDownloaded = tebligatlar.filter(
                             (t) => t.documentPath && !t._newDownload
                         ).length;
-                        savedCount = database.saveTebligatlar(client.id, tebligatlar);
-                        onStatusUpdate({ type: 'data-updated' });
+                        const saveResult = database.saveTebligatlar(client.id, tebligatlar);
+                        savedCount = saveResult.inserted;
+                        newTebligatIds = saveResult.newIds;
+                        onStatusUpdate({
+                            type: 'data-updated',
+                            newTebligatIds,
+                            clientId: client.id,
+                            clientName: client.firm_name,
+                        });
 
                         const parts = [`${client.firm_name}: ${count} tebligat bulundu`];
                         if (savedCount > 0) parts.push(`${savedCount} yeni kayıt`);

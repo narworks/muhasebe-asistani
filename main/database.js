@@ -203,6 +203,7 @@ function saveTebligatlar(clientId, tebligatlar) {
 
     const insertMany = db.transaction((items) => {
         let inserted = 0;
+        const newIds = [];
         for (const item of items) {
             const result = insert.run({
                 client_id: clientId,
@@ -219,7 +220,10 @@ function saveTebligatlar(clientId, tebligatlar) {
                 notification_date: item.notificationDate || null,
                 read_date: item.readDate || null,
             });
-            inserted += result.changes || 0;
+            if (result.changes > 0) {
+                inserted++;
+                newIds.push(Number(result.lastInsertRowid));
+            }
 
             // If record already existed, update its document_path
             if (result.changes === 0 && item.documentPath) {
@@ -230,7 +234,7 @@ function saveTebligatlar(clientId, tebligatlar) {
                 });
             }
         }
-        return inserted;
+        return { inserted, newIds };
     });
 
     return insertMany(tebligatlar);
