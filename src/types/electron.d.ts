@@ -56,16 +56,6 @@ export interface IElectronAPI {
         hourlyUsed: number;
         hourlyLimit: number;
     }>;
-    vekaletDiscovery: (credentials: { userCode: string; password: string }) => Promise<{
-        success: boolean;
-        error?: string;
-        token?: string;
-        userInfo?: Record<string, unknown>;
-        hasDegistirButton?: { found: boolean; text?: string; tag?: string };
-        menuItems?: Array<{ text: string; tag: string; href: string | null }>;
-        apiLogCount?: number;
-        logPath?: string;
-    }>;
     onScanUpdate: (callback: (status: ScanStatus) => void) => void;
     onScanError: (callback: (error: string) => void) => void;
     onScanComplete: (callback: (result: string) => void) => void;

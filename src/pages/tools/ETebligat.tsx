@@ -92,19 +92,6 @@ const ETebligat: React.FC = () => {
     const [showLegalConsent, setShowLegalConsent] = useState(false);
     const [legalConsentAccepted, setLegalConsentAccepted] = useState(true); // assume true until checked
 
-    // Vekalet discovery
-    const [vekaletForm, setVekaletForm] = useState({ userCode: '', password: '' });
-    const [vekaletTesting, setVekaletTesting] = useState(false);
-    const [vekaletResult, setVekaletResult] = useState<{
-        success: boolean;
-        error?: string;
-        userInfo?: Record<string, unknown>;
-        hasDegistirButton?: { found: boolean; text?: string };
-        menuItems?: Array<{ text: string }>;
-        logPath?: string;
-    } | null>(null);
-    const [showVekaletPanel, setShowVekaletPanel] = useState(false);
-
     // Accordion & Pagination state
     const [expandedClients, setExpandedClients] = useState<Set<number>>(new Set());
     const [clientPages, setClientPages] = useState<Record<number, number>>({});
@@ -279,26 +266,6 @@ const ETebligat: React.FC = () => {
 
     const addLog = (message: string, type: 'info' | 'error' | 'success' | 'process' = 'info') => {
         setLogs((prev) => [...prev, { message, type, timestamp: new Date().toLocaleTimeString() }]);
-    };
-
-    const handleVekaletTest = async () => {
-        if (!vekaletForm.userCode || !vekaletForm.password) return;
-        setVekaletTesting(true);
-        setVekaletResult(null);
-        addLog('Vekalet keşfi başlatılıyor...', 'info');
-        try {
-            const result = await window.electronAPI.vekaletDiscovery(vekaletForm);
-            setVekaletResult(result);
-            if (result.success) {
-                addLog(`Vekalet keşfi tamamlandı. Log: ${result.logPath}`, 'success');
-            } else {
-                addLog(`Vekalet keşfi başarısız: ${result.error}`, 'error');
-            }
-        } catch (err) {
-            addLog(`Vekalet keşfi hatası: ${String(err)}`, 'error');
-        } finally {
-            setVekaletTesting(false);
-        }
     };
 
     const handleStartScan = async () => {
@@ -1641,152 +1608,6 @@ const ETebligat: React.FC = () => {
                                     </div>
                                 </div>
                             </div>
-                        </div>
-                    )}
-                </div>
-
-                {/* Vekalet Keşfi */}
-                <div className="mb-8 rounded-xl border bg-amber-50 border-amber-200 overflow-hidden">
-                    <button
-                        onClick={() => setShowVekaletPanel(!showVekaletPanel)}
-                        className="w-full flex items-center justify-between px-6 py-4"
-                    >
-                        <div className="flex items-center gap-3">
-                            <span className="text-lg">&#x1f50d;</span>
-                            <div className="text-left">
-                                <h3 className="text-base font-bold text-amber-900">
-                                    Vekalet Sistemi Testi
-                                </h3>
-                                <p className="text-xs text-amber-700">
-                                    Mali m&uuml;&#351;avir hesab&#305;yla giri&#351; yap&#305;p
-                                    vekalet deste&#287;ini ke&#351;fet
-                                </p>
-                            </div>
-                        </div>
-                        <svg
-                            className={`h-5 w-5 text-amber-600 transition-transform ${showVekaletPanel ? 'rotate-180' : ''}`}
-                            fill="none"
-                            viewBox="0 0 24 24"
-                            stroke="currentColor"
-                        >
-                            <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth={2}
-                                d="M19 9l-7 7-7-7"
-                            />
-                        </svg>
-                    </button>
-
-                    {showVekaletPanel && (
-                        <div className="px-6 pb-6 space-y-4">
-                            <div className="bg-white rounded-lg p-4 border border-amber-100">
-                                <p className="text-xs text-amber-800 mb-3">
-                                    Mali m&uuml;&#351;avirin kendi G&#304;B kullan&#305;c&#305; kodu
-                                    ve &#351;ifresini girin. Sistem &quot;De&#287;i&#351;tir&quot;
-                                    butonunu ve vekalet API&apos;lerini arayacak.
-                                </p>
-                                <div className="grid grid-cols-2 gap-3 mb-3">
-                                    <input
-                                        type="text"
-                                        placeholder="G&#304;B Kullan&#305;c&#305; Kodu"
-                                        value={vekaletForm.userCode}
-                                        onChange={(e) =>
-                                            setVekaletForm((f) => ({
-                                                ...f,
-                                                userCode: e.target.value,
-                                            }))
-                                        }
-                                        className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
-                                    />
-                                    <input
-                                        type="password"
-                                        placeholder="&#350;ifre"
-                                        value={vekaletForm.password}
-                                        onChange={(e) =>
-                                            setVekaletForm((f) => ({
-                                                ...f,
-                                                password: e.target.value,
-                                            }))
-                                        }
-                                        className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
-                                    />
-                                </div>
-                                <button
-                                    onClick={handleVekaletTest}
-                                    disabled={
-                                        vekaletTesting ||
-                                        !vekaletForm.userCode ||
-                                        !vekaletForm.password
-                                    }
-                                    className={`px-4 py-2 rounded-lg text-sm font-medium text-white ${
-                                        vekaletTesting
-                                            ? 'bg-gray-400 cursor-not-allowed'
-                                            : 'bg-amber-600 hover:bg-amber-700'
-                                    }`}
-                                >
-                                    {vekaletTesting
-                                        ? 'Test ediliyor...'
-                                        : 'Vekalet Ke\u015ffi Ba\u015flat'}
-                                </button>
-                            </div>
-
-                            {vekaletResult && (
-                                <div
-                                    className={`rounded-lg p-4 border text-sm ${
-                                        vekaletResult.success
-                                            ? 'bg-green-50 border-green-200'
-                                            : 'bg-red-50 border-red-200'
-                                    }`}
-                                >
-                                    <p className="font-bold mb-2">
-                                        {vekaletResult.success
-                                            ? 'Ke\u015fif Tamamland\u0131'
-                                            : `Hata: ${vekaletResult.error}`}
-                                    </p>
-                                    {vekaletResult.userInfo && (
-                                        <p>
-                                            Kullan\u0131c\u0131:{' '}
-                                            {String(
-                                                (vekaletResult.userInfo as Record<string, unknown>)
-                                                    .name ?? ''
-                                            )}{' '}
-                                            {String(
-                                                (vekaletResult.userInfo as Record<string, unknown>)
-                                                    .surname ?? ''
-                                            )}
-                                        </p>
-                                    )}
-                                    {vekaletResult.hasDegistirButton && (
-                                        <p
-                                            className={`font-bold mt-1 ${
-                                                vekaletResult.hasDegistirButton.found
-                                                    ? 'text-green-700'
-                                                    : 'text-red-700'
-                                            }`}
-                                        >
-                                            &quot;De\u011fi\u015ftir&quot; butonu:{' '}
-                                            {vekaletResult.hasDegistirButton.found
-                                                ? 'BULUNDU!'
-                                                : 'Bulunamad\u0131'}
-                                        </p>
-                                    )}
-                                    {vekaletResult.menuItems &&
-                                        vekaletResult.menuItems.length > 0 && (
-                                            <p className="mt-1">
-                                                Men\u00fc \u00f6\u011feleri:{' '}
-                                                {vekaletResult.menuItems
-                                                    .map((m) => m.text)
-                                                    .join(', ')}
-                                            </p>
-                                        )}
-                                    {vekaletResult.logPath && (
-                                        <p className="mt-1 text-xs text-gray-500 break-all">
-                                            Log: {vekaletResult.logPath}
-                                        </p>
-                                    )}
-                                </div>
-                            )}
                         </div>
                     )}
                 </div>

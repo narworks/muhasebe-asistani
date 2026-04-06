@@ -38,7 +38,15 @@ function init(win) {
     });
 
     autoUpdater.on('error', (err) => {
-        console.error('[AutoUpdater] Error:', err.message);
+        console.error('[AutoUpdater] Error:', err.message, err.stack);
+        logger.info(
+            '[AutoUpdater] Platform:',
+            process.platform,
+            'Arch:',
+            process.arch,
+            'Version:',
+            app.getVersion()
+        );
         sendStatusToWindow('update-error', { message: err.message });
     });
 
