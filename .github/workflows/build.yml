@@ -71,7 +71,18 @@ jobs:
                   fi
 
             - name: Install dependencies
+              env:
+                  PUPPETEER_CACHE_DIR: ${{ github.workspace }}/.puppeteer-cache
               run: npm ci
+
+            - name: Verify Puppeteer Chromium downloaded
+              shell: bash
+              env:
+                  PUPPETEER_CACHE_DIR: ${{ github.workspace }}/.puppeteer-cache
+              run: |
+                  npx puppeteer browsers install chrome
+                  echo "Puppeteer cache contents:"
+                  ls -la "${PUPPETEER_CACHE_DIR}" || echo "cache not found"
 
             - name: Run linting
               run: npm run lint

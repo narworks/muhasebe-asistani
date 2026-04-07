@@ -15,6 +15,12 @@ const ExcelJS = require('exceljs');
 const path = require('path');
 const Sentry = require('@sentry/electron/main');
 
+// Tell Puppeteer where to find the bundled Chromium binary in production
+if (app.isPackaged) {
+    // process.resourcesPath points to the app's Resources folder where extraResources land
+    process.env.PUPPETEER_CACHE_DIR = path.join(process.resourcesPath, 'puppeteer-cache');
+}
+
 // In production: use build-time generated config. In dev: use .env via dotenv.
 if (app.isPackaged) {
     try {
