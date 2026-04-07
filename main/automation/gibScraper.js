@@ -1586,7 +1586,7 @@ async function run(onStatusUpdate, apiKey, scanConfig = {}, options = {}, deduct
         lastScanState.successes = successCount;
         // Log full error to file for debugging
         logger.debug('[SCAN ERROR]', error?.stack || error?.message || String(error));
-        // Report to Sentry with context
+        // Report to Sentry with context (technical details)
         if (Sentry) {
             Sentry.captureException(error, {
                 tags: {
@@ -1602,9 +1602,10 @@ async function run(onStatusUpdate, apiKey, scanConfig = {}, options = {}, deduct
                 },
             });
         }
-        const errMsg = error?.message || String(error);
+        // Show friendly message to user — technical details go to Sentry only
         onStatusUpdate({
-            message: `Tarama hatası: ${errMsg}`,
+            message:
+                'Tarama sırasında beklenmeyen bir hata oluştu. Sorun otomatik olarak bildirildi, en kısa sürede inceleyeceğiz. Lütfen tekrar deneyin.',
             type: 'error',
         });
     } finally {
