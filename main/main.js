@@ -38,6 +38,10 @@ if (app.isPackaged) {
 }
 
 // Sentry init — must come after env loading, before any error-prone code
+// Per-session error deduplication — don't spam Sentry with same error
+const _sentSentryFingerprints = new Map(); // fingerprint -> timestamp
+const SENTRY_DEDUPE_WINDOW_MS = 60 * 60 * 1000; // 1 hour
+
 if (process.env.SENTRY_DSN) {
     Sentry.init({
         dsn: process.env.SENTRY_DSN,
@@ -60,16 +64,26 @@ if (process.env.SENTRY_DSN) {
                     }
                 }
             }
+
+            // Deduplication: drop if same error sent within last hour
+            const fp = event.exception?.values?.[0]
+                ? `${event.exception.values[0].type}:${event.exception.values[0].value}`
+                : event.message;
+            if (fp) {
+                const now = Date.now();
+                const lastSent = _sentSentryFingerprints.get(fp);
+                if (lastSent && now - lastSent < SENTRY_DEDUPE_WINDOW_MS) {
+                    return null; // Drop event
+                }
+                _sentSentryFingerprints.set(fp, now);
+                // Cleanup old entries
+                for (const [key, ts] of _sentSentryFingerprints) {
+                    if (now - ts > SENTRY_DEDUPE_WINDOW_MS) {
+                        _sentSentryFingerprints.delete(key);
+                    }
+                }
+            }
             return event;
-        },
-    });
-    // Send a startup ping so we can verify Sentry connectivity per launch
-    Sentry.captureMessage(`App started v${app.getVersion()}`, {
-        level: 'info',
-        tags: {
-            event_type: 'app-startup',
-            platform: process.platform,
-            arch: process.arch,
         },
     });
 } else {
