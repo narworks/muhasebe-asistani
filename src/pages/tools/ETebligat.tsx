@@ -111,8 +111,8 @@ const ETebligat: React.FC = () => {
     const [importing, setImporting] = useState(false);
     const importFileRef = useRef<HTMLInputElement>(null);
 
-    // Collapsible sections
-    const [showClientForm, setShowClientForm] = useState(false);
+    // Mükellef Yönetimi modal
+    const [showClientModal, setShowClientModal] = useState(false);
 
     // Client limit
     const [clientLimit, setClientLimit] = useState<{
@@ -1138,331 +1138,379 @@ const ETebligat: React.FC = () => {
             <h1 className="text-2xl font-bold mb-6 text-gray-800">GİB E-Tebligat Otomasyonu</h1>
 
             <div className="bg-white p-6 rounded-lg shadow-md flex-1 flex flex-col">
-                {/* Mükellef Yönetimi — Collapsible */}
-                <div className="mb-6">
-                    <button
-                        onClick={() => setShowClientForm(!showClientForm)}
-                        className="w-full flex items-center justify-between py-2 group"
-                    >
-                        <div className="flex items-center gap-2">
-                            <svg
-                                xmlns="http://www.w3.org/2000/svg"
-                                className={`h-4 w-4 text-gray-400 transition-transform ${showClientForm ? 'rotate-90' : ''}`}
-                                fill="none"
-                                viewBox="0 0 24 24"
-                                stroke="currentColor"
-                            >
-                                <path
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                    strokeWidth={2}
-                                    d="M9 5l7 7-7 7"
-                                />
-                            </svg>
-                            <h2 className="text-lg font-semibold">M&uuml;kellef Y&ouml;netimi</h2>
+                {/* Mükellef Yönetimi — Summary + Modal Trigger */}
+                <div className="mb-6 bg-gray-50 border border-gray-200 rounded-lg p-4">
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                            <h2 className="text-lg font-semibold text-gray-800">
+                                M&uuml;kellef Y&ouml;netimi
+                            </h2>
                             <span className="text-xs font-medium bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full">
                                 {clients.length} m&uuml;kellef
                             </span>
                         </div>
-                        {clientLimit && (
-                            <div className="flex items-center gap-2">
-                                <span
-                                    className={`text-sm font-medium ${clientLimit.remaining <= 10 ? 'text-red-500' : 'text-gray-500'}`}
-                                >
-                                    {clientLimit.remaining} / {clientLimit.maxClients} hak
-                                    kald&#305;
-                                </span>
-                                <div className="w-24 h-2 bg-gray-200 rounded-full overflow-hidden">
-                                    <div
-                                        className={`h-full rounded-full transition-all ${clientLimit.remaining <= 10 ? 'bg-red-500' : 'bg-emerald-500'}`}
-                                        style={{
-                                            width: `${Math.min((clientLimit.totalAdded / clientLimit.maxClients) * 100, 100)}%`,
-                                        }}
-                                    />
-                                </div>
-                            </div>
-                        )}
-                    </button>
-                    {showClientForm && (
-                        <div className="mt-3">
-                            <p className="text-sm text-gray-500 mb-4">
-                                Tarama i&ccedil;in m&uuml;kellef bilgilerini kaydedin.
-                            </p>
-
-                            <form
-                                onSubmit={handleSaveClient}
-                                className="grid grid-cols-1 md:grid-cols-2 gap-4"
-                                noValidate
-                            >
-                                <div>
-                                    <label className="block text-xs font-semibold text-gray-500 mb-1">
-                                        Firma Adı
-                                    </label>
-                                    <input
-                                        type="text"
-                                        value={clientForm.firm_name}
-                                        onChange={(e) =>
-                                            handleClientFieldChange('firm_name', e.target.value)
-                                        }
-                                        className={`w-full border rounded-md px-3 py-2 text-sm text-gray-900 bg-white ${
-                                            clientErrors.firm_name
-                                                ? 'border-red-500'
-                                                : 'border-gray-300'
-                                        }`}
-                                        placeholder="Örnek Ltd. Şti."
-                                    />
-                                    {clientErrors.firm_name && (
-                                        <p className="mt-1 text-xs text-red-500">
-                                            {clientErrors.firm_name}
-                                        </p>
-                                    )}
-                                </div>
-                                <div>
-                                    <label className="block text-xs font-semibold text-gray-500 mb-1">
-                                        Vergi No
-                                    </label>
-                                    <input
-                                        type="text"
-                                        value={clientForm.tax_number}
-                                        onChange={(e) =>
-                                            handleClientFieldChange('tax_number', e.target.value)
-                                        }
-                                        className={`w-full border rounded-md px-3 py-2 text-sm text-gray-900 bg-white ${
-                                            clientErrors.tax_number
-                                                ? 'border-red-500'
-                                                : 'border-gray-300'
-                                        }`}
-                                        placeholder="Opsiyonel"
-                                    />
-                                    {clientErrors.tax_number && (
-                                        <p className="mt-1 text-xs text-red-500">
-                                            {clientErrors.tax_number}
-                                        </p>
-                                    )}
-                                </div>
-                                <div>
-                                    <label className="block text-xs font-semibold text-gray-500 mb-1">
-                                        GİB Kullanıcı Kodu
-                                    </label>
-                                    <input
-                                        type="text"
-                                        value={clientForm.gib_user_code}
-                                        onChange={(e) =>
-                                            handleClientFieldChange('gib_user_code', e.target.value)
-                                        }
-                                        className={`w-full border rounded-md px-3 py-2 text-sm text-gray-900 bg-white ${
-                                            clientErrors.gib_user_code
-                                                ? 'border-red-500'
-                                                : 'border-gray-300'
-                                        }`}
-                                    />
-                                    {clientErrors.gib_user_code && (
-                                        <p className="mt-1 text-xs text-red-500">
-                                            {clientErrors.gib_user_code}
-                                        </p>
-                                    )}
-                                </div>
-                                <div>
-                                    <label className="block text-xs font-semibold text-gray-500 mb-1">
-                                        GİB Şifre
-                                    </label>
-                                    <input
-                                        type="password"
-                                        value={clientForm.gib_password}
-                                        onChange={(e) =>
-                                            handleClientFieldChange('gib_password', e.target.value)
-                                        }
-                                        className={`w-full border rounded-md px-3 py-2 text-sm text-gray-900 bg-white ${
-                                            clientErrors.gib_password
-                                                ? 'border-red-500'
-                                                : 'border-gray-300'
-                                        }`}
-                                        placeholder={
-                                            editingClientId ? '(değiştirmek için yazın)' : ''
-                                        }
-                                    />
-                                    {clientErrors.gib_password && (
-                                        <p className="mt-1 text-xs text-red-500">
-                                            {clientErrors.gib_password}
-                                        </p>
-                                    )}
-                                </div>
-                                <div className="md:col-span-2 flex items-center justify-between">
-                                    {clientErrors._form && (
-                                        <p className="text-sm text-red-500">{clientErrors._form}</p>
-                                    )}
-                                    <div className="ml-auto flex items-center gap-3">
-                                        <input
-                                            ref={importFileRef}
-                                            type="file"
-                                            accept=".xlsx,.xls"
-                                            className="hidden"
-                                            onChange={handleExcelImport}
+                        <div className="flex items-center gap-3">
+                            {clientLimit && (
+                                <div className="flex items-center gap-2">
+                                    <span
+                                        className={`text-sm font-medium ${clientLimit.remaining <= 10 ? 'text-red-500' : 'text-gray-500'}`}
+                                    >
+                                        {clientLimit.remaining} / {clientLimit.maxClients} hak
+                                        kald&#305;
+                                    </span>
+                                    <div className="w-24 h-2 bg-gray-200 rounded-full overflow-hidden">
+                                        <div
+                                            className={`h-full rounded-full transition-all ${clientLimit.remaining <= 10 ? 'bg-red-500' : 'bg-emerald-500'}`}
+                                            style={{
+                                                width: `${Math.min((clientLimit.totalAdded / clientLimit.maxClients) * 100, 100)}%`,
+                                            }}
                                         />
-                                        <button
-                                            type="button"
-                                            disabled={importing}
-                                            onClick={() => importFileRef.current?.click()}
-                                            className="border border-emerald-600 text-emerald-700 text-sm font-semibold px-4 py-2 rounded-md hover:bg-emerald-50 disabled:opacity-50"
-                                        >
-                                            {importing
-                                                ? 'İçe aktarılıyor...'
-                                                : "Excel'den İçe Aktar"}
-                                        </button>
-                                        <button
-                                            type="submit"
-                                            disabled={savingClient}
-                                            className="bg-indigo-600 text-white text-sm font-semibold px-4 py-2 rounded-md hover:bg-indigo-700 disabled:opacity-50"
-                                        >
-                                            {savingClient
-                                                ? 'Kaydediliyor...'
-                                                : editingClientId
-                                                  ? 'Mükellef Güncelle'
-                                                  : 'Mükellef Kaydet'}
-                                        </button>
-                                        {editingClientId && (
-                                            <button
-                                                type="button"
-                                                onClick={handleCancelEdit}
-                                                className="text-sm text-gray-500 hover:text-gray-700"
-                                            >
-                                                Vazgeç
-                                            </button>
-                                        )}
                                     </div>
                                 </div>
-                            </form>
-
-                            {/* Excel Import Sonucu */}
-                            {importResult && (
-                                <div
-                                    className={`mt-4 p-4 rounded-lg text-sm ${
-                                        importResult.limitError
-                                            ? 'bg-red-50 border border-red-200'
-                                            : importResult.saved > 0
-                                              ? 'bg-green-50 border border-green-200'
-                                              : 'bg-yellow-50 border border-yellow-200'
-                                    }`}
-                                >
-                                    {importResult.limitError ? (
-                                        <p className="text-red-700">{importResult.limitError}</p>
-                                    ) : (
-                                        <>
-                                            <p className="font-semibold text-gray-800">
-                                                {importResult.saved} mükellef eklendi
-                                                {importResult.errors.length > 0 &&
-                                                    `, ${importResult.errors.length} hatalı`}
-                                                {importResult.parseErrors.length > 0 &&
-                                                    `, ${importResult.parseErrors.length} satır atlandı`}
-                                            </p>
-                                            {importResult.errors.length > 0 && (
-                                                <ul className="mt-2 text-red-600 list-disc list-inside">
-                                                    {importResult.errors.map((e, i) => (
-                                                        <li key={i}>
-                                                            Satır {e.row}: {e.firm_name} — {e.error}
-                                                        </li>
-                                                    ))}
-                                                </ul>
-                                            )}
-                                        </>
-                                    )}
-                                    <button
-                                        onClick={() => setImportResult(null)}
-                                        className="mt-2 text-xs text-gray-500 hover:text-gray-700"
-                                    >
-                                        Kapat
-                                    </button>
-                                </div>
                             )}
+                            <button
+                                type="button"
+                                onClick={() => setShowClientModal(true)}
+                                className="bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold px-4 py-2 rounded-md transition-colors"
+                            >
+                                Y&ouml;net
+                            </button>
+                        </div>
+                    </div>
+                </div>
 
-                            <div className="mt-6 overflow-x-auto border border-gray-200 rounded-lg">
-                                <table className="min-w-full text-sm text-left text-gray-700">
-                                    <thead className="bg-gray-100 text-xs uppercase text-gray-500">
-                                        <tr>
-                                            <th className="px-4 py-2">Firma</th>
-                                            <th className="px-4 py-2">Vergi No</th>
-                                            <th className="px-4 py-2">GİB Kullanıcı</th>
-                                            <th className="px-4 py-2">Son Tarama</th>
-                                            <th className="px-4 py-2">Durum</th>
-                                            <th className="px-4 py-2">İşlem</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {clients.length === 0 ? (
-                                            <tr>
-                                                <td className="px-4 py-3 text-gray-500" colSpan={6}>
-                                                    Henüz mükellef eklenmedi.
-                                                </td>
-                                            </tr>
-                                        ) : (
-                                            clients.map((client) => (
-                                                <tr
-                                                    key={client.id}
-                                                    className="border-t border-gray-200"
+                {/* Mükellef Yönetimi Modal */}
+                {showClientModal && (
+                    <div
+                        className="fixed inset-0 bg-black/50 z-40 flex items-center justify-center p-4"
+                        onClick={() => setShowClientModal(false)}
+                    >
+                        <div
+                            className="bg-white rounded-xl shadow-2xl w-full max-w-5xl max-h-[90vh] overflow-y-auto"
+                            onClick={(e) => e.stopPropagation()}
+                        >
+                            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 sticky top-0 bg-white">
+                                <h2 className="text-xl font-bold text-gray-800">
+                                    M&uuml;kellef Y&ouml;netimi
+                                </h2>
+                                <button
+                                    onClick={() => setShowClientModal(false)}
+                                    className="text-gray-400 hover:text-gray-700 text-sm px-3 py-1 rounded hover:bg-gray-100"
+                                >
+                                    Kapat
+                                </button>
+                            </div>
+                            <div className="p-6">
+                                <div className="mt-3">
+                                    <p className="text-sm text-gray-500 mb-4">
+                                        Tarama i&ccedil;in m&uuml;kellef bilgilerini kaydedin.
+                                    </p>
+
+                                    <form
+                                        onSubmit={handleSaveClient}
+                                        className="grid grid-cols-1 md:grid-cols-2 gap-4"
+                                        noValidate
+                                    >
+                                        <div>
+                                            <label className="block text-xs font-semibold text-gray-500 mb-1">
+                                                Firma Adı
+                                            </label>
+                                            <input
+                                                type="text"
+                                                value={clientForm.firm_name}
+                                                onChange={(e) =>
+                                                    handleClientFieldChange(
+                                                        'firm_name',
+                                                        e.target.value
+                                                    )
+                                                }
+                                                className={`w-full border rounded-md px-3 py-2 text-sm text-gray-900 bg-white ${
+                                                    clientErrors.firm_name
+                                                        ? 'border-red-500'
+                                                        : 'border-gray-300'
+                                                }`}
+                                                placeholder="Örnek Ltd. Şti."
+                                            />
+                                            {clientErrors.firm_name && (
+                                                <p className="mt-1 text-xs text-red-500">
+                                                    {clientErrors.firm_name}
+                                                </p>
+                                            )}
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-semibold text-gray-500 mb-1">
+                                                Vergi No
+                                            </label>
+                                            <input
+                                                type="text"
+                                                value={clientForm.tax_number}
+                                                onChange={(e) =>
+                                                    handleClientFieldChange(
+                                                        'tax_number',
+                                                        e.target.value
+                                                    )
+                                                }
+                                                className={`w-full border rounded-md px-3 py-2 text-sm text-gray-900 bg-white ${
+                                                    clientErrors.tax_number
+                                                        ? 'border-red-500'
+                                                        : 'border-gray-300'
+                                                }`}
+                                                placeholder="Opsiyonel"
+                                            />
+                                            {clientErrors.tax_number && (
+                                                <p className="mt-1 text-xs text-red-500">
+                                                    {clientErrors.tax_number}
+                                                </p>
+                                            )}
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-semibold text-gray-500 mb-1">
+                                                GİB Kullanıcı Kodu
+                                            </label>
+                                            <input
+                                                type="text"
+                                                value={clientForm.gib_user_code}
+                                                onChange={(e) =>
+                                                    handleClientFieldChange(
+                                                        'gib_user_code',
+                                                        e.target.value
+                                                    )
+                                                }
+                                                className={`w-full border rounded-md px-3 py-2 text-sm text-gray-900 bg-white ${
+                                                    clientErrors.gib_user_code
+                                                        ? 'border-red-500'
+                                                        : 'border-gray-300'
+                                                }`}
+                                            />
+                                            {clientErrors.gib_user_code && (
+                                                <p className="mt-1 text-xs text-red-500">
+                                                    {clientErrors.gib_user_code}
+                                                </p>
+                                            )}
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-semibold text-gray-500 mb-1">
+                                                GİB Şifre
+                                            </label>
+                                            <input
+                                                type="password"
+                                                value={clientForm.gib_password}
+                                                onChange={(e) =>
+                                                    handleClientFieldChange(
+                                                        'gib_password',
+                                                        e.target.value
+                                                    )
+                                                }
+                                                className={`w-full border rounded-md px-3 py-2 text-sm text-gray-900 bg-white ${
+                                                    clientErrors.gib_password
+                                                        ? 'border-red-500'
+                                                        : 'border-gray-300'
+                                                }`}
+                                                placeholder={
+                                                    editingClientId
+                                                        ? '(değiştirmek için yazın)'
+                                                        : ''
+                                                }
+                                            />
+                                            {clientErrors.gib_password && (
+                                                <p className="mt-1 text-xs text-red-500">
+                                                    {clientErrors.gib_password}
+                                                </p>
+                                            )}
+                                        </div>
+                                        <div className="md:col-span-2 flex items-center justify-between">
+                                            {clientErrors._form && (
+                                                <p className="text-sm text-red-500">
+                                                    {clientErrors._form}
+                                                </p>
+                                            )}
+                                            <div className="ml-auto flex items-center gap-3">
+                                                <input
+                                                    ref={importFileRef}
+                                                    type="file"
+                                                    accept=".xlsx,.xls"
+                                                    className="hidden"
+                                                    onChange={handleExcelImport}
+                                                />
+                                                <button
+                                                    type="button"
+                                                    disabled={importing}
+                                                    onClick={() => importFileRef.current?.click()}
+                                                    className="border border-emerald-600 text-emerald-700 text-sm font-semibold px-4 py-2 rounded-md hover:bg-emerald-50 disabled:opacity-50"
                                                 >
-                                                    <td className="px-4 py-2 whitespace-nowrap">
-                                                        {client.firm_name}
-                                                    </td>
-                                                    <td className="px-4 py-2 whitespace-nowrap">
-                                                        {client.tax_number || '-'}
-                                                    </td>
-                                                    <td className="px-4 py-2 whitespace-nowrap">
-                                                        {client.gib_user_code}
-                                                    </td>
-                                                    <td className="px-4 py-2 whitespace-nowrap text-xs text-gray-500">
-                                                        {client.last_full_scan_at
-                                                            ? new Date(
-                                                                  client.last_full_scan_at
-                                                              ).toLocaleDateString('tr-TR', {
-                                                                  day: '2-digit',
-                                                                  month: '2-digit',
-                                                                  year: 'numeric',
-                                                                  hour: '2-digit',
-                                                                  minute: '2-digit',
-                                                              })
-                                                            : '-'}
-                                                    </td>
-                                                    <td className="px-4 py-2 whitespace-nowrap">
-                                                        {client.status || 'active'}
-                                                    </td>
-                                                    <td className="px-4 py-2 whitespace-nowrap space-x-2">
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => handleEditClient(client)}
-                                                            className="text-xs px-2 py-1 rounded border border-indigo-500/30 text-indigo-400 hover:bg-indigo-500/10 transition-colors"
-                                                        >
-                                                            D&uuml;zenle
-                                                        </button>
-                                                        <button
-                                                            type="button"
-                                                            onClick={() =>
-                                                                handleToggleClientStatus(client)
-                                                            }
-                                                            className="text-xs px-2 py-1 rounded border border-amber-500/30 text-amber-400 hover:bg-amber-500/10 transition-colors"
-                                                        >
-                                                            {client.status === 'active'
-                                                                ? 'Pasif Yap'
-                                                                : 'Aktif Yap'}
-                                                        </button>
-                                                        <button
-                                                            type="button"
-                                                            onClick={() =>
-                                                                handleDeleteClient(client)
-                                                            }
-                                                            className="text-xs px-2 py-1 rounded border border-red-500/30 text-red-400 hover:bg-red-500/10 transition-colors"
-                                                        >
-                                                            Sil
-                                                        </button>
-                                                    </td>
+                                                    {importing
+                                                        ? 'İçe aktarılıyor...'
+                                                        : "Excel'den İçe Aktar"}
+                                                </button>
+                                                <button
+                                                    type="submit"
+                                                    disabled={savingClient}
+                                                    className="bg-indigo-600 text-white text-sm font-semibold px-4 py-2 rounded-md hover:bg-indigo-700 disabled:opacity-50"
+                                                >
+                                                    {savingClient
+                                                        ? 'Kaydediliyor...'
+                                                        : editingClientId
+                                                          ? 'Mükellef Güncelle'
+                                                          : 'Mükellef Kaydet'}
+                                                </button>
+                                                {editingClientId && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={handleCancelEdit}
+                                                        className="text-sm text-gray-500 hover:text-gray-700"
+                                                    >
+                                                        Vazgeç
+                                                    </button>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </form>
+
+                                    {/* Excel Import Sonucu */}
+                                    {importResult && (
+                                        <div
+                                            className={`mt-4 p-4 rounded-lg text-sm ${
+                                                importResult.limitError
+                                                    ? 'bg-red-50 border border-red-200'
+                                                    : importResult.saved > 0
+                                                      ? 'bg-green-50 border border-green-200'
+                                                      : 'bg-yellow-50 border border-yellow-200'
+                                            }`}
+                                        >
+                                            {importResult.limitError ? (
+                                                <p className="text-red-700">
+                                                    {importResult.limitError}
+                                                </p>
+                                            ) : (
+                                                <>
+                                                    <p className="font-semibold text-gray-800">
+                                                        {importResult.saved} mükellef eklendi
+                                                        {importResult.errors.length > 0 &&
+                                                            `, ${importResult.errors.length} hatalı`}
+                                                        {importResult.parseErrors.length > 0 &&
+                                                            `, ${importResult.parseErrors.length} satır atlandı`}
+                                                    </p>
+                                                    {importResult.errors.length > 0 && (
+                                                        <ul className="mt-2 text-red-600 list-disc list-inside">
+                                                            {importResult.errors.map((e, i) => (
+                                                                <li key={i}>
+                                                                    Satır {e.row}: {e.firm_name} —{' '}
+                                                                    {e.error}
+                                                                </li>
+                                                            ))}
+                                                        </ul>
+                                                    )}
+                                                </>
+                                            )}
+                                            <button
+                                                onClick={() => setImportResult(null)}
+                                                className="mt-2 text-xs text-gray-500 hover:text-gray-700"
+                                            >
+                                                Kapat
+                                            </button>
+                                        </div>
+                                    )}
+
+                                    <div className="mt-6 overflow-x-auto border border-gray-200 rounded-lg">
+                                        <table className="min-w-full text-sm text-left text-gray-700">
+                                            <thead className="bg-gray-100 text-xs uppercase text-gray-500">
+                                                <tr>
+                                                    <th className="px-4 py-2">Firma</th>
+                                                    <th className="px-4 py-2">Vergi No</th>
+                                                    <th className="px-4 py-2">GİB Kullanıcı</th>
+                                                    <th className="px-4 py-2">Son Tarama</th>
+                                                    <th className="px-4 py-2">Durum</th>
+                                                    <th className="px-4 py-2">İşlem</th>
                                                 </tr>
-                                            ))
-                                        )}
-                                    </tbody>
-                                </table>
+                                            </thead>
+                                            <tbody>
+                                                {clients.length === 0 ? (
+                                                    <tr>
+                                                        <td
+                                                            className="px-4 py-3 text-gray-500"
+                                                            colSpan={6}
+                                                        >
+                                                            Henüz mükellef eklenmedi.
+                                                        </td>
+                                                    </tr>
+                                                ) : (
+                                                    clients.map((client) => (
+                                                        <tr
+                                                            key={client.id}
+                                                            className="border-t border-gray-200"
+                                                        >
+                                                            <td className="px-4 py-2 whitespace-nowrap">
+                                                                {client.firm_name}
+                                                            </td>
+                                                            <td className="px-4 py-2 whitespace-nowrap">
+                                                                {client.tax_number || '-'}
+                                                            </td>
+                                                            <td className="px-4 py-2 whitespace-nowrap">
+                                                                {client.gib_user_code}
+                                                            </td>
+                                                            <td className="px-4 py-2 whitespace-nowrap text-xs text-gray-500">
+                                                                {client.last_full_scan_at
+                                                                    ? new Date(
+                                                                          client.last_full_scan_at
+                                                                      ).toLocaleDateString(
+                                                                          'tr-TR',
+                                                                          {
+                                                                              day: '2-digit',
+                                                                              month: '2-digit',
+                                                                              year: 'numeric',
+                                                                              hour: '2-digit',
+                                                                              minute: '2-digit',
+                                                                          }
+                                                                      )
+                                                                    : '-'}
+                                                            </td>
+                                                            <td className="px-4 py-2 whitespace-nowrap">
+                                                                {client.status || 'active'}
+                                                            </td>
+                                                            <td className="px-4 py-2 whitespace-nowrap space-x-2">
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() =>
+                                                                        handleEditClient(client)
+                                                                    }
+                                                                    className="text-xs px-2 py-1 rounded border border-indigo-500/30 text-indigo-400 hover:bg-indigo-500/10 transition-colors"
+                                                                >
+                                                                    D&uuml;zenle
+                                                                </button>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() =>
+                                                                        handleToggleClientStatus(
+                                                                            client
+                                                                        )
+                                                                    }
+                                                                    className="text-xs px-2 py-1 rounded border border-amber-500/30 text-amber-400 hover:bg-amber-500/10 transition-colors"
+                                                                >
+                                                                    {client.status === 'active'
+                                                                        ? 'Pasif Yap'
+                                                                        : 'Aktif Yap'}
+                                                                </button>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() =>
+                                                                        handleDeleteClient(client)
+                                                                    }
+                                                                    className="text-xs px-2 py-1 rounded border border-red-500/30 text-red-400 hover:bg-red-500/10 transition-colors"
+                                                                >
+                                                                    Sil
+                                                                </button>
+                                                            </td>
+                                                        </tr>
+                                                    ))
+                                                )}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
                             </div>
                         </div>
-                    )}
-                </div>
+                    </div>
+                )}
 
                 {/* Otomatik Tarama Zamanlama */}
                 <div
@@ -2073,7 +2121,7 @@ const ETebligat: React.FC = () => {
                 <div className="mt-4">
                     <div className="flex items-center justify-between mb-3">
                         <div className="flex items-center gap-3">
-                            <h2 className="text-lg font-semibold">
+                            <h2 className="text-lg font-semibold text-gray-800">
                                 Tebligat Sonu&ccedil;lar&#305;
                             </h2>
                             <span className="text-xs font-medium bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">
