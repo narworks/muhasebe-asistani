@@ -57,6 +57,17 @@ if (process.env.SENTRY_DSN) {
             return event;
         },
     });
+    // Send a startup ping so we can verify Sentry connectivity per launch
+    Sentry.captureMessage(`App started v${app.getVersion()}`, {
+        level: 'info',
+        tags: {
+            event_type: 'app-startup',
+            platform: process.platform,
+            arch: process.arch,
+        },
+    });
+} else {
+    console.warn('[Sentry] SENTRY_DSN not set, error tracking disabled');
 }
 
 const logger = require('./logger');
