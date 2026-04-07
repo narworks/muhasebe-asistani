@@ -2330,8 +2330,9 @@ const ETebligat: React.FC = () => {
                                                                         </div>
                                                                         <div className="flex items-center gap-2">
                                                                             {newInScan > 0 && (
-                                                                                <span className="text-xs font-medium text-emerald-600">
-                                                                                    {newInScan} yeni
+                                                                                <span className="text-xs font-medium text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full">
+                                                                                    {newInScan} adet
+                                                                                    &middot; yeni
                                                                                 </span>
                                                                             )}
                                                                             {newInScan > 0 &&
@@ -2341,8 +2342,8 @@ const ETebligat: React.FC = () => {
                                                                                     </span>
                                                                                 )}
                                                                             {oldInScan > 0 && (
-                                                                                <span className="text-xs text-gray-400">
-                                                                                    {oldInScan} eski
+                                                                                <span className="text-xs text-gray-500">
+                                                                                    {oldInScan} adet
                                                                                 </span>
                                                                             )}
                                                                             {newInScan === 0 &&
