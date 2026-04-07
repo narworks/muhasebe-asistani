@@ -443,14 +443,14 @@ const Sidebar: React.FC = () => {
                 )}
 
                 {/* Version + User Profile */}
-                <div className="pt-3 border-t border-slate-700">
+                <div className="pt-3">
                     <button
                         onClick={() => setChangelogOpen(true)}
                         className="mx-auto mb-3 flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-800 border border-slate-700 text-xs text-slate-400 hover:text-white hover:border-slate-500 transition-colors"
                     >
                         <span>v{__APP_VERSION__}</span>
                     </button>
-                    <div className="p-2 rounded-lg hover:bg-slate-800 transition-colors">
+                    <div className="p-2 rounded-lg hover:bg-slate-800 transition-colors border-t border-slate-700 pt-3">
                         <div className="flex items-center space-x-3">
                             <div className="w-10 h-10 rounded-full bg-sky-500 flex items-center justify-center font-bold text-white">
                                 {currentUser?.displayName?.charAt(0).toUpperCase() ||
