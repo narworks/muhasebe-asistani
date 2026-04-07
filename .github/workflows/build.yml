@@ -49,11 +49,13 @@ jobs:
                   SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
                   SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
                   BILLING_URL: ${{ secrets.BILLING_URL }}
+                  SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
               run: |
                   echo "GEMINI_API_KEY=${GEMINI_API_KEY}" > .env
                   echo "SUPABASE_URL=${SUPABASE_URL}" >> .env
                   echo "SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}" >> .env
                   echo "BILLING_URL=${BILLING_URL}" >> .env
+                  echo "SENTRY_DSN=${SENTRY_DSN}" >> .env
 
             - name: Verify .env file
               shell: bash

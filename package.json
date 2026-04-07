@@ -1,7 +1,7 @@
 {
     "name": "muhasebeci-arac-kutusu",
     "private": true,
-    "version": "1.0.85",
+    "version": "1.0.86",
     "main": "main/main.js",
     "author": {
         "name": "NarWorks",
@@ -28,6 +28,7 @@
     },
     "dependencies": {
         "@google/generative-ai": "^0.24.1",
+        "@sentry/electron": "^7.10.0",
         "@supabase/supabase-js": "^2.93.3",
         "axios": "^1.13.2",
         "better-sqlite3": "^12.5.0",

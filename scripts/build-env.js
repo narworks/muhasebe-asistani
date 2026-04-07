@@ -10,7 +10,7 @@ const path = require('path');
 // Load .env if available (CI creates it from secrets)
 require('dotenv').config({ path: path.join(__dirname, '../.env') });
 
-const keys = ['GEMINI_API_KEY', 'SUPABASE_URL', 'SUPABASE_ANON_KEY', 'BILLING_URL'];
+const keys = ['GEMINI_API_KEY', 'SUPABASE_URL', 'SUPABASE_ANON_KEY', 'BILLING_URL', 'SENTRY_DSN'];
 
 const lines = keys.map((key) => {
     const value = process.env[key] || '';

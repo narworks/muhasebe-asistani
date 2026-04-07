@@ -12,6 +12,12 @@ const GIB_LOGIN_URL = 'https://dijital.gib.gov.tr/portal/login';
 const settings = require('../settings');
 const logger = require('../logger');
 const gibApiClient = require('./gibApiClient');
+let Sentry;
+try {
+    Sentry = require('@sentry/electron/main');
+} catch {
+    Sentry = null;
+}
 
 // Get documents directory path (does NOT create it — call ensureDir before saving)
 const getDocumentsDir = (clientId, firmName, dateStr) => {
@@ -1580,6 +1586,22 @@ async function run(onStatusUpdate, apiKey, scanConfig = {}, options = {}, deduct
         lastScanState.successes = successCount;
         // Log full error to file for debugging
         logger.debug('[SCAN ERROR]', error?.stack || error?.message || String(error));
+        // Report to Sentry with context
+        if (Sentry) {
+            Sentry.captureException(error, {
+                tags: {
+                    component: 'gib-scraper',
+                    phase: 'scan-main',
+                    platform: process.platform,
+                    arch: process.arch,
+                },
+                extra: {
+                    successCount,
+                    errorCount,
+                    totalRemaining,
+                },
+            });
+        }
         const errMsg = error?.message || String(error);
         onStatusUpdate({
             message: `Tarama hatası: ${errMsg}`,

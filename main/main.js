@@ -13,6 +13,8 @@ const {
 const fs = require('fs');
 const ExcelJS = require('exceljs');
 const path = require('path');
+const Sentry = require('@sentry/electron/main');
+
 // In production: use build-time generated config. In dev: use .env via dotenv.
 if (app.isPackaged) {
     try {
@@ -28,6 +30,35 @@ if (app.isPackaged) {
         path: path.join(__dirname, '../.env'),
     });
 }
+
+// Sentry init — must come after env loading, before any error-prone code
+if (process.env.SENTRY_DSN) {
+    Sentry.init({
+        dsn: process.env.SENTRY_DSN,
+        release: `muhasebe-asistani@${app.getVersion()}`,
+        environment: app.isPackaged ? 'production' : 'development',
+        sendDefaultPii: false,
+        tracesSampleRate: 0.1,
+        beforeSend(event) {
+            // Strip user identification
+            if (event.user) {
+                delete event.user.email;
+                delete event.user.ip_address;
+                delete event.user.username;
+            }
+            // Redact 10/11-digit numbers (TC/VKN) from exception messages
+            if (event.exception?.values) {
+                for (const ex of event.exception.values) {
+                    if (ex.value) {
+                        ex.value = ex.value.replace(/\b\d{10,11}\b/g, '[REDACTED]');
+                    }
+                }
+            }
+            return event;
+        },
+    });
+}
+
 const logger = require('./logger');
 
 // Log rotation: rotate error.log when it exceeds 5MB
