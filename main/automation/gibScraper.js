@@ -1578,8 +1578,11 @@ async function run(onStatusUpdate, apiKey, scanConfig = {}, options = {}, deduct
         lastScanState.wasError = true;
         lastScanState.errors = errorCount;
         lastScanState.successes = successCount;
+        // Log full error to file for debugging
+        logger.debug('[SCAN ERROR]', error?.stack || error?.message || String(error));
+        const errMsg = error?.message || String(error);
         onStatusUpdate({
-            message: 'Tarama sırasında bir hata oluştu. Lütfen tekrar deneyin.',
+            message: `Tarama hatası: ${errMsg}`,
             type: 'error',
         });
     } finally {
