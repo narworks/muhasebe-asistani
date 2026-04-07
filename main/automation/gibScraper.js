@@ -192,42 +192,91 @@ const DAILY_CLIENT_LIMIT = 200; // Competitors handle 150-450/day without blocks
 const HOURLY_CLIENT_LIMIT = 50; // ~1 client per 1-2 min
 
 // Persisted rate limit state — survives app restart
+// Monotonic time checks prevent OS clock manipulation:
+// - If clock goes backward → no reset allowed (counters preserved)
+// - Daily reset requires at least 20h elapsed since last reset (real time)
+// - Hourly reset requires at least 50min elapsed since last reset
+const MIN_DAILY_RESET_MS = 20 * 60 * 60 * 1000;
+const MIN_HOURLY_RESET_MS = 50 * 60 * 1000;
+
+function applyRateLimitResets(state) {
+    const now = Date.now();
+    const today = new Date().toDateString();
+    const currentHour = new Date().getHours();
+
+    // Detect clock manipulation: don't reset if clock went backward
+    if (state.lastSeenTime && now < state.lastSeenTime) {
+        return state;
+    }
+
+    // Daily reset — date changed AND at least 20h real time elapsed
+    if (
+        state.dailyScanDate !== today &&
+        (!state.dailyResetAt || now - state.dailyResetAt >= MIN_DAILY_RESET_MS)
+    ) {
+        state.dailyScanCount = 0;
+        state.dailyScanDate = today;
+        state.dailyResetAt = now;
+    }
+
+    // Hourly reset — hour changed AND at least 50min real time elapsed
+    if (
+        (state.hourlyScanDate !== today || state.hourlyScanHour !== currentHour) &&
+        (!state.hourlyResetAt || now - state.hourlyResetAt >= MIN_HOURLY_RESET_MS)
+    ) {
+        state.hourlyScanCount = 0;
+        state.hourlyScanHour = currentHour;
+        state.hourlyScanDate = today;
+        state.hourlyResetAt = now;
+    }
+
+    return state;
+}
+
 function loadRateLimits() {
     try {
         const s = settings.readSettings();
         const r = s.rateLimits || {};
-        const today = new Date().toDateString();
-        const currentHour = new Date().getHours();
-        return {
-            dailyScanCount: r.dailyScanDate === today ? r.dailyScanCount || 0 : 0,
-            dailyScanDate: today,
-            hourlyScanCount:
-                r.hourlyScanDate === today && r.hourlyScanHour === currentHour
-                    ? r.hourlyScanCount || 0
-                    : 0,
-            hourlyScanHour: currentHour,
-            hourlyScanDate: today,
-        };
+        const now = Date.now();
+        return applyRateLimitResets({
+            dailyScanCount: r.dailyScanCount || 0,
+            dailyScanDate: r.dailyScanDate || new Date().toDateString(),
+            dailyResetAt: r.dailyResetAt || now,
+            hourlyScanCount: r.hourlyScanCount || 0,
+            hourlyScanHour: r.hourlyScanHour ?? new Date().getHours(),
+            hourlyScanDate: r.hourlyScanDate || new Date().toDateString(),
+            hourlyResetAt: r.hourlyResetAt || now,
+            lastSeenTime: r.lastSeenTime || now,
+        });
     } catch {
+        const now = Date.now();
         return {
             dailyScanCount: 0,
             dailyScanDate: new Date().toDateString(),
+            dailyResetAt: now,
             hourlyScanCount: 0,
             hourlyScanHour: new Date().getHours(),
             hourlyScanDate: new Date().toDateString(),
+            hourlyResetAt: now,
+            lastSeenTime: now,
         };
     }
 }
 
 function saveRateLimits() {
     try {
+        const now = Date.now();
+        if (now > lastSeenTime) lastSeenTime = now;
         settings.updateSettings({
             rateLimits: {
                 dailyScanCount,
                 dailyScanDate,
+                dailyResetAt,
                 hourlyScanCount,
                 hourlyScanHour,
                 hourlyScanDate: dailyScanDate,
+                hourlyResetAt,
+                lastSeenTime,
             },
         });
     } catch {
@@ -238,8 +287,11 @@ function saveRateLimits() {
 const _initial = loadRateLimits();
 let dailyScanCount = _initial.dailyScanCount;
 let dailyScanDate = _initial.dailyScanDate;
+let dailyResetAt = _initial.dailyResetAt;
 let hourlyScanCount = _initial.hourlyScanCount;
 let hourlyScanHour = _initial.hourlyScanHour;
+let hourlyResetAt = _initial.hourlyResetAt;
+let lastSeenTime = _initial.lastSeenTime;
 
 // Resume state: tracks which clients were successfully processed in the last scan
 let lastScanState = {
@@ -1125,21 +1177,8 @@ async function run(onStatusUpdate, apiKey, scanConfig = {}, options = {}, deduct
     isRunning = true;
     scanCancelled = false;
 
-    // Reset daily/hourly counters
-    const today = new Date().toDateString();
-    let needsSave = false;
-    if (dailyScanDate !== today) {
-        dailyScanDate = today;
-        dailyScanCount = 0;
-        needsSave = true;
-    }
-    const currentHour = new Date().getHours();
-    if (hourlyScanHour !== currentHour) {
-        hourlyScanHour = currentHour;
-        hourlyScanCount = 0;
-        needsSave = true;
-    }
-    if (needsSave) saveRateLimits();
+    // Reset daily/hourly counters with monotonic time check
+    refreshRateLimits();
 
     const isResume = options.resume === true;
     const skipClientIds = isResume ? new Set(lastScanState.processedClientIds) : new Set();
@@ -1775,23 +1814,37 @@ async function fetchSingleDocument(tebligat, apiKey) {
     }
 }
 
-function getRateLimits() {
-    // Auto-reset if day/hour boundary crossed while app stayed open
-    const today = new Date().toDateString();
-    const currentHour = new Date().getHours();
+// Apply boundary resets with monotonic time check, sync module-level vars
+function refreshRateLimits() {
+    const before = {
+        dailyScanCount,
+        dailyScanDate,
+        dailyResetAt,
+        hourlyScanCount,
+        hourlyScanHour,
+        hourlyScanDate: dailyScanDate,
+        hourlyResetAt,
+        lastSeenTime,
+    };
+    const after = applyRateLimitResets({ ...before });
     let changed = false;
-    if (dailyScanDate !== today) {
-        dailyScanDate = today;
-        dailyScanCount = 0;
+    if (after.dailyScanCount !== dailyScanCount) {
+        dailyScanCount = after.dailyScanCount;
+        dailyScanDate = after.dailyScanDate;
+        dailyResetAt = after.dailyResetAt;
         changed = true;
     }
-    if (hourlyScanHour !== currentHour) {
-        hourlyScanHour = currentHour;
-        hourlyScanCount = 0;
+    if (after.hourlyScanCount !== hourlyScanCount) {
+        hourlyScanCount = after.hourlyScanCount;
+        hourlyScanHour = after.hourlyScanHour;
+        hourlyResetAt = after.hourlyResetAt;
         changed = true;
     }
     if (changed) saveRateLimits();
+}
 
+function getRateLimits() {
+    refreshRateLimits();
     return {
         dailyUsed: dailyScanCount,
         dailyLimit: DAILY_CLIENT_LIMIT,
