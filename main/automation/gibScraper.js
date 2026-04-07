@@ -190,10 +190,56 @@ let activeBrowser = null;
 // Rate limiting to prevent GIB IP blocking
 const DAILY_CLIENT_LIMIT = 200; // Competitors handle 150-450/day without blocks
 const HOURLY_CLIENT_LIMIT = 50; // ~1 client per 1-2 min
-let dailyScanCount = 0;
-let dailyScanDate = new Date().toDateString();
-let hourlyScanCount = 0;
-let hourlyScanHour = new Date().getHours();
+
+// Persisted rate limit state — survives app restart
+function loadRateLimits() {
+    try {
+        const s = settings.readSettings();
+        const r = s.rateLimits || {};
+        const today = new Date().toDateString();
+        const currentHour = new Date().getHours();
+        return {
+            dailyScanCount: r.dailyScanDate === today ? r.dailyScanCount || 0 : 0,
+            dailyScanDate: today,
+            hourlyScanCount:
+                r.hourlyScanDate === today && r.hourlyScanHour === currentHour
+                    ? r.hourlyScanCount || 0
+                    : 0,
+            hourlyScanHour: currentHour,
+            hourlyScanDate: today,
+        };
+    } catch {
+        return {
+            dailyScanCount: 0,
+            dailyScanDate: new Date().toDateString(),
+            hourlyScanCount: 0,
+            hourlyScanHour: new Date().getHours(),
+            hourlyScanDate: new Date().toDateString(),
+        };
+    }
+}
+
+function saveRateLimits() {
+    try {
+        settings.updateSettings({
+            rateLimits: {
+                dailyScanCount,
+                dailyScanDate,
+                hourlyScanCount,
+                hourlyScanHour,
+                hourlyScanDate: dailyScanDate,
+            },
+        });
+    } catch {
+        /* ignore persist errors */
+    }
+}
+
+const _initial = loadRateLimits();
+let dailyScanCount = _initial.dailyScanCount;
+let dailyScanDate = _initial.dailyScanDate;
+let hourlyScanCount = _initial.hourlyScanCount;
+let hourlyScanHour = _initial.hourlyScanHour;
 
 // Resume state: tracks which clients were successfully processed in the last scan
 let lastScanState = {
@@ -1081,15 +1127,19 @@ async function run(onStatusUpdate, apiKey, scanConfig = {}, options = {}, deduct
 
     // Reset daily/hourly counters
     const today = new Date().toDateString();
+    let needsSave = false;
     if (dailyScanDate !== today) {
         dailyScanDate = today;
         dailyScanCount = 0;
+        needsSave = true;
     }
     const currentHour = new Date().getHours();
     if (hourlyScanHour !== currentHour) {
         hourlyScanHour = currentHour;
         hourlyScanCount = 0;
+        needsSave = true;
     }
+    if (needsSave) saveRateLimits();
 
     const isResume = options.resume === true;
     const skipClientIds = isResume ? new Set(lastScanState.processedClientIds) : new Set();
@@ -1409,6 +1459,7 @@ async function run(onStatusUpdate, apiKey, scanConfig = {}, options = {}, deduct
                     successCount++;
                     dailyScanCount++;
                     hourlyScanCount++;
+                    saveRateLimits();
                     succeeded = true;
 
                     // Mark first scan complete for this client
@@ -1475,6 +1526,7 @@ async function run(onStatusUpdate, apiKey, scanConfig = {}, options = {}, deduct
                 errorCount++;
                 dailyScanCount++; // Count failed attempts too — GIB still saw the request
                 hourlyScanCount++;
+                saveRateLimits();
                 lastScanState.processedClientIds.add(client.id);
                 onStatusUpdate({
                     message: `${client.firm_name}: Sorgulanamadı. Lütfen kimlik bilgilerini kontrol edin.`,
@@ -1724,6 +1776,22 @@ async function fetchSingleDocument(tebligat, apiKey) {
 }
 
 function getRateLimits() {
+    // Auto-reset if day/hour boundary crossed while app stayed open
+    const today = new Date().toDateString();
+    const currentHour = new Date().getHours();
+    let changed = false;
+    if (dailyScanDate !== today) {
+        dailyScanDate = today;
+        dailyScanCount = 0;
+        changed = true;
+    }
+    if (hourlyScanHour !== currentHour) {
+        hourlyScanHour = currentHour;
+        hourlyScanCount = 0;
+        changed = true;
+    }
+    if (changed) saveRateLimits();
+
     return {
         dailyUsed: dailyScanCount,
         dailyLimit: DAILY_CLIENT_LIMIT,
