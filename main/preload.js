@@ -33,6 +33,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     cancelScan: () => ipcRenderer.send('cancel-scan'),
     getScanState: () => ipcRenderer.invoke('get-scan-state'),
     getRateLimits: () => ipcRenderer.invoke('get-rate-limits'),
+    previewScan: () => ipcRenderer.invoke('preview-scan'),
+    downloadSelectedTebligatlar: (selections) =>
+        ipcRenderer.invoke('download-selected-tebligatlar', selections),
     onScanUpdate: (callback) => ipcRenderer.on('scan-update', (_event, value) => callback(value)),
     onScanError: (callback) => ipcRenderer.on('scan-error', (_event, value) => callback(value)),
     onScanComplete: (callback) =>

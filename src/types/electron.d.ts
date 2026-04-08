@@ -63,6 +63,47 @@ export interface IElectronAPI {
         hourlyUsed: number;
         hourlyLimit: number;
     }>;
+    previewScan: () => Promise<{
+        ok: boolean;
+        error?: string;
+        results?: Array<{
+            clientId: number;
+            firmName: string;
+            ok: boolean;
+            error?: string;
+            count?: number;
+            tebligatList?: Array<{
+                belgeNo: string;
+                sender: string;
+                subject: string;
+                sendDate: string | null;
+                notificationDate: string | null;
+                status: string;
+                _tebligId: number;
+                _tebligSecureId: string;
+                _tarafId: number;
+                _tarafSecureId: string;
+            }>;
+        }>;
+    }>;
+    downloadSelectedTebligatlar: (
+        selections: Array<{
+            clientId: number;
+            firmName: string;
+            tebligatList: Array<{
+                belgeNo: string;
+                sender: string;
+                subject: string;
+                sendDate: string | null;
+                notificationDate: string | null;
+                status: string;
+                _tebligId: number;
+                _tebligSecureId: string;
+                _tarafId: number;
+                _tarafSecureId: string;
+            }>;
+        }>
+    ) => Promise<{ ok: boolean; error?: string; downloaded?: number; errors?: number }>;
     onScanUpdate: (callback: (status: ScanStatus) => void) => void;
     onScanError: (callback: (error: string) => void) => void;
     onScanComplete: (callback: (result: string) => void) => void;

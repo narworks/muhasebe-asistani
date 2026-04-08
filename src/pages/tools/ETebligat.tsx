@@ -121,6 +121,34 @@ const ETebligat: React.FC = () => {
     // Mükellef Yönetimi modal
     const [showClientModal, setShowClientModal] = useState(false);
 
+    // Preview scan flow
+    type PreviewTebligat = {
+        belgeNo: string;
+        sender: string;
+        subject: string;
+        sendDate: string | null;
+        notificationDate: string | null;
+        status: string;
+        _tebligId: number;
+        _tebligSecureId: string;
+        _tarafId: number;
+        _tarafSecureId: string;
+    };
+    type PreviewClientResult = {
+        clientId: number;
+        firmName: string;
+        ok: boolean;
+        error?: string;
+        count?: number;
+        tebligatList?: PreviewTebligat[];
+    };
+    type PreviewSelectionMode = 'skip' | 'last15' | 'last30' | 'last6m' | 'thisYear' | 'all';
+    const [previewRunning, setPreviewRunning] = useState(false);
+    const [previewResults, setPreviewResults] = useState<PreviewClientResult[] | null>(null);
+    const [previewSelections, setPreviewSelections] = useState<
+        Record<number, PreviewSelectionMode>
+    >({});
+
     // Client limit
     const [clientLimit, setClientLimit] = useState<{
         totalAdded: number;
@@ -1289,9 +1317,371 @@ const ETebligat: React.FC = () => {
                             >
                                 Y&ouml;net
                             </button>
+                            {clients.length > 0 && (
+                                <button
+                                    type="button"
+                                    disabled={previewRunning || scanning}
+                                    onClick={async () => {
+                                        setPreviewRunning(true);
+                                        setPreviewResults(null);
+                                        setPreviewSelections({});
+                                        addLog(
+                                            'Ke\u015fif ba\u015flat\u0131l\u0131yor (belge indirme yok)...',
+                                            'info'
+                                        );
+                                        try {
+                                            const result = await window.electronAPI.previewScan();
+                                            if (result.ok && result.results) {
+                                                setPreviewResults(result.results);
+                                                // Auto-default selection: last30 for clients with new tebligatlar
+                                                const defaults: Record<
+                                                    number,
+                                                    PreviewSelectionMode
+                                                > = {};
+                                                result.results.forEach((r) => {
+                                                    if (r.ok && (r.count || 0) > 0) {
+                                                        defaults[r.clientId] = 'last30';
+                                                    } else {
+                                                        defaults[r.clientId] = 'skip';
+                                                    }
+                                                });
+                                                setPreviewSelections(defaults);
+                                            } else {
+                                                addLog(
+                                                    `Ke\u015fif hatas\u0131: ${result.error || 'Bilinmeyen hata'}`,
+                                                    'error'
+                                                );
+                                            }
+                                        } catch (err) {
+                                            addLog(
+                                                `Ke\u015fif hatas\u0131: ${(err as Error).message}`,
+                                                'error'
+                                            );
+                                        } finally {
+                                            setPreviewRunning(false);
+                                        }
+                                    }}
+                                    className="bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold px-4 py-2 rounded-md transition-colors disabled:opacity-50"
+                                    title="GİB'deki tüm tebligatları önizle, seçili olanları indir"
+                                >
+                                    {previewRunning
+                                        ? 'Ke\u015fif...'
+                                        : '\uD83D\uDD0D \u0130lk Ke\u015fif'}
+                                </button>
+                            )}
                         </div>
                     </div>
                 </div>
+
+                {/* Preview Modal — keşif sonuçları + seçim */}
+                {previewResults &&
+                    (() => {
+                        const parseDate = (s: string | null): Date | null => {
+                            if (!s) return null;
+                            // Handle DD/MM/YYYY HH:MM:SS format
+                            const m = s.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
+                            if (m) return new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]));
+                            const d = new Date(s);
+                            return isNaN(d.getTime()) ? null : d;
+                        };
+                        const now = new Date();
+                        const startOfYear = new Date(now.getFullYear(), 0, 1);
+                        const last15 = new Date(now.getTime() - 15 * 86400000);
+                        const last30 = new Date(now.getTime() - 30 * 86400000);
+                        const last6m = new Date(now.getTime() - 180 * 86400000);
+
+                        const countInRange = (list: PreviewTebligat[] | undefined, from: Date) => {
+                            if (!list) return 0;
+                            return list.filter((t) => {
+                                const d = parseDate(t.notificationDate || t.sendDate);
+                                return d && d >= from;
+                            }).length;
+                        };
+
+                        const getSelectedForClient = (
+                            r: PreviewClientResult
+                        ): PreviewTebligat[] => {
+                            const mode = previewSelections[r.clientId] || 'skip';
+                            if (!r.tebligatList || mode === 'skip') return [];
+                            if (mode === 'all') return r.tebligatList;
+                            let from: Date | null = null;
+                            if (mode === 'last15') from = last15;
+                            else if (mode === 'last30') from = last30;
+                            else if (mode === 'last6m') from = last6m;
+                            else if (mode === 'thisYear') from = startOfYear;
+                            if (!from) return r.tebligatList;
+                            return r.tebligatList.filter((t) => {
+                                const d = parseDate(t.notificationDate || t.sendDate);
+                                return d !== null && d >= (from as Date);
+                            });
+                        };
+
+                        const totalSelected = previewResults.reduce(
+                            (sum, r) => sum + (r.ok ? getSelectedForClient(r).length : 0),
+                            0
+                        );
+                        // ~3sn per document + 5sn inter-doc delay + 15sn login per client
+                        const activeClients = previewResults.filter(
+                            (r) => r.ok && getSelectedForClient(r).length > 0
+                        ).length;
+                        const estimatedMin = Math.max(
+                            1,
+                            Math.ceil((totalSelected * 8 + activeClients * 25) / 60)
+                        );
+
+                        const setAllMode = (mode: PreviewSelectionMode) => {
+                            const next: Record<number, PreviewSelectionMode> = {};
+                            previewResults.forEach((r) => {
+                                next[r.clientId] = mode;
+                            });
+                            setPreviewSelections(next);
+                        };
+
+                        const handleDownload = async () => {
+                            const selections = previewResults
+                                .filter((r) => r.ok)
+                                .map((r) => ({
+                                    clientId: r.clientId,
+                                    firmName: r.firmName,
+                                    tebligatList: getSelectedForClient(r),
+                                }))
+                                .filter((s) => s.tebligatList.length > 0);
+
+                            if (selections.length === 0) {
+                                addLog('Hi&ccedil;bir tebligat se&ccedil;ilmedi', 'info');
+                                return;
+                            }
+
+                            setPreviewResults(null);
+                            setScanning(true);
+                            setLogs([]);
+                            addLog(
+                                `${selections.reduce((s, x) => s + x.tebligatList.length, 0)} tebligat indiriliyor...`,
+                                'info'
+                            );
+
+                            try {
+                                const result =
+                                    await window.electronAPI.downloadSelectedTebligatlar(
+                                        selections
+                                    );
+                                if (result.ok) {
+                                    addLog(
+                                        `Tamamland\u0131: ${result.downloaded || 0} belge indirildi, ${result.errors || 0} hata`,
+                                        'success'
+                                    );
+                                } else {
+                                    addLog(`Hata: ${result.error || 'Bilinmeyen'}`, 'error');
+                                }
+                                await fetchTebligatlar();
+                                await fetchClients();
+                            } catch (err) {
+                                addLog(`Hata: ${(err as Error).message}`, 'error');
+                            } finally {
+                                setScanning(false);
+                            }
+                        };
+
+                        return (
+                            <div
+                                className="fixed inset-0 bg-black/50 z-40 flex items-center justify-center p-4"
+                                onClick={() => setPreviewResults(null)}
+                            >
+                                <div
+                                    className="bg-white rounded-xl shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col"
+                                    onClick={(e) => e.stopPropagation()}
+                                >
+                                    <div className="px-6 py-4 border-b border-gray-200 bg-emerald-50 rounded-t-xl">
+                                        <div className="flex items-center justify-between">
+                                            <div>
+                                                <h2 className="text-xl font-bold text-gray-800">
+                                                    G&#304;B&apos;de Bulunan Tebligatlar
+                                                </h2>
+                                                <p className="text-sm text-gray-600 mt-0.5">
+                                                    Toplam{' '}
+                                                    {previewResults.reduce(
+                                                        (s, r) => s + (r.count || 0),
+                                                        0
+                                                    )}{' '}
+                                                    tebligat bulundu. Her m&uuml;kellef i&ccedil;in
+                                                    ne kadar&#305;n&#305; indirmek istedi&#287;inizi
+                                                    se&ccedil;in.
+                                                </p>
+                                            </div>
+                                            <button
+                                                onClick={() => setPreviewResults(null)}
+                                                className="text-gray-400 hover:text-gray-700 text-sm px-3 py-1 rounded hover:bg-white"
+                                            >
+                                                Kapat
+                                            </button>
+                                        </div>
+                                        <div className="flex flex-wrap gap-1.5 mt-3">
+                                            <span className="text-xs text-gray-500 mr-1 self-center">
+                                                Hepsine uygula:
+                                            </span>
+                                            {(
+                                                [
+                                                    ['skip', 'Atla'],
+                                                    ['last15', 'Son 15 g&uuml;n'],
+                                                    ['last30', 'Son 30 g&uuml;n'],
+                                                    ['last6m', 'Son 6 ay'],
+                                                    ['thisYear', 'Bu y&#305;l'],
+                                                    ['all', 'T&uuml;m&uuml;'],
+                                                ] as const
+                                            ).map(([mode, label]) => (
+                                                <button
+                                                    key={mode}
+                                                    onClick={() =>
+                                                        setAllMode(mode as PreviewSelectionMode)
+                                                    }
+                                                    className="text-xs px-2.5 py-1 rounded border border-emerald-500/40 text-emerald-700 hover:bg-emerald-100"
+                                                    dangerouslySetInnerHTML={{ __html: label }}
+                                                />
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    <div className="flex-1 overflow-y-auto px-6 py-4 space-y-3">
+                                        {previewResults.map((r) => {
+                                            if (!r.ok) {
+                                                return (
+                                                    <div
+                                                        key={r.clientId}
+                                                        className="border border-red-200 bg-red-50 rounded-lg p-3"
+                                                    >
+                                                        <p className="text-sm font-semibold text-gray-800">
+                                                            {r.firmName}
+                                                        </p>
+                                                        <p className="text-xs text-red-600 mt-1">
+                                                            Ke&#351;if ba&#351;ar&#305;s&#305;z:{' '}
+                                                            {r.error}
+                                                        </p>
+                                                    </div>
+                                                );
+                                            }
+                                            const counts = {
+                                                last15: countInRange(r.tebligatList, last15),
+                                                last30: countInRange(r.tebligatList, last30),
+                                                last6m: countInRange(r.tebligatList, last6m),
+                                                thisYear: countInRange(r.tebligatList, startOfYear),
+                                                all: r.tebligatList?.length || 0,
+                                            };
+                                            const currentMode =
+                                                previewSelections[r.clientId] || 'skip';
+                                            return (
+                                                <div
+                                                    key={r.clientId}
+                                                    className="border border-gray-200 rounded-lg p-3"
+                                                >
+                                                    <div className="flex items-center justify-between mb-2">
+                                                        <p className="text-sm font-semibold text-gray-800">
+                                                            {r.firmName}
+                                                        </p>
+                                                        <span className="text-xs font-medium bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full">
+                                                            {r.count} tebligat
+                                                        </span>
+                                                    </div>
+                                                    <div className="grid grid-cols-2 md:grid-cols-3 gap-1.5 text-xs">
+                                                        {(
+                                                            [
+                                                                ['skip', 'Atla', null],
+                                                                [
+                                                                    'last15',
+                                                                    'Son 15 g&uuml;n',
+                                                                    counts.last15,
+                                                                ],
+                                                                [
+                                                                    'last30',
+                                                                    'Son 30 g&uuml;n',
+                                                                    counts.last30,
+                                                                ],
+                                                                [
+                                                                    'last6m',
+                                                                    'Son 6 ay',
+                                                                    counts.last6m,
+                                                                ],
+                                                                [
+                                                                    'thisYear',
+                                                                    'Bu y&#305;l',
+                                                                    counts.thisYear,
+                                                                ],
+                                                                [
+                                                                    'all',
+                                                                    'T&uuml;m&uuml;',
+                                                                    counts.all,
+                                                                ],
+                                                            ] as const
+                                                        ).map(([mode, label, count]) => (
+                                                            <label
+                                                                key={mode}
+                                                                className={`flex items-center gap-1.5 px-2 py-1.5 rounded border cursor-pointer transition-colors ${
+                                                                    currentMode === mode
+                                                                        ? 'border-emerald-500 bg-emerald-50 text-emerald-800'
+                                                                        : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+                                                                }`}
+                                                            >
+                                                                <input
+                                                                    type="radio"
+                                                                    name={`preview-${r.clientId}`}
+                                                                    checked={currentMode === mode}
+                                                                    onChange={() =>
+                                                                        setPreviewSelections(
+                                                                            (prev) => ({
+                                                                                ...prev,
+                                                                                [r.clientId]:
+                                                                                    mode as PreviewSelectionMode,
+                                                                            })
+                                                                        )
+                                                                    }
+                                                                    className="h-3 w-3"
+                                                                />
+                                                                <span
+                                                                    className="flex-1"
+                                                                    dangerouslySetInnerHTML={{
+                                                                        __html: label,
+                                                                    }}
+                                                                />
+                                                                {count !== null && (
+                                                                    <span className="text-gray-400">
+                                                                        ({count})
+                                                                    </span>
+                                                                )}
+                                                            </label>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+
+                                    <div className="px-6 py-4 border-t border-gray-200 bg-gray-50 rounded-b-xl flex items-center justify-between">
+                                        <div className="text-sm text-gray-700">
+                                            <span className="font-semibold">{totalSelected}</span>{' '}
+                                            tebligat indirilecek · Tahmini s&uuml;re:{' '}
+                                            <span className="font-semibold">
+                                                ~{estimatedMin} dk
+                                            </span>
+                                        </div>
+                                        <div className="flex gap-2">
+                                            <button
+                                                onClick={() => setPreviewResults(null)}
+                                                className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800"
+                                            >
+                                                &#304;ptal
+                                            </button>
+                                            <button
+                                                onClick={handleDownload}
+                                                disabled={totalSelected === 0}
+                                                className="bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold px-5 py-2 rounded-md transition-colors disabled:opacity-50"
+                                            >
+                                                Se&ccedil;ilenleri &#304;ndir &#8594;
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        );
+                    })()}
 
                 {/* Mükellef Yönetimi Modal */}
                 {showClientModal && (

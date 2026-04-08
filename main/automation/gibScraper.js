@@ -1880,6 +1880,412 @@ function getRateLimits() {
     };
 }
 
+/**
+ * Login helper: opens puppeteer, logs in, returns { browser, page, bearerToken }.
+ * Used by preview and download functions.
+ */
+async function loginAndGetToken(client, password, apiKey) {
+    const browser = await puppeteer.launch({
+        headless: 'new',
+        args: ['--no-sandbox', '--disable-setuid-sandbox'],
+    });
+    const page = await browser.newPage();
+    await page.setUserAgent(USER_AGENT);
+
+    let bearerToken = null;
+    page.on('response', async (resp) => {
+        if (resp.url().includes('/apigateway/auth/tdvd/login') && resp.status() === 200) {
+            try {
+                const text = await resp.text();
+                const body = JSON.parse(text);
+                if (body.token && body.result !== false) bearerToken = body.token;
+            } catch {
+                /* ignore */
+            }
+        }
+    });
+    page.on('request', (req) => {
+        if (
+            !bearerToken &&
+            req.url().includes('gib.gov.tr/apigateway/') &&
+            req.headers()['authorization']
+        ) {
+            const auth = req.headers()['authorization'];
+            if (auth.startsWith('Bearer ')) bearerToken = auth.substring(7);
+        }
+    });
+
+    await ensureLoginForm(page);
+    await page.type('#userid', client.gib_user_code);
+    await page.type('#sifre', password);
+    const captchaCode = await solveCaptcha(page, apiKey);
+    await page.type('#dk', captchaCode);
+
+    const loginSelectors = ['button[type="submit"]', '#giris', 'button.MuiButton-containedPrimary'];
+    for (const selector of loginSelectors) {
+        const btn = await page.$(selector);
+        if (btn) {
+            await Promise.all([
+                page
+                    .waitForNavigation({ waitUntil: 'networkidle0', timeout: 15000 })
+                    .catch(() => {}),
+                page.click(selector),
+            ]);
+            break;
+        }
+    }
+
+    await new Promise((r) => setTimeout(r, 3000));
+    if (page.url().includes('/login')) {
+        await browser.close();
+        throw new Error('Giriş başarısız — CAPTCHA veya kimlik bilgileri yanlış');
+    }
+    if (!bearerToken) {
+        await browser.close();
+        throw new Error('Bearer token yakalanamadı');
+    }
+
+    return { browser, page, bearerToken };
+}
+
+/**
+ * Preview scan: login + fetch tebligat list for each client.
+ * Does NOT download documents. Returns list metadata only.
+ */
+async function previewScan(onStatusUpdate, apiKey) {
+    if (isRunning) {
+        onStatusUpdate({ message: 'Tarama zaten devam ediyor.', type: 'error' });
+        return { ok: false, error: 'busy' };
+    }
+
+    isRunning = true;
+    scanCancelled = false;
+    refreshRateLimits();
+
+    const activeClients = database.getClients().filter((c) => c.status === 'active');
+    if (activeClients.length === 0) {
+        isRunning = false;
+        return { ok: false, error: 'Aktif mükellef yok' };
+    }
+
+    const results = [];
+    const INTER_CLIENT_DELAY = 15000; // 15s between clients (GIB rate limiting)
+
+    try {
+        for (let i = 0; i < activeClients.length; i++) {
+            if (scanCancelled) {
+                onStatusUpdate({ message: 'Keşif durduruldu.', type: 'info' });
+                break;
+            }
+
+            const client = activeClients[i];
+            onStatusUpdate({
+                type: 'progress',
+                progress: {
+                    current: i + 1,
+                    total: activeClients.length,
+                    currentClient: client.firm_name,
+                    errors: 0,
+                    successes: results.filter((r) => r.ok).length,
+                },
+            });
+            onStatusUpdate({
+                message: `[${i + 1}/${activeClients.length}] ${client.firm_name} keşfediliyor...`,
+                type: 'process',
+                firmId: client.id,
+            });
+
+            const password = database.getClientPassword(client.id);
+            if (!password) {
+                results.push({
+                    clientId: client.id,
+                    firmName: client.firm_name,
+                    ok: false,
+                    error: 'Şifre yok',
+                });
+                continue;
+            }
+
+            let browser;
+            try {
+                const loginResult = await loginAndGetToken(client, password, apiKey);
+                browser = loginResult.browser;
+                const { bearerToken } = loginResult;
+
+                const apiClient = gibApiClient.createApiClient(bearerToken);
+                // Single large page fetch (pageSize=1000, verified via API test)
+                const listResp = await apiClient.post('/etebligat/etebligat/tebligat-listele', {
+                    meta: {
+                        pagination: { pageNo: 1, pageSize: 1000 },
+                        sortFieldName: 'id',
+                        sortType: 'ASC',
+                        filters: [],
+                    },
+                });
+                const dtoList = listResp.data?.data?.tebligatDtoList || [];
+                const count = listResp.data?.data?.count || 0;
+
+                // Map to minimal preview format (no document URLs)
+                const tebligatList = dtoList.map((dto) => ({
+                    belgeNo: dto.belgeNo,
+                    sender: dto.kurumAciklama || 'GİB',
+                    subject: `${dto.belgeTuruAciklama || ''}${dto.altKurum ? ' - ' + dto.altKurum : ''}`,
+                    sendDate: dto.gonderimZamani,
+                    notificationDate: dto.tebligZamani,
+                    status: dto.mukellefOkumaZamani ? 'Okunmuş' : 'Okunmamış',
+                    // Internal IDs for later download (not exposed to UI)
+                    _tebligId: dto.tebligId,
+                    _tebligSecureId: dto.tebligSecureId,
+                    _tarafId: dto.tarafId,
+                    _tarafSecureId: dto.tarafSecureId,
+                }));
+
+                results.push({
+                    clientId: client.id,
+                    firmName: client.firm_name,
+                    ok: true,
+                    count,
+                    tebligatList,
+                });
+
+                onStatusUpdate({
+                    message: `${client.firm_name}: ${count} tebligat bulundu`,
+                    type: 'success',
+                    firmId: client.id,
+                });
+            } catch (err) {
+                if (Sentry) {
+                    Sentry.captureException(err, {
+                        tags: { component: 'preview-scan', phase: 'login-or-list' },
+                    });
+                }
+                results.push({
+                    clientId: client.id,
+                    firmName: client.firm_name,
+                    ok: false,
+                    error: err.message,
+                });
+                onStatusUpdate({
+                    message: `${client.firm_name}: hata — ${err.message}`,
+                    type: 'error',
+                    firmId: client.id,
+                });
+            } finally {
+                if (browser) {
+                    try {
+                        await browser.close();
+                    } catch {
+                        /* ignore */
+                    }
+                }
+            }
+
+            // Inter-client delay
+            if (i < activeClients.length - 1 && !scanCancelled) {
+                await new Promise((r) => setTimeout(r, INTER_CLIENT_DELAY));
+            }
+        }
+
+        onStatusUpdate({
+            type: 'progress',
+            progress: {
+                current: activeClients.length,
+                total: activeClients.length,
+                currentClient: null,
+                errors: results.filter((r) => !r.ok).length,
+                successes: results.filter((r) => r.ok).length,
+                completed: true,
+            },
+        });
+
+        return { ok: true, results };
+    } finally {
+        isRunning = false;
+    }
+}
+
+/**
+ * Download pre-selected tebligat records.
+ * selections: [{ clientId, tebligatList: [{ _tebligId, _tebligSecureId, _tarafId, _tarafSecureId, belgeNo, ... }] }]
+ * Each client requires a fresh login (bearer token short-lived).
+ */
+async function downloadSelectedTebligatlar(onStatusUpdate, apiKey, selections) {
+    if (isRunning) {
+        onStatusUpdate({ message: 'Tarama zaten devam ediyor.', type: 'error' });
+        return { ok: false, error: 'busy' };
+    }
+
+    isRunning = true;
+    scanCancelled = false;
+    refreshRateLimits();
+
+    const totalTebligat = selections.reduce((sum, s) => sum + (s.tebligatList?.length || 0), 0);
+    let downloadedTotal = 0;
+    let errorTotal = 0;
+
+    onStatusUpdate({
+        message: `${selections.length} mükellef için ${totalTebligat} tebligat indirilecek`,
+        type: 'info',
+    });
+
+    try {
+        for (let i = 0; i < selections.length; i++) {
+            if (scanCancelled) break;
+
+            const sel = selections[i];
+            if (!sel.tebligatList || sel.tebligatList.length === 0) continue;
+
+            const allClients = database.getClients();
+            const client = allClients.find((c) => c.id === sel.clientId);
+            if (!client) continue;
+
+            const password = database.getClientPassword(sel.clientId);
+            if (!password) {
+                onStatusUpdate({
+                    message: `${sel.firmName}: şifre yok, atlanıyor`,
+                    type: 'error',
+                    firmId: sel.clientId,
+                });
+                continue;
+            }
+
+            onStatusUpdate({
+                type: 'progress',
+                progress: {
+                    current: i + 1,
+                    total: selections.length,
+                    currentClient: sel.firmName,
+                    errors: errorTotal,
+                    successes: downloadedTotal,
+                },
+            });
+            onStatusUpdate({
+                message: `[${i + 1}/${selections.length}] ${sel.firmName}: ${sel.tebligatList.length} belge indiriliyor...`,
+                type: 'process',
+                firmId: sel.clientId,
+            });
+
+            let browser;
+            try {
+                const loginResult = await loginAndGetToken(client, password, apiKey);
+                browser = loginResult.browser;
+                const apiClient = gibApiClient.createApiClient(loginResult.bearerToken);
+
+                const newTebligatIds = [];
+                const toSave = [];
+
+                for (let j = 0; j < sel.tebligatList.length; j++) {
+                    if (scanCancelled) break;
+                    const t = sel.tebligatList[j];
+
+                    // Convert preview shape to scraper shape
+                    const scraperTeb = {
+                        sender: t.sender,
+                        subject: t.subject,
+                        documentNo: t.belgeNo,
+                        status: t.status,
+                        date: t.notificationDate || t.sendDate,
+                        sendDate: t.sendDate,
+                        notificationDate: t.notificationDate,
+                        readDate: null,
+                        documentUrl: null,
+                        documentPath: null,
+                        tarafId: t._tarafId,
+                        tarafSecureId: t._tarafSecureId,
+                        tebligId: t._tebligId,
+                        tebligSecureId: t._tebligSecureId,
+                    };
+
+                    // Download
+                    const dateStr = scraperTeb.date || null;
+                    const docsDir = getDocumentsDir(sel.clientId, sel.firmName, dateStr);
+                    const safeDocNo = (t.belgeNo || String(j)).replace(/[^a-zA-Z0-9-_]/g, '_');
+                    const filePath = path.join(docsDir, `tebligat_${safeDocNo}.pdf`);
+
+                    try {
+                        const downloaded = await gibApiClient.downloadDocument(
+                            apiClient,
+                            scraperTeb,
+                            filePath
+                        );
+                        if (downloaded) {
+                            scraperTeb.documentPath = downloaded;
+                            downloadedTotal++;
+                        }
+                    } catch (dlErr) {
+                        errorTotal++;
+                        logger.debug('[preview-download] ', dlErr.message);
+                    }
+                    toSave.push(scraperTeb);
+
+                    // Inter-document delay
+                    if (j < sel.tebligatList.length - 1 && !scanCancelled) {
+                        await new Promise((r) => setTimeout(r, 5000 + Math.random() * 5000));
+                    }
+                }
+
+                // Save to database (uses INSERT OR IGNORE so duplicates handled)
+                if (toSave.length > 0) {
+                    const saveResult = database.saveTebligatlar(sel.clientId, toSave);
+                    newTebligatIds.push(...(saveResult.newIds || []));
+                    onStatusUpdate({
+                        type: 'data-updated',
+                        newTebligatIds,
+                        clientId: sel.clientId,
+                        clientName: sel.firmName,
+                    });
+                }
+
+                onStatusUpdate({
+                    message: `${sel.firmName}: ${sel.tebligatList.length} belge tamamlandı`,
+                    type: 'success',
+                    firmId: sel.clientId,
+                });
+            } catch (err) {
+                errorTotal++;
+                if (Sentry) {
+                    Sentry.captureException(err, {
+                        tags: { component: 'download-selected' },
+                    });
+                }
+                onStatusUpdate({
+                    message: `${sel.firmName}: hata — ${err.message}`,
+                    type: 'error',
+                    firmId: sel.clientId,
+                });
+            } finally {
+                if (browser) {
+                    try {
+                        await browser.close();
+                    } catch {
+                        /* ignore */
+                    }
+                }
+            }
+
+            if (i < selections.length - 1 && !scanCancelled) {
+                await new Promise((r) => setTimeout(r, 15000));
+            }
+        }
+
+        onStatusUpdate({
+            type: 'progress',
+            progress: {
+                current: selections.length,
+                total: selections.length,
+                currentClient: null,
+                errors: errorTotal,
+                successes: downloadedTotal,
+                completed: true,
+            },
+        });
+
+        return { ok: true, downloaded: downloadedTotal, errors: errorTotal };
+    } finally {
+        isRunning = false;
+    }
+}
+
 module.exports = {
     run,
     cancelScan,
@@ -1887,4 +2293,6 @@ module.exports = {
     clearScanState,
     fetchSingleDocument,
     getRateLimits,
+    previewScan,
+    downloadSelectedTebligatlar,
 };

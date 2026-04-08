@@ -499,6 +499,48 @@ ipcMain.handle('get-rate-limits', () => {
     return gibScraper.getRateLimits();
 });
 
+// Preview scan — login + list only, no document download
+ipcMain.handle('preview-scan', async (_event) => {
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) return { ok: false, error: 'Sistem yapılandırma hatası' };
+    const blockId = powerSaveBlocker.start('prevent-app-suspension');
+    try {
+        return await gibScraper.previewScan((status) => {
+            if (mainWindow && !mainWindow.isDestroyed()) {
+                mainWindow.webContents.send('scan-update', status);
+            }
+        }, apiKey);
+    } catch (err) {
+        logger.error('[preview-scan] error:', err);
+        return { ok: false, error: err.message };
+    } finally {
+        if (powerSaveBlocker.isStarted(blockId)) powerSaveBlocker.stop(blockId);
+    }
+});
+
+// Download selected tebligatlar from preview
+ipcMain.handle('download-selected-tebligatlar', async (event, selections) => {
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) return { ok: false, error: 'Sistem yapılandırma hatası' };
+    const blockId = powerSaveBlocker.start('prevent-app-suspension');
+    try {
+        return await gibScraper.downloadSelectedTebligatlar(
+            (status) => {
+                if (mainWindow && !mainWindow.isDestroyed()) {
+                    mainWindow.webContents.send('scan-update', status);
+                }
+            },
+            apiKey,
+            selections
+        );
+    } catch (err) {
+        logger.error('[download-selected] error:', err);
+        return { ok: false, error: err.message };
+    } finally {
+        if (powerSaveBlocker.isStarted(blockId)) powerSaveBlocker.stop(blockId);
+    }
+});
+
 // Cancel Scan
 ipcMain.on('cancel-scan', (event) => {
     gibScraper.cancelScan();
