@@ -1317,58 +1317,74 @@ const ETebligat: React.FC = () => {
                             >
                                 Y&ouml;net
                             </button>
-                            {clients.length > 0 && (
-                                <button
-                                    type="button"
-                                    disabled={previewRunning || scanning}
-                                    onClick={async () => {
-                                        setPreviewRunning(true);
-                                        setPreviewResults(null);
-                                        setPreviewSelections({});
-                                        addLog(
-                                            'Ke\u015fif ba\u015flat\u0131l\u0131yor (belge indirme yok)...',
-                                            'info'
-                                        );
-                                        try {
-                                            const result = await window.electronAPI.previewScan();
-                                            if (result.ok && result.results) {
-                                                setPreviewResults(result.results);
-                                                // Auto-default selection: last30 for clients with new tebligatlar
-                                                const defaults: Record<
-                                                    number,
-                                                    PreviewSelectionMode
-                                                > = {};
-                                                result.results.forEach((r) => {
-                                                    if (r.ok && (r.count || 0) > 0) {
-                                                        defaults[r.clientId] = 'last30';
-                                                    } else {
-                                                        defaults[r.clientId] = 'skip';
-                                                    }
-                                                });
-                                                setPreviewSelections(defaults);
-                                            } else {
-                                                addLog(
-                                                    `Ke\u015fif hatas\u0131: ${result.error || 'Bilinmeyen hata'}`,
-                                                    'error'
-                                                );
-                                            }
-                                        } catch (err) {
-                                            addLog(
-                                                `Ke\u015fif hatas\u0131: ${(err as Error).message}`,
-                                                'error'
-                                            );
-                                        } finally {
-                                            setPreviewRunning(false);
-                                        }
-                                    }}
-                                    className="bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold px-4 py-2 rounded-md transition-colors disabled:opacity-50"
-                                    title="GİB'deki tüm tebligatları önizle, seçili olanları indir"
-                                >
-                                    {previewRunning
+                            {clients.length > 0 &&
+                                (() => {
+                                    const newClientsCount = clients.filter(
+                                        (c) => !c.last_full_scan_at
+                                    ).length;
+                                    const hasNewClients = newClientsCount > 0;
+                                    const buttonClass = hasNewClients
+                                        ? 'bg-emerald-600 hover:bg-emerald-700 text-white ring-2 ring-emerald-300 shadow-md shadow-emerald-500/30'
+                                        : 'bg-white hover:bg-emerald-50 text-emerald-700 border border-emerald-500/40';
+                                    const label = previewRunning
                                         ? 'Ke\u015fif...'
-                                        : '\uD83D\uDD0D \u0130lk Ke\u015fif'}
-                                </button>
-                            )}
+                                        : hasNewClients
+                                          ? `\uD83D\uDD0D \u0130lk Ke\u015fif (${newClientsCount} yeni)`
+                                          : '\uD83D\uDD0D Ke\u015fif';
+                                    const title = hasNewClients
+                                        ? `${newClientsCount} yeni m\u00fckellef i\u00e7in \u00f6nerilen ak\u0131\u015f — tebligatlar\u0131 \u00f6nce \u00f6nizle, sonra se\u00e7`
+                                        : 'T\u00fcm m\u00fckelleflerin G\u0130B\u2019deki tebligatlar\u0131n\u0131 \u00f6nizle — ge\u00e7mi\u015fi yeniden incelemek i\u00e7in';
+                                    return (
+                                        <button
+                                            type="button"
+                                            disabled={previewRunning || scanning}
+                                            onClick={async () => {
+                                                setPreviewRunning(true);
+                                                setPreviewResults(null);
+                                                setPreviewSelections({});
+                                                addLog(
+                                                    'Ke\u015fif ba\u015flat\u0131l\u0131yor (belge indirme yok)...',
+                                                    'info'
+                                                );
+                                                try {
+                                                    const result =
+                                                        await window.electronAPI.previewScan();
+                                                    if (result.ok && result.results) {
+                                                        setPreviewResults(result.results);
+                                                        const defaults: Record<
+                                                            number,
+                                                            PreviewSelectionMode
+                                                        > = {};
+                                                        result.results.forEach((r) => {
+                                                            if (r.ok && (r.count || 0) > 0) {
+                                                                defaults[r.clientId] = 'last30';
+                                                            } else {
+                                                                defaults[r.clientId] = 'skip';
+                                                            }
+                                                        });
+                                                        setPreviewSelections(defaults);
+                                                    } else {
+                                                        addLog(
+                                                            `Ke\u015fif hatas\u0131: ${result.error || 'Bilinmeyen hata'}`,
+                                                            'error'
+                                                        );
+                                                    }
+                                                } catch (err) {
+                                                    addLog(
+                                                        `Ke\u015fif hatas\u0131: ${(err as Error).message}`,
+                                                        'error'
+                                                    );
+                                                } finally {
+                                                    setPreviewRunning(false);
+                                                }
+                                            }}
+                                            className={`text-sm font-semibold px-4 py-2 rounded-md transition-colors disabled:opacity-50 ${buttonClass}`}
+                                            title={title}
+                                        >
+                                            {label}
+                                        </button>
+                                    );
+                                })()}
                         </div>
                     </div>
                 </div>
