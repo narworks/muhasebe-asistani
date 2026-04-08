@@ -3,6 +3,7 @@ import { clientCreateSchema, clientEditSchema, validateForm } from '../../lib/va
 import type { ScheduleStatus, Client, Tebligat, ScanUpdate } from '../../types';
 import { useNavigate } from 'react-router-dom';
 import LegalConsentModal from '../../components/LegalConsentModal';
+import LimitReachedModal from '../../components/LimitReachedModal';
 
 interface ScanGroup {
     scanDate: string; // ISO date string (truncated to minute)
@@ -119,6 +120,13 @@ const ETebligat: React.FC = () => {
         totalAdded: number;
         maxClients: number;
         remaining: number;
+    } | null>(null);
+
+    // Hard limit modal
+    const [limitModal, setLimitModal] = useState<{
+        resource: 'mukellef' | 'kredi';
+        used?: number;
+        limit?: number;
     } | null>(null);
 
     // Legal consent
@@ -357,6 +365,14 @@ const ETebligat: React.FC = () => {
         try {
             const credits = await window.electronAPI.getCredits();
             setCreditBalance(credits);
+            if (credits.totalRemaining <= 0) {
+                setLimitModal({
+                    resource: 'kredi',
+                    used: credits.monthlyUsed,
+                    limit: credits.monthlyLimit,
+                });
+                return;
+            }
             const activeClients = clients.filter((c) => c.status === 'active').length;
             if (credits.totalRemaining < activeClients) {
                 addLog(
@@ -534,6 +550,15 @@ const ETebligat: React.FC = () => {
             if (editingClientId) {
                 await window.electronAPI.updateClient(editingClientId, payload);
             } else {
+                // Short-circuit if mukellef limit is reached
+                if (clientLimit && clientLimit.remaining <= 0) {
+                    setLimitModal({
+                        resource: 'mukellef',
+                        used: clientLimit.totalAdded,
+                        limit: clientLimit.maxClients,
+                    });
+                    return;
+                }
                 await window.electronAPI.saveClient(payload);
             }
 
@@ -939,6 +964,14 @@ const ETebligat: React.FC = () => {
 
     return (
         <div className="p-6 h-full flex flex-col">
+            <LimitReachedModal
+                open={limitModal !== null}
+                onClose={() => setLimitModal(null)}
+                resource={limitModal?.resource ?? 'mukellef'}
+                used={limitModal?.used}
+                limit={limitModal?.limit}
+                isTrial={clientLimit?.maxClients === 20}
+            />
             {showLegalConsent && (
                 <LegalConsentModal
                     onAccept={async () => {
