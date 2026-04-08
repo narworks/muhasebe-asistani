@@ -41,6 +41,12 @@ const ETebligat: React.FC = () => {
     const [documentsFolder, setDocumentsFolder] = useState<string | null>(null);
     const [filterClientId, setFilterClientId] = useState('all');
     const [filterStatus, setFilterStatus] = useState('all');
+    const [filterSender, setFilterSender] = useState('all');
+    const [filterDateRange, setFilterDateRange] = useState<
+        'all' | 'today' | 'yesterday' | 'last3' | 'last7' | 'last30' | 'thisYear' | 'custom'
+    >('all');
+    const [filterDateFrom, setFilterDateFrom] = useState('');
+    const [filterDateTo, setFilterDateTo] = useState('');
     const [searchTerm, setSearchTerm] = useState('');
 
     // Progress & Schedule state
@@ -827,9 +833,80 @@ const ETebligat: React.FC = () => {
         ),
     ];
     const normalizedSearch = searchTerm.trim().toLowerCase();
+    // Unique sender list for dropdown (sorted, non-empty)
+    const uniqueSenders = Array.from(
+        new Set(tebligatlar.map((t) => t.sender).filter((s): s is string => !!s && s !== '-'))
+    ).sort((a, b) => a.localeCompare(b, 'tr'));
+
+    // Compute active date range based on preset
+    const getDateRangeBounds = (): { from: Date | null; to: Date | null } => {
+        const now = new Date();
+        const startOfDay = (d: Date) =>
+            new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0, 0);
+        const endOfDay = (d: Date) =>
+            new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59, 999);
+        switch (filterDateRange) {
+            case 'today':
+                return { from: startOfDay(now), to: endOfDay(now) };
+            case 'yesterday': {
+                const y = new Date(now);
+                y.setDate(y.getDate() - 1);
+                return { from: startOfDay(y), to: endOfDay(y) };
+            }
+            case 'last3': {
+                const d = new Date(now);
+                d.setDate(d.getDate() - 2);
+                return { from: startOfDay(d), to: endOfDay(now) };
+            }
+            case 'last7': {
+                const d = new Date(now);
+                d.setDate(d.getDate() - 6);
+                return { from: startOfDay(d), to: endOfDay(now) };
+            }
+            case 'last30': {
+                const d = new Date(now);
+                d.setDate(d.getDate() - 29);
+                return { from: startOfDay(d), to: endOfDay(now) };
+            }
+            case 'thisYear':
+                return {
+                    from: new Date(now.getFullYear(), 0, 1, 0, 0, 0, 0),
+                    to: endOfDay(now),
+                };
+            case 'custom':
+                return {
+                    from: filterDateFrom ? new Date(filterDateFrom + 'T00:00:00') : null,
+                    to: filterDateTo ? new Date(filterDateTo + 'T23:59:59') : null,
+                };
+            default:
+                return { from: null, to: null };
+        }
+    };
+    const dateBounds = getDateRangeBounds();
+
+    // Parse row date — try tebligat_date (Turkish DD.MM.YYYY) then created_at (ISO)
+    const parseRowDate = (row: Tebligat): Date | null => {
+        if (row.tebligat_date && /^\d{2}\.\d{2}\.\d{4}/.test(row.tebligat_date)) {
+            const [d, m, y] = row.tebligat_date.split(' ')[0].split('.').map(Number);
+            return new Date(y, m - 1, d);
+        }
+        if (row.created_at) {
+            const parsed = new Date(row.created_at);
+            if (!isNaN(parsed.getTime())) return parsed;
+        }
+        return null;
+    };
+
     const filteredTebligatlar = tebligatlar.filter((row) => {
         if (filterClientId !== 'all' && String(row.client_id) !== filterClientId) return false;
         if (filterStatus !== 'all' && row.status !== filterStatus) return false;
+        if (filterSender !== 'all' && row.sender !== filterSender) return false;
+        if (dateBounds.from || dateBounds.to) {
+            const rowDate = parseRowDate(row);
+            if (!rowDate) return false;
+            if (dateBounds.from && rowDate < dateBounds.from) return false;
+            if (dateBounds.to && rowDate > dateBounds.to) return false;
+        }
         if (normalizedSearch) {
             const haystack =
                 `${row.firm_name || ''} ${row.sender || ''} ${row.subject || ''}`.toLowerCase();
@@ -905,6 +982,10 @@ const ETebligat: React.FC = () => {
     const resetFilters = () => {
         setFilterClientId('all');
         setFilterStatus('all');
+        setFilterSender('all');
+        setFilterDateRange('all');
+        setFilterDateFrom('');
+        setFilterDateTo('');
         setSearchTerm('');
     };
 
@@ -1626,17 +1707,66 @@ const ETebligat: React.FC = () => {
                                         <div className="flex gap-2 mb-2">
                                             <button
                                                 type="button"
-                                                onClick={() => setScheduleMode('finish')}
+                                                onClick={async () => {
+                                                    setScheduleMode('finish');
+                                                    if (scheduleConfig.enabled) {
+                                                        try {
+                                                            await window.electronAPI.setSchedule({
+                                                                enabled: true,
+                                                                finishByTime:
+                                                                    scheduleConfig.finishByTime ||
+                                                                    scheduleConfig.time ||
+                                                                    '08:00',
+                                                                frequency: scheduleConfig.frequency,
+                                                                customDays:
+                                                                    scheduleConfig.customDays,
+                                                            });
+                                                            const updated =
+                                                                await window.electronAPI.getScheduleStatus();
+                                                            setScheduleConfig(
+                                                                mergeScheduleStatus(updated)
+                                                            );
+                                                        } catch (err) {
+                                                            console.error(
+                                                                'Mod de&#287;i&#351;tirilemedi',
+                                                                err
+                                                            );
+                                                        }
+                                                    }
+                                                }}
                                                 className={`flex-1 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${scheduleMode === 'finish' ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
                                             >
-                                                Bitiş Saati
+                                                Biti&#351; Saati
                                             </button>
                                             <button
                                                 type="button"
-                                                onClick={() => setScheduleMode('start')}
+                                                onClick={async () => {
+                                                    setScheduleMode('start');
+                                                    if (scheduleConfig.enabled) {
+                                                        try {
+                                                            await window.electronAPI.setSchedule({
+                                                                enabled: true,
+                                                                startAtTime: startAtTime,
+                                                                frequency: scheduleConfig.frequency,
+                                                                customDays:
+                                                                    scheduleConfig.customDays,
+                                                            });
+                                                            const updated =
+                                                                await window.electronAPI.getScheduleStatus();
+                                                            setScheduleConfig(
+                                                                mergeScheduleStatus(updated)
+                                                            );
+                                                        } catch (err) {
+                                                            console.error(
+                                                                'Mod de&#287;i&#351;tirilemedi',
+                                                                err
+                                                            );
+                                                        }
+                                                    }
+                                                }}
                                                 className={`flex-1 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${scheduleMode === 'start' ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
                                             >
-                                                Başlangıç Saati
+                                                Ba&#351;lang&#305;&ccedil; Saati
                                             </button>
                                         </div>
                                         {scheduleMode === 'finish' ? (
@@ -1662,11 +1792,42 @@ const ETebligat: React.FC = () => {
                                                 <input
                                                     type="time"
                                                     value={startAtTime}
-                                                    onChange={(e) => setStartAtTime(e.target.value)}
+                                                    onChange={async (e) => {
+                                                        const newTime = e.target.value;
+                                                        setStartAtTime(newTime);
+                                                        // If schedule is enabled, push update to backend immediately
+                                                        if (
+                                                            scheduleConfig.enabled &&
+                                                            scheduleMode === 'start'
+                                                        ) {
+                                                            try {
+                                                                await window.electronAPI.setSchedule(
+                                                                    {
+                                                                        enabled: true,
+                                                                        startAtTime: newTime,
+                                                                        frequency:
+                                                                            scheduleConfig.frequency,
+                                                                        customDays:
+                                                                            scheduleConfig.customDays,
+                                                                    }
+                                                                );
+                                                                const updated =
+                                                                    await window.electronAPI.getScheduleStatus();
+                                                                setScheduleConfig(
+                                                                    mergeScheduleStatus(updated)
+                                                                );
+                                                            } catch (err) {
+                                                                console.error(
+                                                                    'Zamanlama g&uuml;ncellenemedi',
+                                                                    err
+                                                                );
+                                                            }
+                                                        }
+                                                    }}
                                                     className="w-full border border-gray-200 rounded-lg px-4 py-3 text-lg font-semibold text-gray-800 bg-gray-50 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
                                                 />
                                                 <p className="mt-2 text-xs text-gray-500">
-                                                    Tarama tam bu saatte başlatılır
+                                                    Tarama tam bu saatte ba&#351;lat&#305;l&#305;r
                                                 </p>
                                             </>
                                         )}
@@ -2207,20 +2368,91 @@ const ETebligat: React.FC = () => {
                         <div className="text-sm text-gray-500">Kayıtlı tebligat bulunamadı.</div>
                     ) : (
                         <>
+                            {/* Date range preset buttons */}
+                            <div className="mb-3">
+                                <label className="block text-xs font-semibold text-gray-500 mb-1.5">
+                                    Tarih Aral&#305;&#287;&#305;
+                                </label>
+                                <div className="flex flex-wrap gap-1.5">
+                                    {(
+                                        [
+                                            ['all', 'T\u00fcm\u00fc'],
+                                            ['today', 'Bug\u00fcn'],
+                                            ['yesterday', 'D\u00fcn'],
+                                            ['last3', 'Son 3 G\u00fcn'],
+                                            ['last7', 'Son 7 G\u00fcn'],
+                                            ['last30', 'Son 30 G\u00fcn'],
+                                            ['thisYear', 'Bu Y\u0131l'],
+                                            ['custom', '\u00d6zel'],
+                                        ] as const
+                                    ).map(([key, label]) => (
+                                        <button
+                                            key={key}
+                                            type="button"
+                                            onClick={() =>
+                                                setFilterDateRange(key as typeof filterDateRange)
+                                            }
+                                            className={`text-xs px-3 py-1.5 rounded-md border transition-colors ${
+                                                filterDateRange === key
+                                                    ? 'bg-indigo-600 text-white border-indigo-600'
+                                                    : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'
+                                            }`}
+                                        >
+                                            {label}
+                                        </button>
+                                    ))}
+                                </div>
+                                {filterDateRange === 'custom' && (
+                                    <div className="flex gap-2 mt-2">
+                                        <input
+                                            type="date"
+                                            value={filterDateFrom}
+                                            onChange={(e) => setFilterDateFrom(e.target.value)}
+                                            className="flex-1 border border-gray-300 rounded-md px-3 py-2 text-sm text-gray-900 bg-white"
+                                        />
+                                        <input
+                                            type="date"
+                                            value={filterDateTo}
+                                            onChange={(e) => setFilterDateTo(e.target.value)}
+                                            className="flex-1 border border-gray-300 rounded-md px-3 py-2 text-sm text-gray-900 bg-white"
+                                        />
+                                    </div>
+                                )}
+                            </div>
+
                             <div className="flex flex-col md:flex-row md:items-center gap-3 mb-4">
                                 <div className="flex-1">
                                     <label className="block text-xs font-semibold text-gray-500 mb-1">
-                                        Mükellef
+                                        M&uuml;kellef
                                     </label>
                                     <select
                                         value={filterClientId}
                                         onChange={(e) => setFilterClientId(e.target.value)}
                                         className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm text-gray-900 bg-white"
                                     >
-                                        <option value="all">Tümü</option>
+                                        <option value="all">T&uuml;m&uuml;</option>
                                         {clients.map((client) => (
                                             <option key={client.id} value={String(client.id)}>
                                                 {client.firm_name}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div className="flex-1">
+                                    <label className="block text-xs font-semibold text-gray-500 mb-1">
+                                        G&ouml;nderen (Kurum)
+                                    </label>
+                                    <select
+                                        value={filterSender}
+                                        onChange={(e) => setFilterSender(e.target.value)}
+                                        className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm text-gray-900 bg-white"
+                                    >
+                                        <option value="all">T&uuml;m&uuml;</option>
+                                        {uniqueSenders.map((sender) => (
+                                            <option key={sender} value={sender}>
+                                                {sender.length > 50
+                                                    ? sender.substring(0, 50) + '...'
+                                                    : sender}
                                             </option>
                                         ))}
                                     </select>
@@ -2234,7 +2466,7 @@ const ETebligat: React.FC = () => {
                                         onChange={(e) => setFilterStatus(e.target.value)}
                                         className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm text-gray-900 bg-white"
                                     >
-                                        <option value="all">Tümü</option>
+                                        <option value="all">T&uuml;m&uuml;</option>
                                         {statusOptions.map((status) => (
                                             <option key={status} value={status}>
                                                 {status}
@@ -2250,14 +2482,14 @@ const ETebligat: React.FC = () => {
                                         value={searchTerm}
                                         onChange={(e) => setSearchTerm(e.target.value)}
                                         className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm text-gray-900 bg-white"
-                                        placeholder="Gönderen, konu, mükellef"
+                                        placeholder="G&ouml;nderen, konu, m&uuml;kellef"
                                     />
                                 </div>
                                 <div className="md:pt-6">
                                     <button
                                         type="button"
                                         onClick={resetFilters}
-                                        className="text-xs font-semibold text-gray-500 hover:text-gray-700"
+                                        className="text-xs font-semibold text-gray-500 hover:text-gray-700 whitespace-nowrap"
                                     >
                                         Filtreleri Temizle
                                     </button>

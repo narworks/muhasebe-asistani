@@ -21,14 +21,14 @@ function init(onScanTrigger) {
             current.schedule.startAtTime || null
         );
 
-        // Check if a scheduled scan was missed while app was closed/sleeping
-        const nextScan = current.schedule.nextScheduledScanAt;
-        if (nextScan) {
-            const nextScanTime = new Date(nextScan);
+        // Check if a scheduled scan was missed while app was closed/sleeping.
+        // Use estimatedStartTime (when cron WOULD HAVE fired) instead of nextScheduledScanAt (finish time).
+        const missedTrigger = current.schedule.estimatedStartTime;
+        if (missedTrigger) {
+            const triggerTime = new Date(missedTrigger);
             const now = new Date();
-            if (nextScanTime < now) {
-                // Missed scan — run it now (with 30s delay to let app fully initialize)
-                const missedAgo = Math.round((now - nextScanTime) / 60000);
+            if (triggerTime < now) {
+                const missedAgo = Math.round((now - triggerTime) / 60000);
                 logger.debug(
                     `[Scheduler] Missed scan detected (${missedAgo} min ago), triggering now`
                 );
@@ -99,59 +99,98 @@ function estimateScanDuration() {
 }
 
 /**
- * Calculate the start time based on finish time and estimated duration
- * @param {string} finishTime - Time in HH:MM format (when scan should finish)
- * @param {number} durationMinutes - Estimated scan duration in minutes
- * @param {string} frequency - 'daily' | 'weekdays' | 'weekends' | 'custom'
- * @param {number[]} customDays - Array of day numbers
- * @returns {{ startTime: Date, finishTime: Date }}
+ * Get allowed day numbers for a given frequency
  */
-function calculateStartTime(finishTime, durationMinutes, frequency, customDays) {
-    const [hours, minutes] = finishTime.split(':').map(Number);
-    const now = new Date();
-
-    // Get allowed days based on frequency
-    let allowedDays;
+function getAllowedDays(frequency, customDays) {
     switch (frequency) {
         case 'weekdays':
-            allowedDays = [1, 2, 3, 4, 5];
-            break;
+            return [1, 2, 3, 4, 5];
         case 'weekends':
-            allowedDays = [0, 6];
-            break;
+            return [0, 6];
         case 'custom':
-            allowedDays = customDays && customDays.length > 0 ? customDays : [0, 1, 2, 3, 4, 5, 6];
-            break;
+            return customDays && customDays.length > 0 ? customDays : [0, 1, 2, 3, 4, 5, 6];
         default: // daily
-            allowedDays = [0, 1, 2, 3, 4, 5, 6];
+            return [0, 1, 2, 3, 4, 5, 6];
     }
+}
 
-    // Find the next allowed day for finish time
+/**
+ * Calculate the start time based on finish time and estimated duration
+ */
+function calculateStartTime(finishTime, durationMinutes, frequency, customDays) {
+    if (!finishTime) {
+        throw new Error('calculateStartTime: finishTime is required');
+    }
+    const [hours, minutes] = finishTime.split(':').map(Number);
+    const now = new Date();
+    const allowedDays = getAllowedDays(frequency, customDays);
+
+    // Find the next allowed day where the start time is still in the future
     for (let daysAhead = 0; daysAhead < 8; daysAhead++) {
         const candidateFinish = new Date(now);
         candidateFinish.setDate(candidateFinish.getDate() + daysAhead);
         candidateFinish.setHours(hours, minutes, 0, 0);
 
-        const dayOfWeek = candidateFinish.getDay();
-
-        if (allowedDays.includes(dayOfWeek)) {
-            // Calculate start time by subtracting duration
+        if (allowedDays.includes(candidateFinish.getDay())) {
             const candidateStart = new Date(
                 candidateFinish.getTime() - durationMinutes * 60 * 1000
             );
-
-            // If it's today, check if the start time hasn't passed yet
             if (candidateStart > now) {
                 return { startTime: candidateStart, finishTime: candidateFinish };
             }
         }
     }
 
-    // Fallback (should not happen)
+    // Fallback
     const fallbackFinish = new Date(now);
     fallbackFinish.setDate(fallbackFinish.getDate() + 1);
     fallbackFinish.setHours(hours, minutes, 0, 0);
     const fallbackStart = new Date(fallbackFinish.getTime() - durationMinutes * 60 * 1000);
+    return { startTime: fallbackStart, finishTime: fallbackFinish };
+}
+
+/**
+ * Calculate finish time from start time (used in start mode).
+ * Finds the next allowed day where start time is in the future.
+ */
+function calculateFinishFromStart(startAtTime, durationMinutes, frequency, customDays) {
+    if (!startAtTime) {
+        throw new Error('calculateFinishFromStart: startAtTime is required');
+    }
+    const [sh, sm] = startAtTime.split(':').map(Number);
+    const now = new Date();
+    const allowedDays = getAllowedDays(frequency, customDays);
+
+    for (let daysAhead = 0; daysAhead < 8; daysAhead++) {
+        const candidateStart = new Date(now);
+        candidateStart.setDate(candidateStart.getDate() + daysAhead);
+        candidateStart.setHours(sh, sm, 0, 0);
+
+        if (allowedDays.includes(candidateStart.getDay())) {
+            // Grace period: if today AND start time passed by less than 2 minutes,
+            // trigger NOW (with small delay). Otherwise move to next allowed day.
+            if (candidateStart > now) {
+                const finishTime = new Date(candidateStart.getTime() + durationMinutes * 60 * 1000);
+                return { startTime: candidateStart, finishTime };
+            }
+            if (daysAhead === 0) {
+                const minutesPassed = (now - candidateStart) / 60000;
+                if (minutesPassed < 2) {
+                    const immediateStart = new Date(now.getTime() + 5000); // 5s from now
+                    const finishTime = new Date(
+                        immediateStart.getTime() + durationMinutes * 60 * 1000
+                    );
+                    return { startTime: immediateStart, finishTime };
+                }
+            }
+        }
+    }
+
+    // Fallback: tomorrow at requested time
+    const fallbackStart = new Date(now);
+    fallbackStart.setDate(fallbackStart.getDate() + 1);
+    fallbackStart.setHours(sh, sm, 0, 0);
+    const fallbackFinish = new Date(fallbackStart.getTime() + durationMinutes * 60 * 1000);
     return { startTime: fallbackStart, finishTime: fallbackFinish };
 }
 
@@ -210,7 +249,8 @@ function startSchedule(finishByTime, frequency = 'daily', customDays = [], start
         settings.updateSettings({
             schedule: {
                 enabled: false,
-                finishByTime: finishByTime,
+                finishByTime: finishByTime || null,
+                startAtTime: startAtTime || null,
                 frequency: frequency,
                 customDays: customDays,
                 estimatedDurationMinutes: 0,
@@ -224,15 +264,13 @@ function startSchedule(finishByTime, frequency = 'daily', customDays = [], start
     // Calculate when to start
     let startTime, finishTime;
     if (startAtTime) {
-        // User specified exact start time
-        const [sh, sm] = startAtTime.split(':').map(Number);
-        const now = new Date();
-        startTime = new Date(now);
-        startTime.setHours(sh, sm, 0, 0);
-        if (startTime <= now) startTime.setDate(startTime.getDate() + 1);
-        finishTime = new Date(startTime.getTime() + totalMinutes * 60 * 1000);
+        ({ startTime, finishTime } = calculateFinishFromStart(
+            startAtTime,
+            totalMinutes,
+            frequency,
+            customDays
+        ));
     } else {
-        // Calculate start from finish time
         ({ startTime, finishTime } = calculateStartTime(
             finishByTime,
             totalMinutes,
@@ -264,32 +302,46 @@ function startSchedule(finishByTime, frequency = 'daily', customDays = [], start
     scheduledTask = cron.schedule(cronExpression, () => {
         logger.debug(`[Scheduler] Triggered scheduled scan at ${new Date().toISOString()}`);
 
-        // Recalculate next run
+        // Recalculate next run — branch based on active mode
         const { totalMinutes: newDuration } = estimateScanDuration();
-        const { startTime: nextStart, finishTime: nextFinish } = calculateStartTime(
-            finishByTime,
-            newDuration,
-            frequency,
-            customDays
-        );
+        let nextStart, nextFinish;
+        try {
+            if (startAtTime) {
+                ({ startTime: nextStart, finishTime: nextFinish } = calculateFinishFromStart(
+                    startAtTime,
+                    newDuration,
+                    frequency,
+                    customDays
+                ));
+            } else {
+                ({ startTime: nextStart, finishTime: nextFinish } = calculateStartTime(
+                    finishByTime,
+                    newDuration,
+                    frequency,
+                    customDays
+                ));
+            }
 
-        settings.updateSettings({
-            schedule: {
-                lastScheduledScanAt: new Date().toISOString(),
-                estimatedStartTime: nextStart.toISOString(),
-                nextScheduledScanAt: nextFinish.toISOString(),
-                estimatedDurationMinutes: newDuration,
-            },
-        });
+            settings.updateSettings({
+                schedule: {
+                    lastScheduledScanAt: new Date().toISOString(),
+                    estimatedStartTime: nextStart.toISOString(),
+                    nextScheduledScanAt: nextFinish.toISOString(),
+                    estimatedDurationMinutes: newDuration,
+                },
+            });
+        } catch (err) {
+            logger.error('[Scheduler] Failed to recalculate next run:', err);
+        }
 
         if (onScanCallback) onScanCallback();
     });
 
-    // Save settings with next run info
+    // Save settings with next run info — always use null (not undefined) for unused fields
     settings.updateSettings({
         schedule: {
             enabled: true,
-            finishByTime: finishByTime,
+            finishByTime: finishByTime || null,
             startAtTime: startAtTime || null,
             frequency: frequency,
             customDays: customDays,
