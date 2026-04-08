@@ -56,11 +56,56 @@ if (process.env.SENTRY_DSN) {
                 delete event.user.ip_address;
                 delete event.user.username;
             }
-            // Redact 10/11-digit numbers (TC/VKN) from exception messages
+            // Also strip geo data (city/region) — still identifying
+            if (event.user?.geo) {
+                delete event.user.geo;
+            }
+
+            // PII scrub function — applies multiple redaction patterns
+            const scrub = (text) => {
+                if (!text || typeof text !== 'string') return text;
+                return (
+                    text
+                        // TC/VKN (10 or 11 digit numbers)
+                        .replace(/\b\d{10,11}\b/g, '[REDACTED-ID]')
+                        // Email addresses
+                        .replace(
+                            /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g,
+                            '[REDACTED-EMAIL]'
+                        )
+                        // Turkish uppercase company names in brackets: [FIRMA ADI]
+                        .replace(/\[[A-ZĞÜŞİÖÇ][A-ZĞÜŞİÖÇ0-9\s.&]{2,}\]/g, '[REDACTED-FIRM]')
+                );
+            };
+
+            // Scrub exception messages
             if (event.exception?.values) {
                 for (const ex of event.exception.values) {
-                    if (ex.value) {
-                        ex.value = ex.value.replace(/\b\d{10,11}\b/g, '[REDACTED]');
+                    if (ex.value) ex.value = scrub(ex.value);
+                }
+            }
+            // Scrub top-level message (captureMessage calls)
+            if (event.message) {
+                event.message = scrub(event.message);
+            }
+            // Scrub breadcrumbs (HTTP requests, user interactions)
+            if (event.breadcrumbs) {
+                for (const b of event.breadcrumbs) {
+                    if (b.message) b.message = scrub(b.message);
+                    if (b.data) {
+                        for (const key of Object.keys(b.data)) {
+                            if (typeof b.data[key] === 'string') {
+                                b.data[key] = scrub(b.data[key]);
+                            }
+                        }
+                    }
+                }
+            }
+            // Scrub extra data
+            if (event.extra) {
+                for (const key of Object.keys(event.extra)) {
+                    if (typeof event.extra[key] === 'string') {
+                        event.extra[key] = scrub(event.extra[key]);
                     }
                 }
             }

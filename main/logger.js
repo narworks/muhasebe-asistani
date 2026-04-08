@@ -14,6 +14,9 @@ module.exports = {
         if (!isProduction) console.log(...args);
     },
     info: (...args) => console.log(...args),
+    // SECURITY: Only forward Error objects to Sentry — never string messages.
+    // String logs can contain PII (firma adı, müşteri verisi); Error objects
+    // are deterministic and can be filtered by beforeSend.
     warn: (...args) => {
         console.warn(...args);
         if (Sentry && isProduction) {
@@ -21,6 +24,7 @@ module.exports = {
             if (errArg) {
                 Sentry.captureException(errArg, { level: 'warning' });
             }
+            // String messages intentionally NOT sent to Sentry
         }
     },
     error: (...args) => {
@@ -29,10 +33,8 @@ module.exports = {
             const errArg = args.find((a) => a instanceof Error);
             if (errArg) {
                 Sentry.captureException(errArg);
-            } else {
-                const msg = args.map((a) => String(a)).join(' ');
-                Sentry.captureMessage(msg, 'error');
             }
+            // String messages intentionally NOT sent to Sentry (PII risk)
         }
     },
 };

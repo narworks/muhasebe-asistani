@@ -1517,7 +1517,8 @@ async function run(onStatusUpdate, apiKey, scanConfig = {}, options = {}, deduct
 
                     break;
                 } catch (err) {
-                    logger.error(
+                    // PII-safe: don't include firm_name in Sentry-forwarded logs
+                    logger.debug(
                         `[${client.firm_name}] Deneme ${attempt}/${config.maxCaptchaRetries}:`,
                         err.message
                     );
