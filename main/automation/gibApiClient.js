@@ -138,7 +138,9 @@ function extractPdfFromImz(imzPath) {
 async function downloadDocument(apiClient, tebligat, filePath) {
     // Step 1: Get document file info
     const fileInfo = await getDocumentFiles(apiClient, tebligat.tebligId, tebligat.tebligSecureId);
-    if (!fileInfo.tebligBelge) return null;
+    if (!fileInfo.tebligBelge) {
+        throw new Error('Belge dosya bilgisi bulunamad\u0131 (belge-ek-listele bo\u015f)');
+    }
 
     const belge = fileInfo.tebligBelge;
 
@@ -153,15 +155,21 @@ async function downloadDocument(apiClient, tebligat, filePath) {
         belgeAdi: belge.adi,
     });
 
-    if (!linkResult.reportLink) return null;
+    if (!linkResult.reportLink) {
+        throw new Error('\u0130ndirme linki al\u0131namad\u0131 (belge-getir bo\u015f)');
+    }
 
     // Step 3: Download — adjust extension based on actual file type
     const ext = belge.uzanti || 'pdf';
     const actualPath = filePath.replace(/\.[^.]+$/, `.${ext}`);
     const savedPath = await downloadFile(linkResult.reportLink, actualPath);
 
+    if (!savedPath) {
+        throw new Error('Dosya indirilemedi veya \u00e7ok k\u00fc\u00e7\u00fck (bozuk)');
+    }
+
     // Step 4: If .imz, extract the embedded PDF for easy viewing
-    if (savedPath && ext === 'imz') {
+    if (ext === 'imz') {
         const pdfPath = extractPdfFromImz(savedPath);
         if (pdfPath) return pdfPath; // Return .pdf path for DB storage
     }

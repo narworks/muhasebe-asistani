@@ -2424,6 +2424,8 @@ async function downloadSelectedTebligatlar(onStatusUpdate, apiKey, selections) {
 
                 const newTebligatIds = [];
                 const toSave = [];
+                let clientDownloaded = 0;
+                let clientErrors = 0;
 
                 for (let j = 0; j < sel.tebligatList.length; j++) {
                     if (scanCancelled) break;
@@ -2459,13 +2461,13 @@ async function downloadSelectedTebligatlar(onStatusUpdate, apiKey, selections) {
                             scraperTeb,
                             filePath
                         );
-                        if (downloaded) {
-                            scraperTeb.documentPath = downloaded;
-                            downloadedTotal++;
-                        }
+                        scraperTeb.documentPath = downloaded;
+                        clientDownloaded++;
+                        downloadedTotal++;
                     } catch (dlErr) {
+                        clientErrors++;
                         errorTotal++;
-                        logger.debug('[preview-download] ', dlErr.message);
+                        logger.debug('[preview-download]', dlErr.message);
                     }
                     toSave.push(scraperTeb);
 
@@ -2487,11 +2489,20 @@ async function downloadSelectedTebligatlar(onStatusUpdate, apiKey, selections) {
                     });
                 }
 
-                onStatusUpdate({
-                    message: `${sel.firmName}: ${sel.tebligatList.length} belge tamamlandı`,
-                    type: 'success',
-                    firmId: sel.clientId,
-                });
+                // Accurate per-client message
+                if (clientErrors === 0) {
+                    onStatusUpdate({
+                        message: `${sel.firmName}: ${clientDownloaded} belge indirildi`,
+                        type: 'success',
+                        firmId: sel.clientId,
+                    });
+                } else {
+                    onStatusUpdate({
+                        message: `${sel.firmName}: ${clientDownloaded} indirildi, ${clientErrors} hatal\u0131`,
+                        type: clientDownloaded > 0 ? 'success' : 'error',
+                        firmId: sel.clientId,
+                    });
+                }
             } catch (err) {
                 errorTotal++;
                 if (Sentry) {
