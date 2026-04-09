@@ -1387,8 +1387,8 @@ const ETebligat: React.FC = () => {
                                     const label = previewRunning
                                         ? 'Ke\u015fif...'
                                         : hasNewClients
-                                          ? `\uD83D\uDD0D \u0130lk Ke\u015fif (${newClientsCount} yeni)`
-                                          : '\uD83D\uDD0D Ke\u015fif';
+                                          ? `\u0130lk Ke\u015fif (${newClientsCount} yeni)`
+                                          : 'Ke\u015fif';
                                     const title = hasNewClients
                                         ? `${newClientsCount} yeni m\u00fckellef i\u00e7in \u00f6nerilen ak\u0131\u015f — tebligatlar\u0131 \u00f6nce \u00f6nizle, sonra se\u00e7`
                                         : 'T\u00fcm m\u00fckelleflerin G\u0130B\u2019deki tebligatlar\u0131n\u0131 \u00f6nizle — ge\u00e7mi\u015fi yeniden incelemek i\u00e7in';
@@ -2325,7 +2325,7 @@ const ETebligat: React.FC = () => {
                                                                         clientTestStatus[client.id];
                                                                     const running =
                                                                         test?.status === 'running';
-                                                                    let label = '\uD83D\uDD10 Test';
+                                                                    let label = 'Test';
                                                                     let cls =
                                                                         'border-sky-500/30 text-sky-400 hover:bg-sky-500/10';
                                                                     let title = '';
@@ -3045,7 +3045,7 @@ const ETebligat: React.FC = () => {
                                 className="text-xs font-semibold px-3 py-1.5 rounded-md border border-amber-500/40 text-amber-700 hover:bg-amber-50"
                                 title={`Son taramadaki ${lastFailedIds.length} ba\u015Far\u0131s\u0131z m\u00FCkellefi tekrar dene`}
                             >
-                                \uD83D\uDD01 Ba\u015Far\u0131s\u0131zlar\u0131 Tekrar Dene (
+                                Ba&#351;ar&#305;s&#305;zlar&#305; Tekrar Dene (
                                 {lastFailedIds.length})
                             </button>
                         )}
@@ -3061,7 +3061,7 @@ const ETebligat: React.FC = () => {
                             }}
                             className="text-xs font-semibold px-3 py-1.5 rounded-md border border-gray-300 text-gray-600 hover:bg-gray-50"
                         >
-                            \uD83D\uDCDC Tarama Ge&ccedil;mi&#351;i
+                            Tarama Ge&ccedil;mi&#351;i
                         </button>
                     </div>
                     {/* Rate limit counters */}
