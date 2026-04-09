@@ -1307,10 +1307,30 @@ async function run(onStatusUpdate, apiKey, scanConfig = {}, options = {}, deduct
         batchPauseMin: Math.max(merged.batchPauseMin, 60), // Min 1 min batch pause
     };
 
-    const activeClients = database.getClients().filter((c) => c.status === 'active');
-    // Prioritize new clients (never scanned) — they need full 3-tab scan
-    const newClients = activeClients.filter((c) => !c.last_full_scan_at);
-    const existingClients = activeClients.filter((c) => c.last_full_scan_at);
+    let activeClients = database.getClients().filter((c) => c.status === 'active');
+
+    // Filter by specific client IDs if provided (for "retry failed" flow)
+    if (options.clientIds && Array.isArray(options.clientIds) && options.clientIds.length > 0) {
+        const idSet = new Set(options.clientIds.map(Number));
+        activeClients = activeClients.filter((c) => idSet.has(c.id));
+    }
+
+    // Smart priority ordering:
+    // 1. New clients (never scanned) — need full historical scan
+    // 2. Recently failed clients — retry priority
+    // 3. Existing clients — regular incremental
+    let newClients = activeClients.filter((c) => !c.last_full_scan_at);
+    let existingClients = activeClients.filter((c) => c.last_full_scan_at);
+
+    const recentlyFailed = options.prioritizeFailed
+        ? new Set(database.getLastScanFailedClientIds())
+        : new Set();
+    if (recentlyFailed.size > 0) {
+        const failedInExisting = existingClients.filter((c) => recentlyFailed.has(c.id));
+        const othersInExisting = existingClients.filter((c) => !recentlyFailed.has(c.id));
+        existingClients = [...failedInExisting, ...othersInExisting];
+    }
+
     const allClients = [...newClients, ...existingClients];
 
     if (allClients.length === 0) {
@@ -1318,6 +1338,10 @@ async function run(onStatusUpdate, apiKey, scanConfig = {}, options = {}, deduct
         isRunning = false;
         return;
     }
+
+    // Create scan history entry
+    const scanHistoryId = database.createScanHistory(options.scanType || 'full');
+    const scanStartTime = Date.now();
 
     if (!apiKey) {
         onStatusUpdate({ message: 'API anahtarı bulunamadı.', type: 'error' });
@@ -1791,6 +1815,22 @@ async function run(onStatusUpdate, apiKey, scanConfig = {}, options = {}, deduct
     lastScanState.errors = errorCount;
     lastScanState.successes = successCount;
     lastScanState.scanResults = scanResults;
+
+    // Record scan history
+    try {
+        const durationSeconds = Math.round((Date.now() - scanStartTime) / 1000);
+        database.updateScanHistory(scanHistoryId, {
+            finished_at: new Date().toISOString(),
+            total_clients: totalAll,
+            success_count: successCount,
+            error_count: errorCount,
+            new_tebligat_count: 0, // TODO: track during scan
+            duration_seconds: durationSeconds,
+            results_json: JSON.stringify(scanResults),
+        });
+    } catch (histErr) {
+        logger.debug('[scan-history] update failed:', histErr.message);
+    }
 
     const allProcessed = lastScanState.processedClientIds.size >= totalAll;
     if (allProcessed) {

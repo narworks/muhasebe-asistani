@@ -388,6 +388,51 @@ ipcMain.handle('get-user-info', async () => {
     return licenseManager.getUserInfo();
 });
 
+// Start Scan with options (clientIds filter, prioritizeFailed)
+ipcMain.on('start-scan-with-options', async (event, scanOptions) => {
+    if (!licenseManager.hasModuleAccess('e_tebligat')) {
+        event.reply('scan-error', 'E-Tebligat modülü aktif değil. Lütfen abone olun.');
+        return;
+    }
+
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+        event.reply('scan-error', 'Sistem yapılandırma hatası.');
+        return;
+    }
+
+    const scanConfig = settings.readSettings().scan || {};
+    const deductCredit = async () => {
+        const result = await licenseManager.deductCredits(1, 'e_tebligat_scan');
+        if (result.success && mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('credits-updated', licenseManager.getCredits());
+        }
+        return result;
+    };
+
+    const sleepBlockId = powerSaveBlocker.start('prevent-app-suspension');
+    try {
+        await gibScraper.run(
+            (status) => {
+                if (!mainWindow.isDestroyed()) {
+                    mainWindow.webContents.send('scan-update', status);
+                }
+            },
+            apiKey,
+            scanConfig,
+            scanOptions || {},
+            deductCredit
+        );
+        settings.updateSettings({ scan: { lastScanAt: new Date().toISOString() } });
+        event.reply('scan-complete', 'Taramalar tamamlandı.');
+    } catch (error) {
+        logger.error('[start-scan-with-options] error:', error);
+        event.reply('scan-error', 'Tarama sırasında hata oluştu: ' + error.message);
+    } finally {
+        if (powerSaveBlocker.isStarted(sleepBlockId)) powerSaveBlocker.stop(sleepBlockId);
+    }
+});
+
 // Start Scan (fresh)
 ipcMain.on('start-scan', async (event) => {
     if (!licenseManager.hasModuleAccess('e_tebligat')) {
@@ -565,6 +610,67 @@ ipcMain.handle('get-last-scan-results', async () => {
         return { ok: true, results: gibScraper.getLastScanResults() };
     } catch (err) {
         return { ok: false, error: err.message };
+    }
+});
+
+// Scan history list
+ipcMain.handle('get-scan-history', async (_event, limit) => {
+    try {
+        const rows = database.getScanHistory(limit || 50);
+        // Parse results_json safely
+        return rows.map((r) => {
+            let results = [];
+            if (r.results_json) {
+                try {
+                    results = JSON.parse(r.results_json);
+                } catch {
+                    /* ignore */
+                }
+            }
+            return {
+                id: r.id,
+                startedAt: r.started_at,
+                finishedAt: r.finished_at,
+                scanType: r.scan_type,
+                totalClients: r.total_clients,
+                successCount: r.success_count,
+                errorCount: r.error_count,
+                newTebligatCount: r.new_tebligat_count,
+                durationSeconds: r.duration_seconds,
+                results,
+            };
+        });
+    } catch (err) {
+        logger.error('[get-scan-history] error:', err);
+        return [];
+    }
+});
+
+// Get last failed client IDs (for "retry failed" button)
+ipcMain.handle('get-last-scan-failed-ids', async () => {
+    try {
+        return database.getLastScanFailedClientIds();
+    } catch {
+        return [];
+    }
+});
+
+// Estimate scan duration for given client count (for pre-scan tooltip)
+ipcMain.handle('estimate-scan-duration', async (_event, clientCount) => {
+    try {
+        const count =
+            clientCount ?? database.getClients().filter((c) => c.status === 'active').length;
+        // Match gibScraper config: delayMin 15s, delayMax 30s, batchSize 20, batchPauseMin 60s
+        const avgDelay = 22; // seconds between clients
+        const avgBatchPause = 90; // seconds
+        const timePerClient = 45; // login + captcha + fetch
+        const batchCount = Math.max(0, Math.floor((count - 1) / 20));
+        const seconds = count * timePerClient + (count - 1) * avgDelay + batchCount * avgBatchPause;
+        // Add 20% buffer
+        const bufferedMinutes = Math.ceil((seconds * 1.2) / 60);
+        return { count, estimatedMinutes: bufferedMinutes };
+    } catch (err) {
+        return { count: 0, estimatedMinutes: 0, error: err.message };
     }
 });
 

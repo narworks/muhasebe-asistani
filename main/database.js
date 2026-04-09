@@ -83,6 +83,26 @@ function init() {
         CREATE UNIQUE INDEX IF NOT EXISTS idx_clients_gib_user_code
         ON clients (gib_user_code) WHERE gib_user_code IS NOT NULL AND gib_user_code != ''
     `);
+
+    // Scan history: one row per scan session
+    db.exec(`
+        CREATE TABLE IF NOT EXISTS scan_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            started_at TEXT NOT NULL,
+            finished_at TEXT,
+            scan_type TEXT,
+            total_clients INTEGER DEFAULT 0,
+            success_count INTEGER DEFAULT 0,
+            error_count INTEGER DEFAULT 0,
+            new_tebligat_count INTEGER DEFAULT 0,
+            duration_seconds INTEGER DEFAULT 0,
+            results_json TEXT
+        )
+    `);
+    db.exec(`
+        CREATE INDEX IF NOT EXISTS idx_scan_history_started
+        ON scan_history(started_at DESC)
+    `);
 }
 
 function saveClient(clientData) {
@@ -258,8 +278,10 @@ function saveTebligatlar(clientId, tebligatlar) {
     return insertMany(tebligatlar);
 }
 
-function getTebligatlar(limit = 200) {
+function getTebligatlar(limit = 50000) {
     if (!db) init();
+    // Large default limit (50K) — SQLite handles this easily locally.
+    // Previous 200 limit caused last-5-clients-only display bug on large installs.
     const stmt = db.prepare(`
     SELECT t.id,
            t.tebligat_date,
@@ -399,6 +421,69 @@ function bulkSaveClients(clients) {
     return results;
 }
 
+function createScanHistory(scanType) {
+    if (!db) init();
+    const stmt = db.prepare(`
+        INSERT INTO scan_history (started_at, scan_type)
+        VALUES (?, ?)
+    `);
+    const result = stmt.run(new Date().toISOString(), scanType || 'full');
+    return Number(result.lastInsertRowid);
+}
+
+function updateScanHistory(id, data) {
+    if (!db) init();
+    const fields = [];
+    const values = {};
+    for (const key of [
+        'finished_at',
+        'total_clients',
+        'success_count',
+        'error_count',
+        'new_tebligat_count',
+        'duration_seconds',
+        'results_json',
+    ]) {
+        if (key in data) {
+            fields.push(`${key} = @${key}`);
+            values[key] = data[key];
+        }
+    }
+    if (fields.length === 0) return;
+    values.id = id;
+    db.prepare(`UPDATE scan_history SET ${fields.join(', ')} WHERE id = @id`).run(values);
+}
+
+function getScanHistory(limit = 50) {
+    if (!db) init();
+    return db
+        .prepare(
+            `SELECT * FROM scan_history
+             ORDER BY started_at DESC
+             LIMIT ?`
+        )
+        .all(limit);
+}
+
+function getLastScanFailedClientIds() {
+    if (!db) init();
+    const latest = db
+        .prepare(
+            `SELECT results_json FROM scan_history
+             WHERE results_json IS NOT NULL
+             ORDER BY started_at DESC
+             LIMIT 1`
+        )
+        .get();
+    if (!latest || !latest.results_json) return [];
+    try {
+        const results = JSON.parse(latest.results_json);
+        return results.filter((r) => !r.success).map((r) => r.clientId);
+    } catch {
+        return [];
+    }
+}
+
 module.exports = {
     init,
     saveClient,
@@ -417,4 +502,8 @@ module.exports = {
     deleteTebligatlarByClient,
     getTebligatlarByClient,
     bulkSaveClients,
+    createScanHistory,
+    updateScanHistory,
+    getScanHistory,
+    getLastScanFailedClientIds,
 };

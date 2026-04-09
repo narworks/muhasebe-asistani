@@ -127,6 +127,37 @@ export interface IElectronAPI {
             errorMessage?: string;
         }>;
     }>;
+    getScanHistory: (limit?: number) => Promise<
+        Array<{
+            id: number;
+            startedAt: string;
+            finishedAt: string | null;
+            scanType: string | null;
+            totalClients: number;
+            successCount: number;
+            errorCount: number;
+            newTebligatCount: number;
+            durationSeconds: number;
+            results: Array<{
+                clientId: number;
+                firmName: string;
+                success: boolean;
+                errorType?: string;
+                errorMessage?: string;
+            }>;
+        }>
+    >;
+    getLastScanFailedIds: () => Promise<number[]>;
+    estimateScanDuration: (clientCount?: number) => Promise<{
+        count: number;
+        estimatedMinutes: number;
+        error?: string;
+    }>;
+    startScanWithOptions: (options: {
+        clientIds?: number[];
+        prioritizeFailed?: boolean;
+        scanType?: string;
+    }) => void;
     onScanUpdate: (callback: (status: ScanStatus) => void) => void;
     onScanError: (callback: (error: string) => void) => void;
     onScanComplete: (callback: (result: string) => void) => void;
