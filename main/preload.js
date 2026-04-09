@@ -36,6 +36,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     previewScan: () => ipcRenderer.invoke('preview-scan'),
     downloadSelectedTebligatlar: (selections) =>
         ipcRenderer.invoke('download-selected-tebligatlar', selections),
+    testClientLogin: (clientId) => ipcRenderer.invoke('test-client-login', clientId),
+    getLastScanResults: () => ipcRenderer.invoke('get-last-scan-results'),
     onScanUpdate: (callback) => ipcRenderer.on('scan-update', (_event, value) => callback(value)),
     onScanError: (callback) => ipcRenderer.on('scan-error', (_event, value) => callback(value)),
     onScanComplete: (callback) =>

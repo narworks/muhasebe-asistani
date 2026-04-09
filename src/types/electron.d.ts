@@ -104,6 +104,29 @@ export interface IElectronAPI {
             }>;
         }>
     ) => Promise<{ ok: boolean; error?: string; downloaded?: number; errors?: number }>;
+    testClientLogin: (clientId: number) => Promise<{
+        success: boolean;
+        errorType?:
+            | 'wrong_credentials'
+            | 'captcha_failed'
+            | 'account_locked'
+            | 'ip_blocked'
+            | 'network_timeout'
+            | 'no_password'
+            | 'unknown';
+        errorMessage?: string;
+    }>;
+    getLastScanResults: () => Promise<{
+        ok: boolean;
+        error?: string;
+        results?: Array<{
+            clientId: number;
+            firmName: string;
+            success: boolean;
+            errorType?: string;
+            errorMessage?: string;
+        }>;
+    }>;
     onScanUpdate: (callback: (status: ScanStatus) => void) => void;
     onScanError: (callback: (error: string) => void) => void;
     onScanComplete: (callback: (result: string) => void) => void;

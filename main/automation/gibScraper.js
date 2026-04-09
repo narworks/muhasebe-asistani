@@ -307,6 +307,7 @@ let lastScanState = {
     errors: 0,
     successes: 0,
     total: 0,
+    scanResults: [], // Per-client results: { clientId, firmName, success, errorType?, errorMessage? }
 };
 
 // Helper: random delay between min and max seconds
@@ -325,6 +326,84 @@ const HUMAN_DELAYS = {
     betweenClients: [15, 30], // Between client sessions
     batchPause: [60, 120], // Break between batches
 };
+
+/**
+ * Classify login failure based on GIB response body.
+ * Returns { type, message } where type drives retry strategy:
+ * - 'wrong_credentials': don't retry (user error)
+ * - 'captcha_failed': retry up to maxCaptchaRetries
+ * - 'account_locked': don't retry, needs GIB-side unlock
+ * - 'ip_blocked': stop entire scan
+ * - 'network_timeout': retry once
+ * - 'unknown': retry once
+ */
+function classifyLoginError(responseBody) {
+    // No response body captured at all → likely network timeout / GIB unreachable
+    if (!responseBody) {
+        return {
+            type: 'network_timeout',
+            message: 'Ağ hatası — GİB sunucusuna ulaşılamadı',
+        };
+    }
+
+    // GIB returns { result: false, message: '...', ... } on any failure
+    const msg = (responseBody.message || responseBody.errorMessage || '').toLowerCase();
+
+    // Account locked / too many attempts
+    if (
+        msg.includes('kilitli') ||
+        msg.includes('kilitlendi') ||
+        msg.includes('çok fazla') ||
+        msg.includes('too many') ||
+        msg.includes('deneme sayısı') ||
+        msg.includes('deneme hakkı')
+    ) {
+        return {
+            type: 'account_locked',
+            message: 'Hesap geçici olarak kilitli — GİB çok fazla başarısız deneme tespit etti',
+        };
+    }
+
+    // Wrong credentials — definitive user error
+    if (
+        msg.includes('parola') ||
+        msg.includes('şifre') ||
+        msg.includes('kullanıcı kodu') ||
+        msg.includes('kullanıcı adı') ||
+        msg.includes('hatalı') ||
+        msg.includes('yanlış') ||
+        msg.includes('geçersiz') ||
+        msg.includes('invalid') ||
+        msg.includes('incorrect')
+    ) {
+        return {
+            type: 'wrong_credentials',
+            message: 'GİB kullanıcı kodu veya parola hatalı',
+        };
+    }
+
+    // CAPTCHA failure
+    if (msg.includes('captcha') || msg.includes('güvenlik kodu') || msg.includes('doğrulama')) {
+        return {
+            type: 'captcha_failed',
+            message: 'CAPTCHA doğrulama başarısız',
+        };
+    }
+
+    // IP block (very rare but possible)
+    if (msg.includes('engel') || msg.includes('blok') || msg.includes('blocked')) {
+        return {
+            type: 'ip_blocked',
+            message: 'GİB tarafından IP adresi engellenmiş',
+        };
+    }
+
+    // Unknown failure — likely CAPTCHA but we can't be sure
+    return {
+        type: 'captcha_failed',
+        message: 'Giriş başarısız — nedeni belirlenemedi (muhtemelen CAPTCHA hatası)',
+    };
+}
 
 // CRITICAL: Detect GIB IP Reputation Block page
 // If detected, ALL operations must stop immediately to prevent further damage
@@ -676,13 +755,15 @@ const loginAndFetch = async (
         if (onStatus) onStatus({ message: `  → ${msg}`, type: 'process', firmId: client.id });
     };
 
-    // Capture Bearer token from GİB login response for direct API access
+    // Capture Bearer token AND login result from GİB response
     let bearerToken = null;
+    let loginResponseBody = null; // Holds the parsed login response for error classification
     page.on('response', async (resp) => {
         if (resp.url().includes('/apigateway/auth/tdvd/login') && resp.status() === 200) {
             try {
                 const text = await resp.text();
                 const body = JSON.parse(text);
+                loginResponseBody = body;
                 if (body.token && body.result !== false) {
                     bearerToken = body.token;
                     logger.debug('[API] Bearer token captured from login response');
@@ -760,7 +841,11 @@ const loginAndFetch = async (
     logger.debug('[DEBUG] Post-login URL:', postLoginUrl);
 
     if (postLoginUrl.includes('/login')) {
-        throw new Error('Giriş başarısız - CAPTCHA veya kimlik bilgileri yanlış olabilir.');
+        // Classify error based on GIB response body
+        const errorInfo = classifyLoginError(loginResponseBody);
+        const err = new Error(errorInfo.message);
+        err.errorType = errorInfo.type;
+        throw err;
     }
 
     // Direct API mode: use HTTP calls instead of Puppeteer scraping (20x faster)
@@ -1171,7 +1256,15 @@ function clearScanState() {
         errors: 0,
         successes: 0,
         total: 0,
+        scanResults: [],
     };
+}
+
+/**
+ * Return the last scan results (per-client detail) for the results modal.
+ */
+function getLastScanResults() {
+    return lastScanState.scanResults || [];
 }
 
 async function run(onStatusUpdate, apiKey, scanConfig = {}, options = {}, deductCredit = null) {
@@ -1262,6 +1355,9 @@ async function run(onStatusUpdate, apiKey, scanConfig = {}, options = {}, deduct
     const alreadyDone = isResume ? skipClientIds.size : 0;
     let successCount = isResume ? lastScanState.successes : 0;
     let errorCount = isResume ? lastScanState.errors : 0;
+
+    // Track per-client scan results for final report
+    const scanResults = isResume ? lastScanState.scanResults || [] : [];
 
     onStatusUpdate({
         type: 'progress',
@@ -1418,7 +1514,10 @@ async function run(onStatusUpdate, apiKey, scanConfig = {}, options = {}, deduct
             ensureDir(clientFolder);
 
             let succeeded = false;
+            let lastErrorType = null;
+            let lastErrorMessage = null;
 
+            // Max attempts need to cover captcha retries; per-error-type logic inside catch
             for (let attempt = 1; attempt <= config.maxCaptchaRetries; attempt++) {
                 if (scanCancelled) break;
 
@@ -1523,8 +1622,29 @@ async function run(onStatusUpdate, apiKey, scanConfig = {}, options = {}, deduct
                         err.message
                     );
 
-                    // CRITICAL: IP block detection — stop ALL operations
-                    if (err.message === 'GIB_IP_BLOCKED') {
+                    // Determine error type (either from classified login error or legacy patterns)
+                    let errorType = err.errorType || null;
+                    if (!errorType) {
+                        if (err.message === 'GIB_IP_BLOCKED') {
+                            errorType = 'ip_blocked';
+                        } else if (err.message.includes('Navigation timeout')) {
+                            errorType = 'network_timeout';
+                        } else if (
+                            err.message.toLowerCase().includes('captcha') ||
+                            err.message.includes('login sayfasında')
+                        ) {
+                            errorType = 'captcha_failed';
+                        } else if (err.message.includes('Giriş başarısız')) {
+                            errorType = 'captcha_failed'; // legacy fallback
+                        } else {
+                            errorType = 'unknown';
+                        }
+                    }
+                    lastErrorType = errorType;
+                    lastErrorMessage = err.message;
+
+                    // CRITICAL: IP block — stop entire scan
+                    if (errorType === 'ip_blocked') {
                         onStatusUpdate({
                             message:
                                 '⛔ DİKKAT: GİB tarafından IP adresiniz engellenmiş. Tarama durduruluyor. Lütfen GİB ile iletişime geçin.',
@@ -1539,15 +1659,26 @@ async function run(onStatusUpdate, apiKey, scanConfig = {}, options = {}, deduct
                         return;
                     }
 
-                    const isCaptchaError =
-                        err.message.includes('Captcha') ||
-                        err.message.includes('captcha') ||
-                        err.message.includes('login sayfasında') ||
-                        err.message.includes('Giriş başarısız');
+                    // Fail-fast for definitive errors — no retry
+                    if (errorType === 'wrong_credentials' || errorType === 'account_locked') {
+                        break;
+                    }
 
-                    if (isCaptchaError && attempt < config.maxCaptchaRetries) {
-                        const backoffSec = 5 * Math.pow(2, attempt - 1);
-                        // Silent retry — don't expose CAPTCHA details to user
+                    // Retry strategies per error type
+                    let maxRetry = 1;
+                    let backoffSec = 5;
+                    if (errorType === 'captcha_failed') {
+                        maxRetry = config.maxCaptchaRetries; // 2 retries (3 attempts total)
+                        backoffSec = 5 * Math.pow(2, attempt - 1); // 5, 10s
+                    } else if (errorType === 'network_timeout') {
+                        maxRetry = 1; // 1 retry only
+                        backoffSec = 30;
+                    } else {
+                        maxRetry = 1; // unknown → 1 retry
+                        backoffSec = 10;
+                    }
+
+                    if (attempt < maxRetry) {
                         await new Promise((r) => setTimeout(r, backoffSec * 1000));
                     } else {
                         break;
@@ -1574,10 +1705,45 @@ async function run(onStatusUpdate, apiKey, scanConfig = {}, options = {}, deduct
                 hourlyScanCount++;
                 saveRateLimits();
                 lastScanState.processedClientIds.add(client.id);
+
+                // Record failed client with error classification
+                scanResults.push({
+                    clientId: client.id,
+                    firmName: client.firm_name,
+                    success: false,
+                    errorType: lastErrorType || 'unknown',
+                    errorMessage: lastErrorMessage || 'Bilinmeyen hata',
+                });
+
+                // Friendly message based on error type
+                let userMsg;
+                switch (lastErrorType) {
+                    case 'wrong_credentials':
+                        userMsg = `${client.firm_name}: Şifre hatalı — düzeltin`;
+                        break;
+                    case 'account_locked':
+                        userMsg = `${client.firm_name}: Hesap kilitli — 30 dk bekleyin`;
+                        break;
+                    case 'network_timeout':
+                        userMsg = `${client.firm_name}: Bağlantı hatası`;
+                        break;
+                    case 'captcha_failed':
+                        userMsg = `${client.firm_name}: CAPTCHA hatası — daha sonra tekrar deneyin`;
+                        break;
+                    default:
+                        userMsg = `${client.firm_name}: Sorgulanamadı`;
+                }
                 onStatusUpdate({
-                    message: `${client.firm_name}: Sorgulanamadı. Lütfen kimlik bilgilerini kontrol edin.`,
+                    message: userMsg,
                     type: 'error',
                     firmId: client.id,
+                });
+            } else {
+                // Record successful client
+                scanResults.push({
+                    clientId: client.id,
+                    firmName: client.firm_name,
+                    success: true,
                 });
             }
         }
@@ -1624,6 +1790,7 @@ async function run(onStatusUpdate, apiKey, scanConfig = {}, options = {}, deduct
     // Update final state
     lastScanState.errors = errorCount;
     lastScanState.successes = successCount;
+    lastScanState.scanResults = scanResults;
 
     const allProcessed = lastScanState.processedClientIds.size >= totalAll;
     if (allProcessed) {
@@ -1893,11 +2060,13 @@ async function loginAndGetToken(client, password, apiKey) {
     await page.setUserAgent(USER_AGENT);
 
     let bearerToken = null;
+    let loginResponseBody = null;
     page.on('response', async (resp) => {
         if (resp.url().includes('/apigateway/auth/tdvd/login') && resp.status() === 200) {
             try {
                 const text = await resp.text();
                 const body = JSON.parse(text);
+                loginResponseBody = body;
                 if (body.token && body.result !== false) bearerToken = body.token;
             } catch {
                 /* ignore */
@@ -1937,15 +2106,57 @@ async function loginAndGetToken(client, password, apiKey) {
 
     await new Promise((r) => setTimeout(r, 3000));
     if (page.url().includes('/login')) {
+        const info = classifyLoginError(loginResponseBody);
         await browser.close();
-        throw new Error('Giriş başarısız — CAPTCHA veya kimlik bilgileri yanlış');
+        const e = new Error(info.message);
+        e.errorType = info.type;
+        throw e;
     }
     if (!bearerToken) {
         await browser.close();
-        throw new Error('Bearer token yakalanamadı');
+        const e = new Error('Bearer token yakalanamadı');
+        e.errorType = 'unknown';
+        throw e;
     }
 
     return { browser, page, bearerToken };
+}
+
+/**
+ * Test a single client's login credentials without downloading documents.
+ * Used by the "Şifre Test" button.
+ * Returns { success, errorType?, errorMessage? }
+ */
+async function testClientLogin(clientId, apiKey) {
+    const password = database.getClientPassword(clientId);
+    if (!password) {
+        return { success: false, errorType: 'no_password', errorMessage: 'Şifre kayıtlı değil' };
+    }
+    const client = database.getClients().find((c) => c.id === clientId);
+    if (!client) {
+        return { success: false, errorType: 'unknown', errorMessage: 'Mükellef bulunamadı' };
+    }
+
+    let browser;
+    try {
+        const result = await loginAndGetToken(client, password, apiKey);
+        browser = result.browser;
+        return { success: true };
+    } catch (err) {
+        return {
+            success: false,
+            errorType: err.errorType || 'unknown',
+            errorMessage: err.message,
+        };
+    } finally {
+        if (browser) {
+            try {
+                await browser.close();
+            } catch {
+                /* ignore */
+            }
+        }
+    }
 }
 
 /**
@@ -2295,4 +2506,6 @@ module.exports = {
     getRateLimits,
     previewScan,
     downloadSelectedTebligatlar,
+    testClientLogin,
+    getLastScanResults,
 };

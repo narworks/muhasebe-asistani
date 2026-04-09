@@ -541,6 +541,33 @@ ipcMain.handle('download-selected-tebligatlar', async (event, selections) => {
     }
 });
 
+// Test a single client's login credentials
+ipcMain.handle('test-client-login', async (_event, clientId) => {
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+        return { success: false, errorType: 'unknown', errorMessage: 'Sistem yapılandırma hatası' };
+    }
+    try {
+        return await gibScraper.testClientLogin(clientId, apiKey);
+    } catch (err) {
+        logger.error('[test-client-login] error:', err);
+        return {
+            success: false,
+            errorType: 'unknown',
+            errorMessage: err.message || 'Bilinmeyen hata',
+        };
+    }
+});
+
+// Return the last scan's per-client results for the summary modal
+ipcMain.handle('get-last-scan-results', async () => {
+    try {
+        return { ok: true, results: gibScraper.getLastScanResults() };
+    } catch (err) {
+        return { ok: false, error: err.message };
+    }
+});
+
 // Cancel Scan
 ipcMain.on('cancel-scan', (event) => {
     gibScraper.cancelScan();
