@@ -2509,6 +2509,10 @@ async function downloadSelectedTebligatlar(onStatusUpdate, apiKey, selections) {
                             clientErrors++;
                             errorTotal++;
                             logger.debug('[preview-download]', dlErr.message);
+                            onStatusUpdate({
+                                message: `${sel.firmName}: indirme hatası — ${dlErr.message}`,
+                                type: 'error',
+                            });
                         }
                     }
                     toSave.push(scraperTeb);

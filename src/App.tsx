@@ -10,10 +10,12 @@ import ETebligat from './pages/tools/ETebligat';
 import ProtectedRoute from './components/ProtectedRoute';
 import MainLayout from './components/layout/MainLayout';
 import ErrorBoundary from './components/ErrorBoundary';
+import { Toaster } from 'sonner';
 
 function App() {
     return (
         <ErrorBoundary>
+            <Toaster position="top-right" richColors closeButton duration={4000} />
             <Routes>
                 {/* Public Routes */}
                 <Route path="/login" element={<Login />} />

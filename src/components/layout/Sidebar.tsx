@@ -8,6 +8,20 @@ type VersionLog = { version: string; date: string; entries: ChangeEntry[] };
 
 const CHANGELOG: VersionLog[] = [
     {
+        version: '1.2.0',
+        date: '2026-04-10',
+        entries: [
+            {
+                type: '~',
+                text: 'Aray\u00fcz yap\u0131s\u0131 yenilendi \u2014 daha h\u0131zl\u0131 ve s\u00fcrd\u00fcr\u00fclebilir mimari',
+            },
+            {
+                type: '+',
+                text: '\u0130ndirme hatalar\u0131 art\u0131k detayl\u0131 log\u2019da g\u00f6r\u00fcn\u00fcyor',
+            },
+        ],
+    },
+    {
         version: '1.1.0',
         date: '2026-04-10',
         entries: [
