@@ -79,6 +79,7 @@ export interface IElectronAPI {
                 sendDate: string | null;
                 notificationDate: string | null;
                 status: string;
+                _alreadyDownloaded?: boolean;
                 _tebligId: number;
                 _tebligSecureId: string;
                 _tarafId: number;
@@ -97,6 +98,7 @@ export interface IElectronAPI {
                 sendDate: string | null;
                 notificationDate: string | null;
                 status: string;
+                _alreadyDownloaded?: boolean;
                 _tebligId: number;
                 _tebligSecureId: string;
                 _tarafId: number;

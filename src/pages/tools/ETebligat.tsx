@@ -169,6 +169,7 @@ const ETebligat: React.FC = () => {
         sendDate: string | null;
         notificationDate: string | null;
         status: string;
+        _alreadyDownloaded?: boolean;
         _tebligId: number;
         _tebligSecureId: string;
         _tarafId: number;
@@ -1464,12 +1465,23 @@ const ETebligat: React.FC = () => {
                         const last30 = new Date(now.getTime() - 30 * 86400000);
                         const last6m = new Date(now.getTime() - 180 * 86400000);
 
-                        const countInRange = (list: PreviewTebligat[] | undefined, from: Date) => {
-                            if (!list) return 0;
-                            return list.filter((t) => {
-                                const d = parseDate(t.notificationDate || t.sendDate);
-                                return d && d >= from;
-                            }).length;
+                        const countInRange = (
+                            list: PreviewTebligat[] | undefined,
+                            from: Date | null
+                        ): { total: number; newCount: number; existingCount: number } => {
+                            if (!list) return { total: 0, newCount: 0, existingCount: 0 };
+                            const filtered = from
+                                ? list.filter((t) => {
+                                      const d = parseDate(t.notificationDate || t.sendDate);
+                                      return d && d >= from;
+                                  })
+                                : list;
+                            const existing = filtered.filter((t) => t._alreadyDownloaded).length;
+                            return {
+                                total: filtered.length,
+                                newCount: filtered.length - existing,
+                                existingCount: existing,
+                            };
                         };
 
                         const getSelectedForClient = (
@@ -1717,7 +1729,39 @@ const ETebligat: React.FC = () => {
                                                                 />
                                                                 {count !== null && (
                                                                     <span className="text-gray-400">
-                                                                        ({count})
+                                                                        {typeof count ===
+                                                                        'number' ? (
+                                                                            `(${count})`
+                                                                        ) : (
+                                                                            <>
+                                                                                ({count.total}
+                                                                                {count.existingCount >
+                                                                                    0 && (
+                                                                                    <>
+                                                                                        {' '}
+                                                                                        <span
+                                                                                            className="text-emerald-500"
+                                                                                            title="Yeni"
+                                                                                        >
+                                                                                            {
+                                                                                                count.newCount
+                                                                                            }
+                                                                                            &#x2197;
+                                                                                        </span>{' '}
+                                                                                        <span
+                                                                                            className="text-gray-300"
+                                                                                            title="Mevcut"
+                                                                                        >
+                                                                                            {
+                                                                                                count.existingCount
+                                                                                            }
+                                                                                            &#x2713;
+                                                                                        </span>
+                                                                                    </>
+                                                                                )}
+                                                                                )
+                                                                            </>
+                                                                        )}
                                                                     </span>
                                                                 )}
                                                             </label>

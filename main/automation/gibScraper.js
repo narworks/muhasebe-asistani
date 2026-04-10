@@ -19,13 +19,33 @@ try {
     Sentry = null;
 }
 
+// Turkish chars → ASCII for Windows filesystem compatibility
+const turkishMap = {
+    ş: 's',
+    Ş: 'S',
+    ğ: 'g',
+    Ğ: 'G',
+    ı: 'i',
+    İ: 'I',
+    ü: 'u',
+    Ü: 'U',
+    ö: 'o',
+    Ö: 'O',
+    ç: 'c',
+    Ç: 'C',
+};
+const sanitizeFirmName = (name) =>
+    (name || '')
+        .replace(/[şŞğĞıİüÜöÖçÇ]/g, (c) => turkishMap[c] || c)
+        .replace(/[<>:"/\\|?*]/g, '_')
+        .trim();
+
 // Get documents directory path (does NOT create it — call ensureDir before saving)
 const getDocumentsDir = (clientId, firmName, dateStr) => {
     const s = settings.readSettings();
     const basePath = s.documentsFolder || path.join(app.getPath('userData'), 'documents');
 
-    // Sanitize firm name for filesystem
-    const safeFirmName = (firmName || String(clientId)).replace(/[<>:"/\\|?*]/g, '_').trim();
+    const safeFirmName = sanitizeFirmName(firmName || String(clientId));
 
     // Parse date or use today
     let dateFolder;
@@ -1203,9 +1223,7 @@ const loginAndFetch = async (
     // Clean up empty date directories
     const s = settings.readSettings();
     const basePath = s.documentsFolder || path.join(app.getPath('userData'), 'documents');
-    const safeFirmName = (client.firm_name || String(client.id))
-        .replace(/[<>:"/\\|?*]/g, '_')
-        .trim();
+    const safeFirmName = sanitizeFirmName(client.firm_name || String(client.id));
     const firmDir = path.join(basePath, safeFirmName);
     if (fs.existsSync(firmDir)) {
         try {
@@ -1533,7 +1551,7 @@ async function run(onStatusUpdate, apiKey, scanConfig = {}, options = {}, deduct
                 path.join(app.getPath('userData'), 'documents');
             const clientFolder = path.join(
                 clientBasePath,
-                (client.firm_name || String(client.id)).replace(/[<>:"/\\|?*]/g, '_').trim()
+                sanitizeFirmName(client.firm_name || String(client.id))
             );
             ensureDir(clientFolder);
 
@@ -2276,7 +2294,13 @@ async function previewScan(onStatusUpdate, apiKey) {
                 const dtoList = listResp.data?.data?.tebligatDtoList || [];
                 const count = listResp.data?.data?.count || 0;
 
-                // Map to minimal preview format (no document URLs)
+                // Check which tebligatlar are already in local DB
+                const existingTebligatlar = database.getTebligatlarByClient(client.id);
+                const existingDocNos = new Set(
+                    existingTebligatlar.filter((t) => t.document_path).map((t) => t.document_no)
+                );
+
+                // Map to minimal preview format with download status
                 const tebligatList = dtoList.map((dto) => ({
                     belgeNo: dto.belgeNo,
                     sender: dto.kurumAciklama || 'GİB',
@@ -2284,6 +2308,7 @@ async function previewScan(onStatusUpdate, apiKey) {
                     sendDate: dto.gonderimZamani,
                     notificationDate: dto.tebligZamani,
                     status: dto.mukellefOkumaZamani ? 'Okunmuş' : 'Okunmamış',
+                    _alreadyDownloaded: existingDocNos.has(dto.belgeNo),
                     // Internal IDs for later download (not exposed to UI)
                     _tebligId: dto.tebligId,
                     _tebligSecureId: dto.tebligSecureId,
@@ -2449,25 +2474,42 @@ async function downloadSelectedTebligatlar(onStatusUpdate, apiKey, selections) {
                         tebligSecureId: t._tebligSecureId,
                     };
 
-                    // Download
+                    // Download (skip if already exists)
                     const dateStr = scraperTeb.date || null;
                     const docsDir = getDocumentsDir(sel.clientId, sel.firmName, dateStr);
                     const safeDocNo = (t.belgeNo || String(j)).replace(/[^a-zA-Z0-9-_]/g, '_');
-                    const filePath = path.join(docsDir, `tebligat_${safeDocNo}.pdf`);
+                    const baseName = `tebligat_${safeDocNo}`;
+                    const filePath = path.join(docsDir, `${baseName}.pdf`);
 
-                    try {
-                        const downloaded = await gibApiClient.downloadDocument(
-                            apiClient,
-                            scraperTeb,
-                            filePath
-                        );
-                        scraperTeb.documentPath = downloaded;
+                    // Check if already downloaded (any extension)
+                    let existingPath = null;
+                    for (const ext of ['.pdf', '.imz', '.jpg', '.png']) {
+                        const p = path.join(docsDir, `${baseName}${ext}`);
+                        if (fs.existsSync(p)) {
+                            existingPath = p;
+                            break;
+                        }
+                    }
+
+                    if (existingPath) {
+                        scraperTeb.documentPath = existingPath;
                         clientDownloaded++;
                         downloadedTotal++;
-                    } catch (dlErr) {
-                        clientErrors++;
-                        errorTotal++;
-                        logger.debug('[preview-download]', dlErr.message);
+                    } else {
+                        try {
+                            const downloaded = await gibApiClient.downloadDocument(
+                                apiClient,
+                                scraperTeb,
+                                filePath
+                            );
+                            scraperTeb.documentPath = downloaded;
+                            clientDownloaded++;
+                            downloadedTotal++;
+                        } catch (dlErr) {
+                            clientErrors++;
+                            errorTotal++;
+                            logger.debug('[preview-download]', dlErr.message);
+                        }
                     }
                     toSave.push(scraperTeb);
 
@@ -2559,4 +2601,5 @@ module.exports = {
     downloadSelectedTebligatlar,
     testClientLogin,
     getLastScanResults,
+    sanitizeFirmName,
 };

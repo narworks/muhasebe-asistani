@@ -2,6 +2,72 @@ import React, { useState, useEffect } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 
+// --- CHANGELOG DATA ---
+type ChangeEntry = { type: '+' | '~' | '-'; text: string };
+type VersionLog = { version: string; date: string; entries: ChangeEntry[] };
+
+const CHANGELOG: VersionLog[] = [
+    {
+        version: '1.0.98',
+        date: '2026-04-10',
+        entries: [
+            { type: '+', text: 'Ke\u015fif modunda yeni/mevcut tebligat ayr\u0131m\u0131 (badge)' },
+            { type: '+', text: 'Windows T\u00fcrk\u00e7e karakter dosya yolu d\u00fczeltmesi' },
+            {
+                type: '~',
+                text: 'Changelog art\u0131k s\u00fcr\u00fcm baz\u0131nda g\u00f6steriliyor',
+            },
+        ],
+    },
+    {
+        version: '1.0.96',
+        date: '2026-04-08',
+        entries: [
+            {
+                type: '+',
+                text: '\u0130lk Ke\u015fif butonu \u2014 6 farkl\u0131 zaman aral\u0131\u011f\u0131 se\u00e7ene\u011fi',
+            },
+            {
+                type: '+',
+                text: 'Tarama ge\u00e7mi\u015fi tablosu + Ba\u015far\u0131s\u0131zlar\u0131 Tekrar Dene butonu',
+            },
+            { type: '+', text: '\u015eifre test butonu (m\u00fckellef baz\u0131nda)' },
+            { type: '~', text: 'getTebligatlar limiti 200 \u2192 50000' },
+        ],
+    },
+    {
+        version: '1.0.90',
+        date: '2026-04-04',
+        entries: [
+            { type: '+', text: 'Sentry hata takibi entegrasyonu (PII-safe)' },
+            { type: '+', text: 'Rate limit korunmas\u0131 + monotonic clock' },
+            { type: '~', text: 'downloadDocument null yerine Error f\u0131rlat\u0131yor' },
+        ],
+    },
+    {
+        version: '1.0.77',
+        date: '2026-03-28',
+        entries: [
+            {
+                type: '+',
+                text: 'Yeni tebligat paneli \u2014 tarama sonras\u0131 sa\u011fda detayl\u0131 panel a\u00e7\u0131l\u0131r',
+            },
+            {
+                type: '+',
+                text: 'Tarama ge\u00e7mi\u015fi \u2014 her taramada yeni/eski say\u0131lar\u0131 g\u00f6r\u00fcn\u00fcr',
+            },
+            { type: '+', text: "Excel'den toplu m\u00fckellef aktar\u0131m\u0131" },
+            { type: '+', text: 'M\u00fckellef ekleme limiti (200 hak) ve sayac\u0131' },
+            { type: '+', text: 'Uygulama i\u00e7i destek formu' },
+            { type: '~', text: 'Daha b\u00fcy\u00fck pencere boyutu (1440x960)' },
+            { type: '~', text: 'M\u00fckerrer m\u00fckellef ekleme engeli' },
+            { type: '-', text: 'Vekalet sorgu sistemi kald\u0131r\u0131ld\u0131' },
+        ],
+    },
+];
+
+const entryColor = { '+': 'text-emerald-400', '~': 'text-sky-400', '-': 'text-red-400' };
+
 // --- ICONS ---
 const BarChartIcon = () => (
     <svg
@@ -488,7 +554,7 @@ const Sidebar: React.FC = () => {
                     >
                         <div className="flex items-center justify-between mb-4">
                             <h3 className="text-lg font-bold text-white">
-                                De&#287;i&#351;iklikler &mdash; v{__APP_VERSION__}
+                                De&#287;i&#351;iklik Ge&#231;mi&#351;i
                             </h3>
                             <button
                                 onClick={() => setChangelogOpen(false)}
@@ -497,46 +563,31 @@ const Sidebar: React.FC = () => {
                                 Kapat
                             </button>
                         </div>
-                        <div className="space-y-3 text-sm text-slate-300">
-                            <div className="flex gap-2">
-                                <span className="text-emerald-400 font-bold mt-0.5">+</span>
-                                <span>
-                                    Yeni tebligat paneli &mdash; tarama sonras&#305; sa&#287;da
-                                    detayl&#305; panel a&ccedil;&#305;l&#305;r
-                                </span>
-                            </div>
-                            <div className="flex gap-2">
-                                <span className="text-emerald-400 font-bold mt-0.5">+</span>
-                                <span>
-                                    Tarama ge&ccedil;mi&#351;i &mdash; her taramada
-                                    &ldquo;yeni/eski&rdquo; say&#305;lar&#305;
-                                    g&ouml;r&uuml;n&uuml;r
-                                </span>
-                            </div>
-                            <div className="flex gap-2">
-                                <span className="text-emerald-400 font-bold mt-0.5">+</span>
-                                <span>Excel&apos;den toplu m&uuml;kellef aktar&#305;m&#305;</span>
-                            </div>
-                            <div className="flex gap-2">
-                                <span className="text-emerald-400 font-bold mt-0.5">+</span>
-                                <span>M&uuml;kellef ekleme limiti (200 hak) ve sayac&#305;</span>
-                            </div>
-                            <div className="flex gap-2">
-                                <span className="text-emerald-400 font-bold mt-0.5">+</span>
-                                <span>Uygulama i&ccedil;i destek formu</span>
-                            </div>
-                            <div className="flex gap-2">
-                                <span className="text-sky-400 font-bold mt-0.5">~</span>
-                                <span>Daha b&uuml;y&uuml;k pencere boyutu (1440x960)</span>
-                            </div>
-                            <div className="flex gap-2">
-                                <span className="text-sky-400 font-bold mt-0.5">~</span>
-                                <span>M&uuml;kerrer m&uuml;kellef ekleme engeli</span>
-                            </div>
-                            <div className="flex gap-2">
-                                <span className="text-red-400 font-bold mt-0.5">-</span>
-                                <span>Vekalet sorgu sistemi kald&#305;r&#305;ld&#305;</span>
-                            </div>
+                        <div className="space-y-5">
+                            {CHANGELOG.map((ver) => (
+                                <div key={ver.version}>
+                                    <div className="flex items-center gap-2 mb-2">
+                                        <span
+                                            className={`text-xs font-bold px-2 py-0.5 rounded-full ${ver.version === __APP_VERSION__ ? 'bg-emerald-600 text-white' : 'bg-slate-700 text-slate-300'}`}
+                                        >
+                                            v{ver.version}
+                                        </span>
+                                        <span className="text-xs text-slate-500">{ver.date}</span>
+                                    </div>
+                                    <div className="space-y-1.5 text-sm text-slate-300 pl-1">
+                                        {ver.entries.map((e, i) => (
+                                            <div key={i} className="flex gap-2">
+                                                <span
+                                                    className={`${entryColor[e.type]} font-bold mt-0.5`}
+                                                >
+                                                    {e.type}
+                                                </span>
+                                                <span>{e.text}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            ))}
                         </div>
                     </div>
                 </div>

@@ -954,9 +954,7 @@ ipcMain.handle('delete-client-history', async (event, clientId) => {
             const settings = require('./settings');
             const s = settings.readSettings();
             const basePath = s.documentsFolder || path.join(app.getPath('userData'), 'documents');
-            const safeFirmName = (client.firm_name || String(clientId))
-                .replace(/[<>:"/\\|?*]/g, '_')
-                .trim();
+            const safeFirmName = gibScraper.sanitizeFirmName(client.firm_name || String(clientId));
             const firmDir = path.join(basePath, safeFirmName);
             if (fs.existsSync(firmDir)) {
                 fs.rmSync(firmDir, { recursive: true, force: true });
