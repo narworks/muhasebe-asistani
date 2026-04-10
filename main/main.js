@@ -843,27 +843,150 @@ ipcMain.handle('delete-client', (event, id) => {
     return result;
 });
 
+// Excel şablon indirme
+ipcMain.handle('download-excel-template', async () => {
+    const { canceled, filePath } = await dialog.showSaveDialog(BrowserWindow.getFocusedWindow(), {
+        title: 'Şablonu Kaydet',
+        defaultPath: 'mukellef-sablonu.xlsx',
+        filters: [{ name: 'Excel', extensions: ['xlsx'] }],
+    });
+    if (canceled || !filePath) return { success: false };
+
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet('Mükellefler');
+
+    const expectedHeaders = ['Firma Adı', 'Vergi Numarası', 'GİB Kullanıcı Kodu', 'GİB Şifresi'];
+    ws.columns = expectedHeaders.map((h) => ({ header: h, width: h === 'Firma Adı' ? 30 : 20 }));
+
+    // Header stili
+    const headerRow = ws.getRow(1);
+    headerRow.height = 28;
+    headerRow.eachCell((cell) => {
+        cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 11 };
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4F46E5' } };
+        cell.alignment = { vertical: 'middle', horizontal: 'center' };
+        cell.protection = { locked: true };
+    });
+
+    // Header hücre açıklamaları (tooltip)
+    ws.getCell('A1').note = 'Zorunlu alan. Firma veya şahıs adını yazın.';
+    ws.getCell('B1').note = 'Opsiyonel. 10 veya 11 haneli vergi/TC kimlik numarası.';
+    ws.getCell('C1').note =
+        'GİB portalına giriş için kullanıcı kodu (genellikle vergi numarası ile aynı).';
+    ws.getCell('D1').note = 'GİB portalı şifresi. Bu bilgi yalnızca bilgisayarınızda saklanır.';
+
+    // Örnek satır (gri italik — import sırasında otomatik atlanır)
+    const exRow = ws.addRow(['Örnek Firma Ltd. Şti.', '1234567890', '1234567890', 'sifre123']);
+    exRow.eachCell((cell) => {
+        cell.font = { italic: true, color: { argb: 'FF9CA3AF' } };
+        cell.protection = { locked: false };
+    });
+
+    // Veri girişi yapılacak satırlar (2-201) için doğrulama kuralları
+    const dataRange = 201;
+
+    // B sütunu: Vergi numarası — sadece rakam, 10-11 hane
+    for (let r = 2; r <= dataRange; r++) {
+        ws.getCell(`B${r}`).dataValidation = {
+            type: 'textLength',
+            operator: 'between',
+            showErrorMessage: true,
+            errorTitle: 'Geçersiz Vergi Numarası',
+            error: 'Vergi numarası 10 veya 11 haneli olmalıdır.',
+            formulae: [10, 11],
+        };
+    }
+
+    // C sütunu: GİB kullanıcı kodu — metin uzunluğu
+    for (let r = 2; r <= dataRange; r++) {
+        ws.getCell(`C${r}`).dataValidation = {
+            type: 'textLength',
+            operator: 'between',
+            showErrorMessage: true,
+            errorTitle: 'Geçersiz Kullanıcı Kodu',
+            error: 'GİB kullanıcı kodu 10-11 karakter olmalıdır.',
+            formulae: [10, 11],
+        };
+    }
+
+    // Veri satırları kilit açık, boş hücreler düzenlenebilir
+    for (let r = 2; r <= dataRange; r++) {
+        ws.getRow(r).eachCell({ includeEmpty: true }, (cell) => {
+            cell.protection = { locked: false };
+        });
+    }
+
+    // Sayfayı koru — header kilitli, veri alanları açık (şifresiz koruma)
+    await ws.protect('', {
+        selectLockedCells: true,
+        selectUnlockedCells: true,
+        formatColumns: false,
+        formatRows: false,
+        insertRows: true,
+        deleteRows: true,
+        sort: false,
+        autoFilter: false,
+    });
+
+    await wb.xlsx.writeFile(filePath);
+    return { success: true, filePath };
+});
+
 // Excel'den toplu mükellef importı
+const EXPECTED_HEADERS = ['firma adı', 'vergi numarası', 'gib kullanıcı kodu', 'gib şifresi'];
+
 ipcMain.handle('import-clients-from-excel', async (event, fileBuffer) => {
     const workbook = new ExcelJS.Workbook();
     await workbook.xlsx.load(Buffer.from(fileBuffer));
     const worksheet = workbook.worksheets[0];
 
+    if (!worksheet) {
+        return {
+            saved: 0,
+            errors: [],
+            parseErrors: [{ row: 0, error: 'Excel dosyasında sayfa bulunamadı.' }],
+        };
+    }
+
     const clients = [];
     const parseErrors = [];
 
-    worksheet.eachRow((row, rowNumber) => {
-        const values = row.values.slice(1).map((v) => (v != null ? String(v).trim() : ''));
+    // Header doğrulama
+    const headerRow = worksheet.getRow(1);
+    const headers = headerRow.values
+        ? headerRow.values.slice(1).map((v) => (v != null ? String(v).trim().toLowerCase() : ''))
+        : [];
 
-        // İlk satırı header olarak atla
-        if (rowNumber === 1) {
+    if (headers.length < 1 || !headers[0].includes('firma')) {
+        return {
+            saved: 0,
+            errors: [],
+            parseErrors: [
+                {
+                    row: 1,
+                    error: 'Excel başlıkları beklenen formatta değil. İlk satır: "Firma Adı, Vergi Numarası, GİB Kullanıcı Kodu, GİB Şifresi" olmalı. Şablonu indirip o formatta doldurun.',
+                },
+            ],
+        };
+    }
+
+    worksheet.eachRow((row, rowNumber) => {
+        if (rowNumber === 1) return;
+
+        const values = row.values.slice(1).map((v) => (v != null ? String(v).trim() : ''));
+        const [firmName, taxNumber, gibUserCode, gibPassword] = values;
+
+        if (!firmName || firmName.toLowerCase().startsWith('örnek')) {
+            if (firmName && firmName.toLowerCase().startsWith('örnek')) return; // Örnek satırı sessizce atla
+            parseErrors.push({ row: rowNumber, error: 'Firma adı boş' });
             return;
         }
 
-        const [firmName, taxNumber, gibUserCode, gibPassword] = values;
-
-        if (!firmName) {
-            parseErrors.push({ row: rowNumber, error: 'Firma adı boş' });
+        if (taxNumber && !/^\d{10,11}$/.test(taxNumber.replace(/\s/g, ''))) {
+            parseErrors.push({
+                row: rowNumber,
+                error: `Geçersiz vergi no: "${taxNumber}" (10-11 haneli olmalı)`,
+            });
             return;
         }
 

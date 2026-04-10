@@ -45,6 +45,7 @@ export interface IElectronAPI {
         parseErrors: Array<{ row: number; error: string }>;
         limitError?: string;
     }>;
+    downloadExcelTemplate: () => Promise<{ success: boolean; filePath?: string }>;
     updateClient: (id: number, clientData: ClientFormData) => Promise<Client>;
     updateClientStatus: (id: number, status: Client['status']) => Promise<ApiResponse>;
     deleteClient: (id: number) => Promise<ApiResponse>;

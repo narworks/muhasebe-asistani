@@ -160,6 +160,7 @@ const ETebligat: React.FC = () => {
         results: ScanResultItem[];
     };
     const [scanHistoryModal, setScanHistoryModal] = useState<ScanHistoryItem[] | null>(null);
+    const [expandedHistoryId, setExpandedHistoryId] = useState<number | null>(null);
 
     // Preview scan flow
     type PreviewTebligat = {
@@ -1823,7 +1824,7 @@ const ETebligat: React.FC = () => {
                                     Kapat
                                 </button>
                             </div>
-                            <div className="flex-1 overflow-y-auto">
+                            <div className="flex-1 overflow-y-auto rounded-b-xl">
                                 {scanHistoryModal.length === 0 ? (
                                     <div className="text-center py-12 text-gray-500">
                                         Hen&uuml;z tarama ge&ccedil;mi&#351;i yok.
@@ -1861,40 +1862,127 @@ const ETebligat: React.FC = () => {
                                                     scheduled: 'Zamanl\u0131',
                                                     retry_failed: 'Yeniden',
                                                 };
+                                                const isExpanded = expandedHistoryId === h.id;
+                                                const hasResults =
+                                                    h.results && h.results.length > 0;
                                                 return (
-                                                    <tr key={h.id} className="hover:bg-gray-50">
-                                                        <td className="px-4 py-2 whitespace-nowrap text-gray-700">
-                                                            {d
-                                                                ? d.toLocaleDateString('tr-TR', {
-                                                                      day: '2-digit',
-                                                                      month: '2-digit',
-                                                                      year: 'numeric',
-                                                                      hour: '2-digit',
-                                                                      minute: '2-digit',
-                                                                  })
-                                                                : '-'}
-                                                        </td>
-                                                        <td className="px-4 py-2">
-                                                            <span className="text-xs px-1.5 py-0.5 rounded bg-gray-100 text-gray-600">
-                                                                {typeLabels[h.scanType || 'full'] ||
-                                                                    h.scanType}
-                                                            </span>
-                                                        </td>
-                                                        <td className="px-4 py-2 text-center text-gray-700">
-                                                            {h.totalClients}
-                                                        </td>
-                                                        <td className="px-4 py-2 text-center text-emerald-600 font-medium">
-                                                            {h.successCount}
-                                                        </td>
-                                                        <td className="px-4 py-2 text-center text-red-500 font-medium">
-                                                            {h.errorCount || 0}
-                                                        </td>
-                                                        <td className="px-4 py-2 text-right text-gray-500">
-                                                            {durMin > 60
-                                                                ? `${Math.floor(durMin / 60)}s ${durMin % 60}dk`
-                                                                : `${durMin} dk`}
-                                                        </td>
-                                                    </tr>
+                                                    <React.Fragment key={h.id}>
+                                                        <tr
+                                                            className={`hover:bg-gray-50 ${hasResults ? 'cursor-pointer' : ''} ${isExpanded ? 'bg-gray-50' : ''}`}
+                                                            onClick={() =>
+                                                                hasResults &&
+                                                                setExpandedHistoryId(
+                                                                    isExpanded ? null : h.id
+                                                                )
+                                                            }
+                                                        >
+                                                            <td className="px-4 py-2 whitespace-nowrap text-gray-700">
+                                                                {hasResults && (
+                                                                    <span
+                                                                        className={`inline-block mr-1.5 text-gray-400 text-xs transition-transform ${isExpanded ? 'rotate-90' : ''}`}
+                                                                    >
+                                                                        &#9654;
+                                                                    </span>
+                                                                )}
+                                                                {d
+                                                                    ? d.toLocaleDateString(
+                                                                          'tr-TR',
+                                                                          {
+                                                                              day: '2-digit',
+                                                                              month: '2-digit',
+                                                                              year: 'numeric',
+                                                                              hour: '2-digit',
+                                                                              minute: '2-digit',
+                                                                          }
+                                                                      )
+                                                                    : '-'}
+                                                            </td>
+                                                            <td className="px-4 py-2">
+                                                                <span className="text-xs px-1.5 py-0.5 rounded bg-gray-100 text-gray-600">
+                                                                    {typeLabels[
+                                                                        h.scanType || 'full'
+                                                                    ] || h.scanType}
+                                                                </span>
+                                                            </td>
+                                                            <td className="px-4 py-2 text-center text-gray-700">
+                                                                {h.totalClients}
+                                                            </td>
+                                                            <td className="px-4 py-2 text-center text-emerald-600 font-medium">
+                                                                {h.successCount}
+                                                            </td>
+                                                            <td className="px-4 py-2 text-center text-red-500 font-medium">
+                                                                {h.errorCount || 0}
+                                                            </td>
+                                                            <td className="px-4 py-2 text-right text-gray-500">
+                                                                {durMin > 60
+                                                                    ? `${Math.floor(durMin / 60)}s ${durMin % 60}dk`
+                                                                    : `${durMin} dk`}
+                                                            </td>
+                                                        </tr>
+                                                        {isExpanded &&
+                                                            hasResults &&
+                                                            (() => {
+                                                                const errLabels: Record<
+                                                                    string,
+                                                                    string
+                                                                > = {
+                                                                    wrong_credentials:
+                                                                        'Yanl\u0131\u015f \u015fifre',
+                                                                    account_locked: 'Hesap kilitli',
+                                                                    captcha_failed: 'CAPTCHA',
+                                                                    network_timeout:
+                                                                        'Zaman a\u015f\u0131m\u0131',
+                                                                    ip_blocked: 'IP engeli',
+                                                                    unknown: 'Hata',
+                                                                };
+                                                                return (
+                                                                    <tr>
+                                                                        <td
+                                                                            colSpan={6}
+                                                                            className="px-4 py-2 bg-gray-50"
+                                                                        >
+                                                                            <div className="grid grid-cols-2 gap-1.5 text-xs">
+                                                                                {h.results.map(
+                                                                                    (r, ri) => (
+                                                                                        <div
+                                                                                            key={ri}
+                                                                                            className={`flex items-center gap-2 px-2.5 py-1.5 rounded ${r.success ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'}`}
+                                                                                            title={
+                                                                                                !r.success &&
+                                                                                                r.errorMessage
+                                                                                                    ? r.errorMessage
+                                                                                                    : undefined
+                                                                                            }
+                                                                                        >
+                                                                                            <span>
+                                                                                                {r.success
+                                                                                                    ? '\u2713'
+                                                                                                    : '\u2717'}
+                                                                                            </span>
+                                                                                            <span className="font-medium truncate">
+                                                                                                {
+                                                                                                    r.firmName
+                                                                                                }
+                                                                                            </span>
+                                                                                            {!r.success && (
+                                                                                                <span className="text-red-400 text-[10px] ml-auto shrink-0 px-1.5 py-0.5 rounded bg-red-100">
+                                                                                                    {errLabels[
+                                                                                                        r.errorType ||
+                                                                                                            'unknown'
+                                                                                                    ] ||
+                                                                                                        r.errorType ||
+                                                                                                        'Hata'}
+                                                                                                </span>
+                                                                                            )}
+                                                                                        </div>
+                                                                                    )
+                                                                                )}
+                                                                            </div>
+                                                                        </td>
+                                                                    </tr>
+                                                                );
+                                                            })()}
+                                                    </React.Fragment>
                                                 );
                                             })}
                                         </tbody>
@@ -2219,6 +2307,16 @@ const ETebligat: React.FC = () => {
                                                     className="hidden"
                                                     onChange={handleExcelImport}
                                                 />
+                                                <button
+                                                    type="button"
+                                                    onClick={async () => {
+                                                        await window.electronAPI.downloadExcelTemplate();
+                                                    }}
+                                                    className="border border-gray-300 text-gray-600 text-sm px-3 py-2 rounded-md hover:bg-gray-50"
+                                                    title="Örnek Excel şablonunu indirin"
+                                                >
+                                                    &#8681; Sablon
+                                                </button>
                                                 <button
                                                     type="button"
                                                     disabled={importing}

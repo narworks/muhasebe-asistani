@@ -8,15 +8,22 @@ type VersionLog = { version: string; date: string; entries: ChangeEntry[] };
 
 const CHANGELOG: VersionLog[] = [
     {
-        version: '1.0.98',
+        version: '1.1.0',
         date: '2026-04-10',
         entries: [
-            { type: '+', text: 'Ke\u015fif modunda yeni/mevcut tebligat ayr\u0131m\u0131 (badge)' },
-            { type: '+', text: 'Windows T\u00fcrk\u00e7e karakter dosya yolu d\u00fczeltmesi' },
             {
-                type: '~',
-                text: 'Changelog art\u0131k s\u00fcr\u00fcm baz\u0131nda g\u00f6steriliyor',
+                type: '+',
+                text: 'Excel \u015fablon indirme + format do\u011frulama ile toplu m\u00fckellef aktar\u0131m\u0131',
             },
+            {
+                type: '+',
+                text: 'Tarama ge\u00e7mi\u015fi detay\u0131 \u2014 sat\u0131ra t\u0131klay\u0131nca m\u00fckellef sonu\u00e7lar\u0131',
+            },
+            {
+                type: '+',
+                text: '\u0130ndirme tekrar\u0131 engeli \u2014 mevcut belgeler atlan\u0131r',
+            },
+            { type: '~', text: 'Windows T\u00fcrk\u00e7e karakter dosya yolu d\u00fczeltmesi' },
         ],
     },
     {

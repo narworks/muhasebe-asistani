@@ -17,6 +17,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getClientLimit: () => ipcRenderer.invoke('get-client-limit'),
     importClientsFromExcel: (fileBuffer) =>
         ipcRenderer.invoke('import-clients-from-excel', fileBuffer),
+    downloadExcelTemplate: () => ipcRenderer.invoke('download-excel-template'),
     updateClient: (id, clientData) => ipcRenderer.invoke('update-client', id, clientData),
     updateClientStatus: (id, status) => ipcRenderer.invoke('update-client-status', id, status),
     deleteClient: (id) => ipcRenderer.invoke('delete-client', id),
