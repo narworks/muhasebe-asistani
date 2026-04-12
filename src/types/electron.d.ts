@@ -161,16 +161,16 @@ export interface IElectronAPI {
         prioritizeFailed?: boolean;
         scanType?: string;
     }) => void;
-    onScanUpdate: (callback: (status: ScanStatus) => void) => void;
-    onScanError: (callback: (error: string) => void) => void;
-    onScanComplete: (callback: (result: string) => void) => void;
+    onScanUpdate: (callback: (status: ScanStatus) => void) => () => void;
+    onScanError: (callback: (error: string) => void) => () => void;
+    onScanComplete: (callback: (result: string) => void) => () => void;
     removeScanListeners: () => void;
 
     // Credits
     getCredits: () => Promise<Credits>;
     syncCredits: () => Promise<ApiResponse>;
     purchaseCredits: () => Promise<ApiResponse>;
-    onCreditsUpdated: (callback: (credits: Credits) => void) => void;
+    onCreditsUpdated: (callback: (credits: Credits) => void) => () => void;
     removeCreditsListeners: () => void;
 
     // Scan Settings
@@ -206,8 +206,7 @@ export interface IElectronAPI {
     acceptLegalConsent: () => Promise<ApiResponse>;
 
     // Auto-update
-    onUpdateStatus: (callback: (status: UpdateStatus) => void) => void;
-    removeUpdateListeners: () => void;
+    onUpdateStatus: (callback: (status: UpdateStatus) => void) => () => void;
     startUpdateDownload: () => Promise<void>;
     restartAndUpdate: () => Promise<void>;
 }

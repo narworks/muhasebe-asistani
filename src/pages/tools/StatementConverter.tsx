@@ -161,10 +161,10 @@ const StatementConverter: React.FC = () => {
             .getCredits()
             .then(setCreditBalance)
             .catch(() => {});
-        window.electronAPI.onCreditsUpdated((credits) => setCreditBalance(credits));
-        return () => {
-            window.electronAPI.removeCreditsListeners();
-        };
+        const removeCreditsListener = window.electronAPI.onCreditsUpdated((credits) =>
+            setCreditBalance(credits)
+        );
+        return removeCreditsListener;
     }, []);
 
     useEffect(() => {
@@ -174,9 +174,21 @@ const StatementConverter: React.FC = () => {
         }
     }, []);
 
+    const [previewSheetIndex, setPreviewSheetIndex] = useState(0);
+    const [previewSheets, setPreviewSheets] = useState<{ name: string; rows: string[][] }[]>([]);
+
     useEffect(() => {
         if (!uploadedFile) {
             setPreviewContent(null);
+            setPreviewSheets([]);
+            setPreviewSheetIndex(0);
+            return;
+        }
+
+        // Dosya boyutu kontrolü
+        if (uploadedFile.size > 50 * 1024 * 1024) {
+            setError('Dosya boyutu 50MB s\u0131n\u0131r\u0131n\u0131 a\u015f\u0131yor.');
+            setUploadedFile(null);
             return;
         }
 
@@ -190,34 +202,31 @@ const StatementConverter: React.FC = () => {
                     const buffer = e.target?.result as ArrayBuffer;
                     const workbook = new ExcelJS.Workbook();
                     await workbook.xlsx.load(buffer);
-                    const worksheet = workbook.worksheets[0];
-                    const json: string[][] = [];
-                    worksheet.eachRow((row) => {
-                        const cells = Array.isArray(row.values) ? row.values.slice(1) : [];
-                        json.push(cells.map((v: unknown) => (v != null ? String(v) : '')));
+
+                    // Tüm sheet'leri oku
+                    const sheets: { name: string; rows: string[][] }[] = [];
+                    workbook.worksheets.forEach((worksheet) => {
+                        if (worksheet.rowCount === 0) return;
+                        const rows: string[][] = [];
+                        worksheet.eachRow({ includeEmpty: false }, (row) => {
+                            const cells = Array.isArray(row.values) ? row.values.slice(1) : [];
+                            rows.push(cells.map((v: unknown) => (v != null ? String(v) : '')));
+                        });
+                        sheets.push({ name: worksheet.name, rows });
                     });
 
-                    const previewTable = (
-                        <div className="overflow-x-auto max-h-60 bg-slate-900/50 rounded-lg">
-                            <table className="w-full text-xs text-left text-slate-400">
-                                <tbody>
-                                    {json.slice(0, 10).map((row, rIndex) => (
-                                        <tr key={rIndex} className="border-b border-slate-700">
-                                            {row.map((cell, cIndex) => (
-                                                <td
-                                                    key={cIndex}
-                                                    className="px-4 py-2 whitespace-nowrap"
-                                                >
-                                                    {String(cell)}
-                                                </td>
-                                            ))}
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
-                    );
-                    setPreviewContent(previewTable);
+                    setPreviewSheets(sheets);
+                    setPreviewSheetIndex(0);
+
+                    const activeSheet = sheets[0];
+                    if (!activeSheet) {
+                        setPreviewContent(
+                            <p className="text-slate-400">Excel dosyas\u0131 bo\u015f.</p>
+                        );
+                        return;
+                    }
+
+                    setPreviewContent(null); // renderPreviewTable handles it
                 };
                 reader.readAsArrayBuffer(file);
             } else if (file.type === 'text/csv' || file.name.endsWith('.csv')) {
@@ -267,7 +276,36 @@ const StatementConverter: React.FC = () => {
                     setPreviewContent(previewTable);
                 };
                 reader.readAsText(file);
-            } else if (file.type === 'application/pdf' || file.type === 'text/plain') {
+            } else if (file.type === 'application/pdf' || file.name.endsWith('.pdf')) {
+                // PDF binary — metin olarak okunamaz, bilgi kartı göster
+                const sizeMB = (file.size / 1024 / 1024).toFixed(1);
+                setPreviewContent(
+                    <div className="bg-slate-900/50 rounded-lg p-6 text-center">
+                        <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            className="h-10 w-10 mx-auto text-red-400 mb-3"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke="currentColor"
+                        >
+                            <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={1.5}
+                                d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"
+                            />
+                        </svg>
+                        <p className="text-sm font-medium text-slate-300">{file.name}</p>
+                        <p className="text-xs text-slate-500 mt-1">
+                            {sizeMB} MB &middot; PDF dosyas&#305;
+                        </p>
+                        <p className="text-xs text-slate-500 mt-2">
+                            PDF i&ccedil;eri&#287;i d&ouml;n&uuml;&#351;t&uuml;rme
+                            s&#305;ras&#305;nda otomatik okunacakt&#305;r.
+                        </p>
+                    </div>
+                );
+            } else if (file.type === 'text/plain' || file.name.endsWith('.txt')) {
                 reader.onload = (e) => {
                     const textContent = e.target?.result as string;
                     const previewText = (
@@ -278,9 +316,7 @@ const StatementConverter: React.FC = () => {
                     );
                     setPreviewContent(previewText);
                 };
-                reader.readAsText(file); // Note: PDF 'text' preview might be binary junk if read as text.
-                // But original code did this. For PDF, usually we need a pdf viewer or parser.
-                // Keeping original behavior for generic text preview.
+                reader.readAsText(file);
             } else {
                 setPreviewContent(<p className="text-slate-400">Önizleme oluşturulamadı.</p>);
             }
@@ -580,10 +616,63 @@ const StatementConverter: React.FC = () => {
                     </div>
                 </Card>
 
-                {previewContent && (
+                {(previewContent || previewSheets.length > 0) && (
                     <Card>
-                        <h2 className="text-xl font-bold text-white mb-4">Dosya Önizlemesi</h2>
-                        {previewContent}
+                        <h2 className="text-xl font-bold text-white mb-4">Dosya &Ouml;nizlemesi</h2>
+                        {/* Sheet tabları (çoklu sheet varsa) */}
+                        {previewSheets.length > 1 && (
+                            <div className="flex gap-1 mb-3 overflow-x-auto">
+                                {previewSheets.map((sheet, i) => (
+                                    <button
+                                        key={i}
+                                        type="button"
+                                        onClick={() => setPreviewSheetIndex(i)}
+                                        className={`px-3 py-1 text-xs rounded-md whitespace-nowrap transition-colors ${
+                                            previewSheetIndex === i
+                                                ? 'bg-sky-600 text-white'
+                                                : 'bg-slate-700 text-slate-400 hover:bg-slate-600'
+                                        }`}
+                                    >
+                                        {sheet.name}
+                                    </button>
+                                ))}
+                            </div>
+                        )}
+                        {/* Sheet tablosu */}
+                        {previewSheets.length > 0 ? (
+                            <div className="overflow-x-auto max-h-60 bg-slate-900/50 rounded-lg">
+                                <table className="w-full text-xs text-left text-slate-400">
+                                    <tbody>
+                                        {(previewSheets[previewSheetIndex]?.rows || [])
+                                            .slice(0, 15)
+                                            .map((row, rIndex) => (
+                                                <tr
+                                                    key={rIndex}
+                                                    className={`border-b border-slate-700 ${rIndex === 0 ? 'bg-slate-800 text-slate-300 font-semibold' : ''}`}
+                                                >
+                                                    {row.map((cell, cIndex) => (
+                                                        <td
+                                                            key={cIndex}
+                                                            className="px-4 py-2 whitespace-nowrap"
+                                                        >
+                                                            {String(cell)}
+                                                        </td>
+                                                    ))}
+                                                </tr>
+                                            ))}
+                                    </tbody>
+                                </table>
+                                {(previewSheets[previewSheetIndex]?.rows.length || 0) > 15 && (
+                                    <div className="text-center py-2 text-xs text-slate-500">
+                                        ... ve{' '}
+                                        {(previewSheets[previewSheetIndex]?.rows.length || 0) - 15}{' '}
+                                        sat&#305;r daha
+                                    </div>
+                                )}
+                            </div>
+                        ) : (
+                            previewContent
+                        )}
                     </Card>
                 )}
 

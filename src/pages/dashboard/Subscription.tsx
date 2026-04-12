@@ -77,9 +77,8 @@ const Subscription: React.FC = () => {
     }, [currentUser]);
 
     useEffect(() => {
-        const handler = () => fetchData();
-        window.electronAPI.onCreditsUpdated(handler);
-        return () => window.electronAPI.removeCreditsListeners();
+        const removeListener = window.electronAPI.onCreditsUpdated(() => fetchData());
+        return removeListener;
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 

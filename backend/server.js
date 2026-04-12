@@ -263,10 +263,23 @@ app.post('/api/gib/check', async (req, res) => {
     }
 });
 
-// --- Admin Endpoints ---
+// --- Admin Endpoints (requires ADMIN_SECRET header) ---
+
+const ADMIN_SECRET = process.env.ADMIN_SECRET;
+
+const requireAdmin = (req, res, next) => {
+    if (!ADMIN_SECRET) {
+        return res.status(403).json({ error: 'Admin endpoint devre dışı (ADMIN_SECRET tanımlı değil).' });
+    }
+    const provided = req.headers['x-admin-secret'] || req.headers['authorization']?.replace('Bearer ', '');
+    if (provided !== ADMIN_SECRET) {
+        return res.status(401).json({ error: 'Yetkisiz erişim.' });
+    }
+    next();
+};
 
 // Get all users and credits
-app.get('/api/admin/users', (req, res) => {
+app.get('/api/admin/users', requireAdmin, (req, res) => {
     const credits = getCredits();
     // Convert object to array: [{ userId: '...', credits: 10, email: '...' }]
     const userList = Object.entries(credits).map(([userId, data]) => {
@@ -279,7 +292,7 @@ app.get('/api/admin/users', (req, res) => {
 });
 
 // Update user credits
-app.post('/api/admin/credits', (req, res) => {
+app.post('/api/admin/credits', requireAdmin, (req, res) => {
     const { userId, amount, action } = req.body; // action: 'add' or 'set'
     if (!userId || amount === undefined) {
         return res.status(400).json({ error: 'Eksik parametreler.' });
@@ -313,7 +326,7 @@ app.post('/api/admin/credits', (req, res) => {
 });
 
 // Get stats
-app.get('/api/admin/stats', (req, res) => {
+app.get('/api/admin/stats', requireAdmin, (req, res) => {
     const credits = getCredits();
     let totalUsers = 0;
     let totalCredits = 0;

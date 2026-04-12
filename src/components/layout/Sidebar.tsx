@@ -8,6 +8,28 @@ type VersionLog = { version: string; date: string; entries: ChangeEntry[] };
 
 const CHANGELOG: VersionLog[] = [
     {
+        version: '1.3.0',
+        date: '2026-04-12',
+        entries: [
+            {
+                type: '+',
+                text: 'Tab tabanl\u0131 sayfa yap\u0131s\u0131 \u2014 Tarama, Sonu\u00e7lar, M\u00fckellefler, Zamanlama',
+            },
+            {
+                type: '+',
+                text: 'Excel Asistan\u0131: t\u00fcm sayfalar\u0131 oku, para format\u0131 koru, g\u00fc\u00e7l\u00fc AI prompt',
+            },
+            {
+                type: '+',
+                text: 'Toast bildirimleri \u2014 tarama, hata, i\u00e7e aktarma bildirimleri',
+            },
+            {
+                type: '~',
+                text: 'G\u00fcvenlik: IPC listener izolasyonu, oturum korumas\u0131, admin yetkilendirme',
+            },
+        ],
+    },
+    {
         version: '1.2.0',
         date: '2026-04-10',
         entries: [

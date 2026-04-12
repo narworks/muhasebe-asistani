@@ -1,6 +1,9 @@
-import React from 'react';
+import React, { useMemo, useState, useCallback, useRef, useEffect } from 'react';
+import { ChevronDown, ChevronRight } from 'lucide-react';
 import type { Tebligat, Client } from '../../../types';
 import type { ClientGroup } from './types';
+
+type SortBy = 'date' | 'sender' | 'status';
 
 type DateRangePreset =
     | 'all'
@@ -62,6 +65,32 @@ interface ResultsViewProps {
     onResetFilters: () => void;
 }
 
+const formatDate = (dateStr?: string | null): string => {
+    if (!dateStr) return '-';
+    try {
+        const d = new Date(dateStr);
+        return d.toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    } catch {
+        return dateStr;
+    }
+};
+
+const getStatusBadgeClass = (status?: string): string => {
+    const base = 'text-sm font-medium px-3 py-1 rounded-full border';
+    if (!status) return `${base} bg-gray-100 text-gray-500 border-gray-200`;
+    const s = status.toLowerCase();
+    if (s.includes('okunmu') && !s.includes('okunmam')) {
+        return `${base} bg-emerald-50 text-emerald-700 border-emerald-200`;
+    }
+    if (s.includes('okunmam')) {
+        return `${base} bg-amber-50 text-amber-700 border-amber-200`;
+    }
+    if (s.includes('arsivlen') || s.includes('ar\u015Fivlen')) {
+        return `${base} bg-gray-100 text-gray-500 border-gray-200`;
+    }
+    return `${base} bg-gray-100 text-gray-600 border-gray-200`;
+};
+
 const ResultsView: React.FC<ResultsViewProps> = ({
     tebligatlar,
     filteredTebligatlar,
@@ -102,6 +131,156 @@ const ResultsView: React.FC<ResultsViewProps> = ({
     onRefresh,
     onResetFilters,
 }) => {
+    const [sortBy, setSortBy] = useState<SortBy>('date');
+    const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+    const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
+    const [showExportMenu, setShowExportMenu] = useState(false);
+    const exportMenuRef = useRef<HTMLDivElement>(null);
+
+    // Close export dropdown when clicking outside
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (exportMenuRef.current && !exportMenuRef.current.contains(event.target as Node)) {
+                setShowExportMenu(false);
+            }
+        };
+        if (showExportMenu) {
+            document.addEventListener('mousedown', handleClickOutside);
+        }
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, [showExportMenu]);
+
+    const toggleGroup = useCallback((key: string) => {
+        setCollapsedGroups((prev) => {
+            const next = new Set(prev);
+            if (next.has(key)) {
+                next.delete(key);
+            } else {
+                next.add(key);
+            }
+            return next;
+        });
+    }, []);
+
+    // Build a client_id -> firm_name lookup from clients list
+    const clientNameMap = useMemo(() => {
+        const map = new Map<number, string>();
+        for (const c of clients) {
+            map.set(c.id, c.firm_name);
+        }
+        return map;
+    }, [clients]);
+
+    const sortedTebligatlar = useMemo(() => {
+        const items = [...filteredTebligatlar];
+        switch (sortBy) {
+            case 'date':
+                items.sort((a, b) => {
+                    const da = a.notification_date || a.send_date || a.created_at || '';
+                    const db = b.notification_date || b.send_date || b.created_at || '';
+                    return db.localeCompare(da);
+                });
+                break;
+            case 'sender':
+                items.sort((a, b) => (a.sender || '').localeCompare(b.sender || '', 'tr'));
+                break;
+            case 'status':
+                items.sort((a, b) => (a.status || '').localeCompare(b.status || '', 'tr'));
+                break;
+        }
+        return items;
+    }, [filteredTebligatlar, sortBy]);
+
+    // Grouped data for client grouping mode — always group when multiple clients
+    const groupedByClient = useMemo(() => {
+        const groups = new Map<string, Tebligat[]>();
+        for (const t of sortedTebligatlar) {
+            const name = t.firm_name || clientNameMap.get(t.client_id) || 'Bilinmeyen';
+            if (!groups.has(name)) {
+                groups.set(name, []);
+            }
+            groups.get(name)!.push(t);
+        }
+        // Sort groups by name
+        return Array.from(groups.entries()).sort((a, b) => a[0].localeCompare(b[0], 'tr'));
+    }, [sortedTebligatlar, clientNameMap]);
+
+    // Auto-determine: if only one client, show flat list
+    const useGrouping = groupedByClient.length > 1;
+
+    const renderCard = (t: Tebligat, showClient: boolean) => {
+        const clientName = t.firm_name || clientNameMap.get(t.client_id) || 'Bilinmeyen';
+        const isNew = allNewTebligatIds.has(t.id);
+
+        return (
+            <div
+                key={t.id}
+                className={`border border-gray-200 rounded-lg p-3 hover:border-indigo-300 hover:shadow-md transition-all cursor-default ${
+                    isNew
+                        ? 'border-l-4 border-l-emerald-400 bg-emerald-50/30'
+                        : 'hover:bg-gray-50/50'
+                }`}
+            >
+                <div className="flex justify-between items-start gap-3">
+                    <div className="flex-1 min-w-0">
+                        <p className="font-medium text-sm text-gray-800 truncate">
+                            {t.subject || 'Tebligat'}
+                        </p>
+                        <p className="text-xs text-gray-500 mt-0.5">
+                            {t.sender || '-'}
+                            {showClient && <> &middot; {clientName}</>} &middot;{' '}
+                            {formatDate(t.notification_date || t.send_date)}
+                        </p>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                        <span className={getStatusBadgeClass(t.status)}>{t.status || '-'}</span>
+                        {t.document_path ? (
+                            <span className="text-sm font-medium px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-600 border border-blue-200">
+                                &#304;ndirildi
+                            </span>
+                        ) : (
+                            <span className="text-sm font-medium px-2.5 py-0.5 rounded-full bg-gray-100 text-gray-500 border border-gray-200">
+                                Bekliyor
+                            </span>
+                        )}
+                    </div>
+                </div>
+                <div className="flex items-center gap-2 mt-2">
+                    {t.document_path ? (
+                        <>
+                            <button
+                                onClick={() => onOpenDocument(t.document_path!)}
+                                className="text-sm font-medium px-4 py-1.5 rounded-md bg-indigo-600 text-white hover:bg-indigo-700 transition-colors"
+                            >
+                                A&ccedil;
+                            </button>
+                            <button
+                                onClick={() => onShareDocument(t.document_path!)}
+                                className="text-xs font-medium px-3 py-1.5 rounded-md bg-gray-50 text-gray-600 hover:bg-gray-100 border border-gray-200 transition-colors"
+                            >
+                                Klas&ouml;rde G&ouml;ster
+                            </button>
+                        </>
+                    ) : (
+                        <button
+                            onClick={() => onFetchDocument(t.id)}
+                            disabled={fetchingDocumentId === t.id}
+                            className="text-sm font-medium px-4 py-1.5 rounded-md bg-emerald-600 text-white hover:bg-emerald-700 transition-colors disabled:opacity-50"
+                        >
+                            {fetchingDocumentId === t.id ? '&#304;ndiriliyor...' : '&#304;ndir'}
+                        </button>
+                    )}
+                    <button
+                        onClick={() => onSelectTebligat(t)}
+                        className="text-xs text-gray-400 hover:text-gray-600 transition-colors ml-auto"
+                    >
+                        Detay
+                    </button>
+                </div>
+            </div>
+        );
+    };
+
     return (
         <div className="mt-4">
             <div className="flex items-center justify-between mb-3">
@@ -118,32 +297,18 @@ const ResultsView: React.FC<ResultsViewProps> = ({
                         <button
                             onClick={onOpenDocumentsFolder}
                             className="text-xs font-semibold text-amber-600 hover:text-amber-700"
-                            title={documentsFolder || 'Varsayılan klasör'}
+                            title={documentsFolder || 'Varsay\u0131lan klas\u00f6r'}
                         >
-                            Döküman Klasörü
+                            D&ouml;k&uuml;man Klas&ouml;r&uuml;
                         </button>
                         <button
                             onClick={onSelectDocumentsFolder}
                             className="text-xs text-gray-400 hover:text-gray-600"
-                            title="Döküman klasörünü değiştir"
+                            title="D\u00f6k\u00fcman klas\u00f6r\u00fcn\u00fc de\u011fi\u015ftir"
                         >
-                            (Değiştir)
+                            (De&#287;i&#351;tir)
                         </button>
                     </div>
-                    <button
-                        onClick={onExportExcel}
-                        className="text-xs font-semibold px-2.5 py-1 rounded border border-emerald-500/30 text-emerald-600 hover:bg-emerald-50 disabled:opacity-40"
-                        disabled={filteredTebligatlar.length === 0}
-                    >
-                        Excel&apos;e Aktar
-                    </button>
-                    <button
-                        onClick={onExportCsv}
-                        className="text-xs font-semibold px-2.5 py-1 rounded border border-emerald-500/30 text-emerald-600 hover:bg-emerald-50 disabled:opacity-40"
-                        disabled={filteredTebligatlar.length === 0}
-                    >
-                        CSV&apos;ye Aktar
-                    </button>
                     <button
                         onClick={onRefresh}
                         className="text-xs font-semibold px-2.5 py-1 rounded border border-indigo-500/30 text-indigo-600 hover:bg-indigo-50"
@@ -154,453 +319,295 @@ const ResultsView: React.FC<ResultsViewProps> = ({
             </div>
 
             {loadingTebligatlar ? (
-                <div className="text-sm text-gray-500">Tebligatlar yükleniyor...</div>
+                <div className="text-sm text-gray-500">Tebligatlar y&uuml;kleniyor...</div>
             ) : tebligatlar.length === 0 ? (
-                <div className="text-sm text-gray-500">Kayıtlı tebligat bulunamadı.</div>
+                <div className="text-center py-12 text-gray-400">
+                    <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        className="h-12 w-12 mx-auto text-gray-300"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                    >
+                        <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={1.5}
+                            d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"
+                        />
+                    </svg>
+                    <p className="mt-2 font-medium">Kay&#305;tl&#305; tebligat bulunamad&#305;</p>
+                    <p className="text-xs mt-1">
+                        Taramay&#305; ba&#351;latarak yeni tebligatlar&#305; ke&#351;fedin
+                    </p>
+                </div>
             ) : (
                 <>
-                    {/* Date range preset buttons */}
-                    <div className="mb-3">
-                        <label className="block text-xs font-semibold text-gray-500 mb-1.5">
-                            Tarih Aral&#305;&#287;&#305;
-                        </label>
-                        <div className="flex flex-wrap gap-1.5">
-                            {(
-                                [
-                                    ['all', 'T\u00fcm\u00fc'],
-                                    ['today', 'Bug\u00fcn'],
-                                    ['yesterday', 'D\u00fcn'],
-                                    ['last3', 'Son 3 G\u00fcn'],
-                                    ['last7', 'Son 7 G\u00fcn'],
-                                    ['last30', 'Son 30 G\u00fcn'],
-                                    ['thisYear', 'Bu Y\u0131l'],
-                                    ['custom', '\u00d6zel'],
-                                ] as const
-                            ).map(([key, label]) => (
-                                <button
-                                    key={key}
-                                    type="button"
-                                    onClick={() => onFilterDateRange(key as DateRangePreset)}
-                                    className={`text-xs px-3 py-1.5 rounded-md border transition-colors ${
-                                        filterDateRange === key
-                                            ? 'bg-indigo-600 text-white border-indigo-600'
-                                            : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'
-                                    }`}
-                                >
-                                    {label}
-                                </button>
-                            ))}
-                        </div>
-                        {filterDateRange === 'custom' && (
-                            <div className="flex gap-2 mt-2">
-                                <input
-                                    type="date"
-                                    value={filterDateFrom}
-                                    onChange={(e) => onFilterDateFrom(e.target.value)}
-                                    className="flex-1 border border-gray-300 rounded-md px-3 py-2 text-sm text-gray-900 bg-white"
-                                />
-                                <input
-                                    type="date"
-                                    value={filterDateTo}
-                                    onChange={(e) => onFilterDateTo(e.target.value)}
-                                    className="flex-1 border border-gray-300 rounded-md px-3 py-2 text-sm text-gray-900 bg-white"
-                                />
-                            </div>
-                        )}
-                    </div>
-
-                    <div className="flex flex-col md:flex-row md:items-center gap-3 mb-4">
+                    {/* Primary filter row */}
+                    <div className="flex items-center gap-3 mb-3">
                         <div className="flex-1">
-                            <label className="block text-xs font-semibold text-gray-500 mb-1">
-                                M&uuml;kellef
-                            </label>
-                            <select
-                                value={filterClientId}
-                                onChange={(e) => onFilterClientId(e.target.value)}
-                                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm text-gray-900 bg-white"
-                            >
-                                <option value="all">T&uuml;m&uuml;</option>
-                                {clients.map((client) => (
-                                    <option key={client.id} value={String(client.id)}>
-                                        {client.firm_name}
-                                    </option>
-                                ))}
-                            </select>
-                        </div>
-                        <div className="flex-1">
-                            <label className="block text-xs font-semibold text-gray-500 mb-1">
-                                G&ouml;nderen (Kurum)
-                            </label>
-                            <select
-                                value={filterSender}
-                                onChange={(e) => onFilterSender(e.target.value)}
-                                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm text-gray-900 bg-white"
-                            >
-                                <option value="all">T&uuml;m&uuml;</option>
-                                {uniqueSenders.map((sender) => (
-                                    <option key={sender} value={sender}>
-                                        {sender.length > 50
-                                            ? sender.substring(0, 50) + '...'
-                                            : sender}
-                                    </option>
-                                ))}
-                            </select>
-                        </div>
-                        <div className="flex-1">
-                            <label className="block text-xs font-semibold text-gray-500 mb-1">
-                                Durum
-                            </label>
-                            <select
-                                value={filterStatus}
-                                onChange={(e) => onFilterStatus(e.target.value)}
-                                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm text-gray-900 bg-white"
-                            >
-                                <option value="all">T&uuml;m&uuml;</option>
-                                {statusOptions.map((status) => (
-                                    <option key={status} value={status}>
-                                        {status}
-                                    </option>
-                                ))}
-                            </select>
-                        </div>
-                        <div className="flex-1">
-                            <label className="block text-xs font-semibold text-gray-500 mb-1">
-                                Arama
-                            </label>
                             <input
                                 value={searchTerm}
                                 onChange={(e) => onSearchTerm(e.target.value)}
                                 className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm text-gray-900 bg-white"
-                                placeholder="G&ouml;nderen, konu, m&uuml;kellef"
+                                placeholder="G&ouml;nderen, konu, m&uuml;kellef ara..."
                             />
                         </div>
-                        <div className="md:pt-6">
+                        <select
+                            value={filterDateRange}
+                            onChange={(e) => onFilterDateRange(e.target.value as DateRangePreset)}
+                            className="border border-gray-300 rounded-md px-3 py-2 text-sm text-gray-900 bg-white"
+                        >
+                            <option value="all">T&uuml;m Tarihler</option>
+                            <option value="today">Bug&uuml;n</option>
+                            <option value="yesterday">D&uuml;n</option>
+                            <option value="last3">Son 3 G&uuml;n</option>
+                            <option value="last7">Son 7 G&uuml;n</option>
+                            <option value="last30">Son 30 G&uuml;n</option>
+                            <option value="thisYear">Bu Y&#305;l</option>
+                            <option value="custom">&Ouml;zel Aral&#305;k</option>
+                        </select>
+                        <button
+                            type="button"
+                            onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
+                            className="text-xs text-gray-500 hover:text-gray-700 whitespace-nowrap px-2 py-2"
+                        >
+                            Filtreler {showAdvancedFilters ? '\u25B2' : '\u25BC'}
+                        </button>
+                        <div className="relative" ref={exportMenuRef}>
                             <button
                                 type="button"
-                                onClick={onResetFilters}
-                                className="text-xs font-semibold text-gray-500 hover:text-gray-700 whitespace-nowrap"
+                                onClick={() => setShowExportMenu(!showExportMenu)}
+                                disabled={filteredTebligatlar.length === 0}
+                                className="text-xs font-semibold px-2.5 py-2 rounded border border-emerald-500/30 text-emerald-600 hover:bg-emerald-50 disabled:opacity-40 whitespace-nowrap"
                             >
-                                Filtreleri Temizle
+                                D&#305;&#351;a Aktar &#9662;
                             </button>
+                            {showExportMenu && (
+                                <div className="absolute right-0 mt-1 w-36 bg-white border border-gray-200 rounded-md shadow-lg z-10">
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            onExportExcel();
+                                            setShowExportMenu(false);
+                                        }}
+                                        className="block w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                                    >
+                                        Excel&apos;e Aktar
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            onExportCsv();
+                                            setShowExportMenu(false);
+                                        }}
+                                        className="block w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                                    >
+                                        CSV&apos;ye Aktar
+                                    </button>
+                                </div>
+                            )}
                         </div>
                     </div>
-                    {filteredTebligatlar.length === 0 ? (
-                        <div className="text-sm text-gray-500">Filtre sonucu kayıt bulunamadı.</div>
+
+                    {/* Custom date inputs (inline when custom selected) */}
+                    {filterDateRange === 'custom' && (
+                        <div className="flex gap-2 mb-3">
+                            <input
+                                type="date"
+                                value={filterDateFrom}
+                                onChange={(e) => onFilterDateFrom(e.target.value)}
+                                className="flex-1 border border-gray-300 rounded-md px-3 py-2 text-sm text-gray-900 bg-white"
+                            />
+                            <input
+                                type="date"
+                                value={filterDateTo}
+                                onChange={(e) => onFilterDateTo(e.target.value)}
+                                className="flex-1 border border-gray-300 rounded-md px-3 py-2 text-sm text-gray-900 bg-white"
+                            />
+                        </div>
+                    )}
+
+                    {/* Advanced filters (collapsed by default) */}
+                    {showAdvancedFilters && (
+                        <div className="flex gap-3 mb-3">
+                            <div className="flex-1">
+                                <select
+                                    value={filterClientId}
+                                    onChange={(e) => onFilterClientId(e.target.value)}
+                                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm text-gray-900 bg-white"
+                                >
+                                    <option value="all">T&uuml;m M&uuml;kellefler</option>
+                                    {clients.map((client) => (
+                                        <option key={client.id} value={String(client.id)}>
+                                            {client.firm_name}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div className="flex-1">
+                                <select
+                                    value={filterSender}
+                                    onChange={(e) => onFilterSender(e.target.value)}
+                                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm text-gray-900 bg-white"
+                                >
+                                    <option value="all">T&uuml;m G&ouml;nderenler</option>
+                                    {uniqueSenders.map((sender) => (
+                                        <option key={sender} value={sender}>
+                                            {sender.length > 50
+                                                ? sender.substring(0, 50) + '...'
+                                                : sender}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div className="flex-1">
+                                <select
+                                    value={filterStatus}
+                                    onChange={(e) => onFilterStatus(e.target.value)}
+                                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm text-gray-900 bg-white"
+                                >
+                                    <option value="all">T&uuml;m Durumlar</option>
+                                    {statusOptions.map((status) => (
+                                        <option key={status} value={status}>
+                                            {status}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div className="flex-1">
+                                <select
+                                    value={sortBy}
+                                    onChange={(e) => setSortBy(e.target.value as SortBy)}
+                                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm text-gray-900 bg-white"
+                                >
+                                    <option value="date">Tarihe G&ouml;re</option>
+                                    <option value="sender">G&ouml;nderene G&ouml;re</option>
+                                    <option value="status">Duruma G&ouml;re</option>
+                                </select>
+                            </div>
+                            <div className="flex items-center">
+                                <button
+                                    type="button"
+                                    onClick={onResetFilters}
+                                    className="text-xs font-semibold text-gray-500 hover:text-gray-700 whitespace-nowrap"
+                                >
+                                    Temizle
+                                </button>
+                            </div>
+                        </div>
+                    )}
+
+                    {sortedTebligatlar.length === 0 ? (
+                        <div className="text-center py-12 text-gray-400">
+                            <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                className="h-12 w-12 mx-auto text-gray-300"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                stroke="currentColor"
+                            >
+                                <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth={1.5}
+                                    d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                                />
+                            </svg>
+                            <p className="mt-2 font-medium">
+                                Kay&#305;tl&#305; tebligat bulunamad&#305;
+                            </p>
+                            <p className="text-xs mt-1">
+                                Taramay&#305; ba&#351;latarak yeni tebligatlar&#305; ke&#351;fedin
+                            </p>
+                        </div>
                     ) : (
-                        <div className="space-y-3">
-                            {clientGroups.map((group) => {
-                                const isExpanded = expandedClients.has(group.client_id);
+                        <div className="space-y-1">
+                            <div className="text-xs text-gray-400 mb-2">
+                                {sortedTebligatlar.length} sonu&ccedil;
+                                g&ouml;r&uuml;nt&uuml;leniyor
+                            </div>
 
-                                return (
-                                    <div
-                                        key={group.client_id}
-                                        className="border border-gray-200 rounded-lg overflow-hidden"
-                                    >
-                                        {/* Accordion Header */}
-                                        <button
-                                            onClick={() => onToggleClient(group.client_id)}
-                                            className={`w-full px-4 py-3 flex items-center justify-between transition-colors ${
-                                                isExpanded
-                                                    ? 'bg-indigo-50'
-                                                    : 'bg-gray-50 hover:bg-gray-100'
-                                            }`}
+                            {clientGroups.length > 0 ? (
+                                /* Grouped by client → scan date → cards */
+                                clientGroups.map((cg) => {
+                                    const isClientExpanded = expandedClients.has(cg.client_id);
+                                    return (
+                                        <div
+                                            key={cg.client_id}
+                                            className="mb-2 border border-gray-200 rounded-lg overflow-hidden"
                                         >
-                                            <div className="flex items-center gap-3">
-                                                <svg
-                                                    xmlns="http://www.w3.org/2000/svg"
-                                                    className={`h-4 w-4 text-gray-500 transition-transform ${isExpanded ? 'rotate-90' : ''}`}
-                                                    fill="none"
-                                                    viewBox="0 0 24 24"
-                                                    stroke="currentColor"
-                                                >
-                                                    <path
-                                                        strokeLinecap="round"
-                                                        strokeLinejoin="round"
-                                                        strokeWidth={2}
-                                                        d="M9 5l7 7-7 7"
-                                                    />
-                                                </svg>
-                                                <span className="font-semibold text-gray-800">
-                                                    {group.firm_name || 'Bilinmeyen'}
-                                                </span>
-                                            </div>
-                                            <span
-                                                className={`text-sm font-medium px-2 py-1 rounded-full ${
-                                                    group.tebligatlar.length > 0
-                                                        ? 'bg-indigo-100 text-indigo-700'
-                                                        : 'bg-gray-100 text-gray-600'
-                                                }`}
+                                            {/* Client header */}
+                                            <button
+                                                type="button"
+                                                onClick={() => onToggleClient(cg.client_id)}
+                                                className="flex items-center gap-2 w-full text-left py-2.5 px-3 bg-gray-50 hover:bg-gray-100 transition-colors"
                                             >
-                                                {group.tebligatlar.length} tebligat
-                                            </span>
-                                        </button>
+                                                {isClientExpanded ? (
+                                                    <ChevronDown className="w-4 h-4 text-gray-400 shrink-0" />
+                                                ) : (
+                                                    <ChevronRight className="w-4 h-4 text-gray-400 shrink-0" />
+                                                )}
+                                                <span className="text-sm font-semibold text-gray-700 truncate">
+                                                    {cg.firm_name}
+                                                </span>
+                                                <span className="text-xs font-medium bg-indigo-100 text-indigo-600 px-1.5 py-0.5 rounded-full shrink-0">
+                                                    {cg.tebligatlar.length} tebligat
+                                                </span>
+                                            </button>
 
-                                        {/* Accordion Content — Scan Date Sub-Accordions */}
-                                        {isExpanded && (
-                                            <div className="bg-white divide-y divide-gray-100">
-                                                {group.scanGroups.map((scan, scanIdx) => {
-                                                    const scanKey = `${group.client_id}-${scanIdx}`;
-                                                    const isScanExpanded =
-                                                        expandedScans.has(scanKey);
-                                                    const newInScan = scan.tebligatlar.filter((t) =>
-                                                        allNewTebligatIds.has(t.id)
-                                                    ).length;
-                                                    const oldInScan =
-                                                        scan.tebligatlar.length - newInScan;
-                                                    return (
-                                                        <div key={scanKey}>
-                                                            <button
-                                                                onClick={() =>
-                                                                    onToggleScan(scanKey)
-                                                                }
-                                                                className={`w-full px-5 py-2.5 flex items-center justify-between text-left ${isScanExpanded ? 'bg-gray-50' : 'hover:bg-gray-50'}`}
-                                                            >
-                                                                <div className="flex items-center gap-2">
-                                                                    <svg
-                                                                        xmlns="http://www.w3.org/2000/svg"
-                                                                        className={`h-3 w-3 text-gray-400 transition-transform ${isScanExpanded ? 'rotate-90' : ''}`}
-                                                                        fill="none"
-                                                                        viewBox="0 0 24 24"
-                                                                        stroke="currentColor"
-                                                                    >
-                                                                        <path
-                                                                            strokeLinecap="round"
-                                                                            strokeLinejoin="round"
-                                                                            strokeWidth={2}
-                                                                            d="M9 5l7 7-7 7"
-                                                                        />
-                                                                    </svg>
-                                                                    <span className="text-sm text-gray-700">
-                                                                        Tarama: {scan.scanLabel}
+                                            {/* Scan date sub-groups */}
+                                            {isClientExpanded && (
+                                                <div className="px-3 pb-2">
+                                                    {cg.scanGroups.map((sg) => {
+                                                        const scanKey = `${cg.client_id}-${sg.scanDate}`;
+                                                        const isScanExpanded =
+                                                            expandedScans.has(scanKey);
+                                                        return (
+                                                            <div key={scanKey} className="mt-2">
+                                                                {/* Scan date header */}
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() =>
+                                                                        onToggleScan(scanKey)
+                                                                    }
+                                                                    className="flex items-center gap-2 w-full text-left py-1.5 px-2 rounded hover:bg-gray-50 transition-colors"
+                                                                >
+                                                                    {isScanExpanded ? (
+                                                                        <ChevronDown className="w-3.5 h-3.5 text-gray-300 shrink-0" />
+                                                                    ) : (
+                                                                        <ChevronRight className="w-3.5 h-3.5 text-gray-300 shrink-0" />
+                                                                    )}
+                                                                    <span className="text-xs font-medium text-gray-500">
+                                                                        {sg.scanLabel}
                                                                     </span>
-                                                                </div>
-                                                                <div className="flex items-center gap-2">
-                                                                    {newInScan > 0 && (
-                                                                        <span className="text-xs font-medium text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full">
-                                                                            {newInScan} adet
-                                                                            &middot; yeni
-                                                                        </span>
-                                                                    )}
-                                                                    {newInScan > 0 &&
-                                                                        oldInScan > 0 && (
-                                                                            <span className="text-xs text-gray-300">
-                                                                                &middot;
-                                                                            </span>
+                                                                    <span className="text-xs text-gray-400">
+                                                                        ({sg.tebligatlar.length})
+                                                                    </span>
+                                                                </button>
+
+                                                                {/* Tebligat cards */}
+                                                                {isScanExpanded && (
+                                                                    <div className="space-y-2 mt-1.5 ml-5">
+                                                                        {sg.tebligatlar.map((t) =>
+                                                                            renderCard(t, false)
                                                                         )}
-                                                                    {oldInScan > 0 && (
-                                                                        <span className="text-xs text-gray-500">
-                                                                            {oldInScan} adet
-                                                                        </span>
-                                                                    )}
-                                                                    {newInScan === 0 &&
-                                                                        oldInScan === 0 && (
-                                                                            <span className="text-xs text-gray-400">
-                                                                                {
-                                                                                    scan.tebligatlar
-                                                                                        .length
-                                                                                }{' '}
-                                                                                tebligat
-                                                                            </span>
-                                                                        )}
-                                                                </div>
-                                                            </button>
-                                                            {isScanExpanded && (
-                                                                <div className="overflow-x-auto">
-                                                                    <table className="min-w-full text-sm text-left text-gray-700">
-                                                                        <thead className="bg-gray-100 text-xs uppercase text-gray-500">
-                                                                            <tr>
-                                                                                <th className="px-4 py-2">
-                                                                                    Belge No
-                                                                                </th>
-                                                                                <th className="px-4 py-2">
-                                                                                    G&ouml;nderen
-                                                                                </th>
-                                                                                <th className="px-4 py-2">
-                                                                                    Konu
-                                                                                </th>
-                                                                                <th className="px-4 py-2">
-                                                                                    Durum
-                                                                                </th>
-                                                                                <th className="px-4 py-2">
-                                                                                    D&ouml;k&uuml;man
-                                                                                </th>
-                                                                            </tr>
-                                                                        </thead>
-                                                                        <tbody>
-                                                                            {scan.tebligatlar.map(
-                                                                                (row) => (
-                                                                                    <tr
-                                                                                        key={row.id}
-                                                                                        className={`border-t border-gray-200 hover:bg-gray-50 cursor-pointer ${allNewTebligatIds.has(row.id) ? 'bg-emerald-50/60 border-l-2 border-l-emerald-400' : ''}`}
-                                                                                        onClick={() =>
-                                                                                            onSelectTebligat(
-                                                                                                row
-                                                                                            )
-                                                                                        }
-                                                                                    >
-                                                                                        <td className="px-4 py-2 whitespace-nowrap text-xs font-mono">
-                                                                                            {row.document_no ||
-                                                                                                '-'}
-                                                                                        </td>
-                                                                                        <td className="px-4 py-2 whitespace-nowrap">
-                                                                                            {row.sender ||
-                                                                                                '-'}
-                                                                                        </td>
-                                                                                        <td className="px-4 py-2 max-w-xs truncate">
-                                                                                            {row.subject ||
-                                                                                                '-'}
-                                                                                        </td>
-                                                                                        <td className="px-4 py-2 whitespace-nowrap">
-                                                                                            <span
-                                                                                                className={`px-2 py-1 text-xs rounded-full ${row.status === 'Tebligat yok' ? 'bg-gray-100 text-gray-600' : row.status?.toLowerCase().includes('okundu') ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}
-                                                                                            >
-                                                                                                {row.status ||
-                                                                                                    '-'}
-                                                                                            </span>
-                                                                                        </td>
-                                                                                        <td
-                                                                                            className="px-4 py-2 whitespace-nowrap"
-                                                                                            onClick={(
-                                                                                                e
-                                                                                            ) =>
-                                                                                                e.stopPropagation()
-                                                                                            }
-                                                                                        >
-                                                                                            {row.document_path ? (
-                                                                                                <div className="flex gap-2">
-                                                                                                    <button
-                                                                                                        onClick={() =>
-                                                                                                            onOpenDocument(
-                                                                                                                row.document_path!
-                                                                                                            )
-                                                                                                        }
-                                                                                                        className="text-sky-600 hover:text-sky-700"
-                                                                                                        title="A&ccedil;"
-                                                                                                    >
-                                                                                                        <svg
-                                                                                                            xmlns="http://www.w3.org/2000/svg"
-                                                                                                            className="h-4 w-4"
-                                                                                                            fill="none"
-                                                                                                            viewBox="0 0 24 24"
-                                                                                                            stroke="currentColor"
-                                                                                                        >
-                                                                                                            <path
-                                                                                                                strokeLinecap="round"
-                                                                                                                strokeLinejoin="round"
-                                                                                                                strokeWidth={
-                                                                                                                    2
-                                                                                                                }
-                                                                                                                d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
-                                                                                                            />
-                                                                                                            <path
-                                                                                                                strokeLinecap="round"
-                                                                                                                strokeLinejoin="round"
-                                                                                                                strokeWidth={
-                                                                                                                    2
-                                                                                                                }
-                                                                                                                d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
-                                                                                                            />
-                                                                                                        </svg>
-                                                                                                    </button>
-                                                                                                    <button
-                                                                                                        onClick={() =>
-                                                                                                            onShareDocument(
-                                                                                                                row.document_path!
-                                                                                                            )
-                                                                                                        }
-                                                                                                        className="text-emerald-600 hover:text-emerald-700"
-                                                                                                        title="Klas&ouml;r"
-                                                                                                    >
-                                                                                                        <svg
-                                                                                                            xmlns="http://www.w3.org/2000/svg"
-                                                                                                            className="h-4 w-4"
-                                                                                                            fill="none"
-                                                                                                            viewBox="0 0 24 24"
-                                                                                                            stroke="currentColor"
-                                                                                                        >
-                                                                                                            <path
-                                                                                                                strokeLinecap="round"
-                                                                                                                strokeLinejoin="round"
-                                                                                                                strokeWidth={
-                                                                                                                    2
-                                                                                                                }
-                                                                                                                d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"
-                                                                                                            />
-                                                                                                        </svg>
-                                                                                                    </button>
-                                                                                                </div>
-                                                                                            ) : (
-                                                                                                <button
-                                                                                                    onClick={() =>
-                                                                                                        onFetchDocument(
-                                                                                                            row.id
-                                                                                                        )
-                                                                                                    }
-                                                                                                    disabled={
-                                                                                                        fetchingDocumentId ===
-                                                                                                        row.id
-                                                                                                    }
-                                                                                                    className="text-amber-500 hover:text-amber-600 disabled:opacity-50"
-                                                                                                    title="&#304;ndir"
-                                                                                                >
-                                                                                                    {fetchingDocumentId ===
-                                                                                                    row.id ? (
-                                                                                                        <svg
-                                                                                                            className="animate-spin h-4 w-4"
-                                                                                                            xmlns="http://www.w3.org/2000/svg"
-                                                                                                            fill="none"
-                                                                                                            viewBox="0 0 24 24"
-                                                                                                        >
-                                                                                                            <circle
-                                                                                                                className="opacity-25"
-                                                                                                                cx="12"
-                                                                                                                cy="12"
-                                                                                                                r="10"
-                                                                                                                stroke="currentColor"
-                                                                                                                strokeWidth="4"
-                                                                                                            />
-                                                                                                            <path
-                                                                                                                className="opacity-75"
-                                                                                                                fill="currentColor"
-                                                                                                                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-                                                                                                            />
-                                                                                                        </svg>
-                                                                                                    ) : (
-                                                                                                        <svg
-                                                                                                            xmlns="http://www.w3.org/2000/svg"
-                                                                                                            className="h-4 w-4"
-                                                                                                            fill="none"
-                                                                                                            viewBox="0 0 24 24"
-                                                                                                            stroke="currentColor"
-                                                                                                        >
-                                                                                                            <path
-                                                                                                                strokeLinecap="round"
-                                                                                                                strokeLinejoin="round"
-                                                                                                                strokeWidth={
-                                                                                                                    2
-                                                                                                                }
-                                                                                                                d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
-                                                                                                            />
-                                                                                                        </svg>
-                                                                                                    )}
-                                                                                                </button>
-                                                                                            )}
-                                                                                        </td>
-                                                                                    </tr>
-                                                                                )
-                                                                            )}
-                                                                        </tbody>
-                                                                    </table>
-                                                                </div>
-                                                            )}
-                                                        </div>
-                                                    );
-                                                })}
-                                            </div>
-                                        )}
-                                    </div>
-                                );
-                            })}
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        );
+                                                    })}
+                                                </div>
+                                            )}
+                                        </div>
+                                    );
+                                })
+                            ) : (
+                                /* Flat list fallback */
+                                <div className="space-y-2">
+                                    {sortedTebligatlar.map((t) => renderCard(t, true))}
+                                </div>
+                            )}
                         </div>
                     )}
                 </>

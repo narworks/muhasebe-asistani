@@ -44,10 +44,21 @@ contextBridge.exposeInMainWorld('electronAPI', {
     estimateScanDuration: (clientCount) =>
         ipcRenderer.invoke('estimate-scan-duration', clientCount),
     startScanWithOptions: (options) => ipcRenderer.send('start-scan-with-options', options),
-    onScanUpdate: (callback) => ipcRenderer.on('scan-update', (_event, value) => callback(value)),
-    onScanError: (callback) => ipcRenderer.on('scan-error', (_event, value) => callback(value)),
-    onScanComplete: (callback) =>
-        ipcRenderer.on('scan-complete', (_event, value) => callback(value)),
+    onScanUpdate: (callback) => {
+        const handler = (_event, value) => callback(value);
+        ipcRenderer.on('scan-update', handler);
+        return () => ipcRenderer.removeListener('scan-update', handler);
+    },
+    onScanError: (callback) => {
+        const handler = (_event, value) => callback(value);
+        ipcRenderer.on('scan-error', handler);
+        return () => ipcRenderer.removeListener('scan-error', handler);
+    },
+    onScanComplete: (callback) => {
+        const handler = (_event, value) => callback(value);
+        ipcRenderer.on('scan-complete', handler);
+        return () => ipcRenderer.removeListener('scan-complete', handler);
+    },
 
     // Legal consent
     getLegalConsent: () => ipcRenderer.invoke('get-legal-consent'),
@@ -65,8 +76,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getCredits: () => ipcRenderer.invoke('get-credits'),
     syncCredits: () => ipcRenderer.invoke('sync-credits'),
     purchaseCredits: () => ipcRenderer.invoke('purchase-credits'),
-    onCreditsUpdated: (callback) =>
-        ipcRenderer.on('credits-updated', (_event, value) => callback(value)),
+    onCreditsUpdated: (callback) => {
+        const handler = (_event, value) => callback(value);
+        ipcRenderer.on('credits-updated', handler);
+        return () => ipcRenderer.removeListener('credits-updated', handler);
+    },
 
     // Export
     exportCsv: (data, defaultFileName) =>
@@ -85,15 +99,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getDocumentsFolder: () => ipcRenderer.invoke('get-documents-folder'),
 
     // Auto-update
-    onUpdateStatus: (callback) =>
-        ipcRenderer.on('update-status', (_event, value) => callback(value)),
-    removeUpdateListeners: () => {
-        ipcRenderer.removeAllListeners('update-status');
+    onUpdateStatus: (callback) => {
+        const handler = (_event, value) => callback(value);
+        ipcRenderer.on('update-status', handler);
+        return () => ipcRenderer.removeListener('update-status', handler);
     },
     startUpdateDownload: () => ipcRenderer.invoke('start-update-download'),
     restartAndUpdate: () => ipcRenderer.invoke('restart-and-update'),
 
-    // Cleanup listeners
+    // Legacy cleanup — kept for backward compat but prefer per-listener cleanup
     removeScanListeners: () => {
         ipcRenderer.removeAllListeners('scan-update');
         ipcRenderer.removeAllListeners('scan-error');

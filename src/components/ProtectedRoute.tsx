@@ -8,6 +8,7 @@ const ProtectedRoute: React.FC = () => {
     const location = useLocation();
     const [subscription, setSubscription] = useState<Subscription | null>(null);
     const [loadingSub, setLoadingSub] = useState(true);
+    const [subError, setSubError] = useState(false);
 
     useEffect(() => {
         if (!currentUser) {
@@ -19,9 +20,13 @@ const ProtectedRoute: React.FC = () => {
         const fetchStatus = async () => {
             try {
                 const status = await window.electronAPI.getSubscriptionStatus();
-                if (!cancelled) setSubscription(status);
+                if (!cancelled) {
+                    setSubscription(status);
+                    setSubError(false);
+                }
             } catch {
-                // Network/IPC error — fail open (let user in, features will error individually)
+                // Network/IPC error — fail closed (redirect to subscription page)
+                if (!cancelled) setSubError(true);
             } finally {
                 if (!cancelled) setLoadingSub(false);
             }
@@ -37,17 +42,28 @@ const ProtectedRoute: React.FC = () => {
         return <Navigate to="/login" replace />;
     }
 
-    // While loading subscription, render children (optimistic). The guards
-    // inside individual feature pages already cover late-arriving expiry.
+    // Show loading spinner while checking subscription
     if (loadingSub) {
-        return <Outlet />;
+        return (
+            <div className="flex items-center justify-center h-screen bg-slate-900">
+                <div className="text-center">
+                    <div className="w-8 h-8 border-2 border-sky-500 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+                    <p className="text-slate-400 text-sm">Y&uuml;kleniyor...</p>
+                </div>
+            </div>
+        );
     }
 
     // Allow the subscription page itself so user can upgrade from there
     const isOnSubscriptionPage = location.pathname === '/subscription';
+    const isOnAccountPage = location.pathname === '/account';
 
-    // If subscription is inactive/expired and user isn't on /subscription, redirect there
-    if (subscription && !subscription.isActive && !isOnSubscriptionPage) {
+    // If subscription check failed OR subscription is inactive, redirect to subscription
+    if (
+        (subError || (subscription && !subscription.isActive)) &&
+        !isOnSubscriptionPage &&
+        !isOnAccountPage
+    ) {
         return <Navigate to="/subscription" replace />;
     }
 

@@ -23,8 +23,12 @@ import LogDrawer from './e-tebligat/LogDrawer';
 import ClientManagement from './e-tebligat/ClientManagement';
 import ScanControls from './e-tebligat/ScanControls';
 import ResultsView from './e-tebligat/ResultsView';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '../../components/ui/tabs';
+import { toast } from 'sonner';
+import DashboardCards from './e-tebligat/DashboardCards';
 
 const ETebligat: React.FC = () => {
+    const [activeTab, setActiveTab] = useState('scan');
     const [scanning, setScanning] = useState(false);
     const [logs, setLogs] = useState<LogEntry[]>([]);
     const logsEndRef = useRef<HTMLDivElement>(null);
@@ -87,7 +91,7 @@ const ETebligat: React.FC = () => {
     const [scheduleLoading, setScheduleLoading] = useState(false);
     const [scheduleMode, setScheduleMode] = useState<'finish' | 'start'>('finish');
     const [startAtTime, setStartAtTime] = useState('08:00');
-    const [, setCreditBalance] = useState<{ totalRemaining: number } | null>(null);
+    const [creditBalance, setCreditBalance] = useState<{ totalRemaining: number } | null>(null);
     const [insufficientCredits, setInsufficientCredits] = useState(false);
     const [subscriptionStatus, setSubscriptionStatus] = useState<{
         isActive: boolean;
@@ -121,9 +125,6 @@ const ETebligat: React.FC = () => {
     } | null>(null);
     const [importing, setImporting] = useState(false);
     const importFileRef = useRef<HTMLInputElement>(null);
-
-    // Mükellef Yönetimi modal
-    const [showClientModal, setShowClientModal] = useState(false);
 
     // Password test per client: clientId -> { status, errorType? }
     const [clientTestStatus, setClientTestStatus] = useState<
@@ -252,11 +253,15 @@ const ETebligat: React.FC = () => {
                 setScanProgress(status.progress);
                 if (status.progress.insufficientCredits) {
                     setInsufficientCredits(true);
+                    toast.warning('Kredi yetersiz, tarama durduruldu');
                 }
                 if (status.progress.completed) {
                     fetchTebligatlar();
                     setScanState(null);
                     setInsufficientCredits(false);
+                    toast.success(
+                        `Tarama tamamlandı: ${status.progress.successes} başarılı${status.progress.errors > 0 ? `, ${status.progress.errors} hatalı` : ''}`
+                    );
                 }
             } else if (status.type === 'scan-state') {
                 setScanState(status.scanState);
@@ -268,6 +273,7 @@ const ETebligat: React.FC = () => {
 
         const handleError = (errorMsg: string) => {
             addLog(errorMsg, 'error');
+            toast.error(errorMsg);
             setScanning(false);
             setScanProgress(null);
             // Fetch scan state to check if resume is possible
@@ -296,12 +302,14 @@ const ETebligat: React.FC = () => {
             }
         };
 
-        window.electronAPI.onScanUpdate(handleUpdate);
-        window.electronAPI.onScanError(handleError);
-        window.electronAPI.onScanComplete(handleComplete);
+        const removeScanUpdate = window.electronAPI.onScanUpdate(handleUpdate);
+        const removeScanError = window.electronAPI.onScanError(handleError);
+        const removeScanComplete = window.electronAPI.onScanComplete(handleComplete);
 
         return () => {
-            window.electronAPI.removeScanListeners();
+            removeScanUpdate();
+            removeScanError();
+            removeScanComplete();
         };
     }, []);
 
@@ -346,12 +354,10 @@ const ETebligat: React.FC = () => {
             .getCredits()
             .then(setCreditBalance)
             .catch(() => {});
-        window.electronAPI.onCreditsUpdated((credits) => {
+        const removeCreditsListener = window.electronAPI.onCreditsUpdated((credits) => {
             setCreditBalance(credits);
         });
-        return () => {
-            window.electronAPI.removeCreditsListeners();
-        };
+        return removeCreditsListener;
     }, []);
 
     // Helper to merge schedule status with defaults
@@ -666,6 +672,7 @@ const ETebligat: React.FC = () => {
 
             setClientForm({ firm_name: '', tax_number: '', gib_user_code: '', gib_password: '' });
             setEditingClientId(null);
+            toast.success('Mükellef kaydedildi');
             await fetchClients();
             fetchClientLimit();
         } catch (err: unknown) {
@@ -715,9 +722,12 @@ const ETebligat: React.FC = () => {
             const result = await window.electronAPI.importClientsFromExcel(buffer);
             setImportResult(result);
             if (result.saved > 0) {
+                toast.success(`${result.saved} mükellef eklendi`);
                 await fetchClients();
                 fetchClientLimit();
             }
+            if (result.parseErrors?.length > 0)
+                toast.error(`${result.parseErrors.length} satırda hata`);
         } catch (err) {
             setImportResult({
                 saved: 0,
@@ -740,6 +750,7 @@ const ETebligat: React.FC = () => {
             return;
         }
         await window.electronAPI.deleteClient(client.id);
+        toast.success(`${client.firm_name} silindi`);
         await fetchClients();
     };
 
@@ -1273,289 +1284,270 @@ const ETebligat: React.FC = () => {
                 />
             )}
 
-            <h1 className="text-2xl font-bold mb-6 text-gray-800">GİB E-Tebligat Otomasyonu</h1>
-
-            <div className="bg-white p-6 rounded-lg shadow-md flex-1 flex flex-col">
-                {/* Mükellef Yönetimi — Summary + Modal Trigger */}
-                <div className="mb-6 bg-gray-50 border border-gray-200 rounded-lg p-4">
-                    <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                            <h2 className="text-lg font-semibold text-gray-800">
-                                M&uuml;kellef Y&ouml;netimi
-                            </h2>
-                            <span className="text-xs font-medium bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full">
-                                {clients.length} m&uuml;kellef
-                            </span>
-                        </div>
-                        <div className="flex items-center gap-3">
-                            {clientLimit && (
-                                <div className="flex items-center gap-2">
-                                    <span
-                                        className={`text-sm font-medium ${clientLimit.remaining <= 10 ? 'text-red-500' : 'text-gray-500'}`}
-                                    >
-                                        {clientLimit.remaining} / {clientLimit.maxClients} hak
-                                        kald&#305;
-                                    </span>
-                                    <div className="w-24 h-2 bg-gray-200 rounded-full overflow-hidden">
-                                        <div
-                                            className={`h-full rounded-full transition-all ${clientLimit.remaining <= 10 ? 'bg-red-500' : 'bg-emerald-500'}`}
-                                            style={{
-                                                width: `${Math.min((clientLimit.totalAdded / clientLimit.maxClients) * 100, 100)}%`,
-                                            }}
-                                        />
-                                    </div>
-                                </div>
-                            )}
-                            <button
-                                type="button"
-                                onClick={() => setShowClientModal(true)}
-                                className="bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold px-4 py-2 rounded-md transition-colors"
-                            >
-                                Y&ouml;net
-                            </button>
-                            {clients.length > 0 &&
-                                (() => {
-                                    const newClientsCount = clients.filter(
-                                        (c) => !c.last_full_scan_at
-                                    ).length;
-                                    const hasNewClients = newClientsCount > 0;
-                                    const buttonClass = hasNewClients
-                                        ? 'bg-emerald-600 hover:bg-emerald-700 text-white ring-2 ring-emerald-300 shadow-md shadow-emerald-500/30'
-                                        : 'bg-white hover:bg-emerald-50 text-emerald-700 border border-emerald-500/40';
-                                    const label = previewRunning
-                                        ? 'Ke\u015fif...'
-                                        : hasNewClients
-                                          ? `\u0130lk Ke\u015fif (${newClientsCount} yeni)`
-                                          : 'Ke\u015fif';
-                                    const title = hasNewClients
-                                        ? `${newClientsCount} yeni m\u00fckellef i\u00e7in \u00f6nerilen ak\u0131\u015f — tebligatlar\u0131 \u00f6nce \u00f6nizle, sonra se\u00e7`
-                                        : 'T\u00fcm m\u00fckelleflerin G\u0130B\u2019deki tebligatlar\u0131n\u0131 \u00f6nizle — ge\u00e7mi\u015fi yeniden incelemek i\u00e7in';
-                                    return (
-                                        <button
-                                            type="button"
-                                            disabled={previewRunning || scanning}
-                                            onClick={async () => {
-                                                setPreviewRunning(true);
-                                                setPreviewResults(null);
-                                                setPreviewSelections({});
-                                                addLog(
-                                                    'Ke\u015fif ba\u015flat\u0131l\u0131yor (belge indirme yok)...',
-                                                    'info'
-                                                );
-                                                try {
-                                                    const result =
-                                                        await window.electronAPI.previewScan();
-                                                    if (result.ok && result.results) {
-                                                        setPreviewResults(result.results);
-                                                        const defaults: Record<
-                                                            number,
-                                                            PreviewSelectionMode
-                                                        > = {};
-                                                        result.results.forEach((r) => {
-                                                            if (r.ok && (r.count || 0) > 0) {
-                                                                defaults[r.clientId] = 'last30';
-                                                            } else {
-                                                                defaults[r.clientId] = 'skip';
-                                                            }
-                                                        });
-                                                        setPreviewSelections(defaults);
-                                                    } else {
-                                                        addLog(
-                                                            `Ke\u015fif hatas\u0131: ${result.error || 'Bilinmeyen hata'}`,
-                                                            'error'
-                                                        );
-                                                    }
-                                                } catch (err) {
-                                                    addLog(
-                                                        `Ke\u015fif hatas\u0131: ${(err as Error).message}`,
-                                                        'error'
-                                                    );
-                                                } finally {
-                                                    setPreviewRunning(false);
-                                                }
-                                            }}
-                                            className={`text-sm font-semibold px-4 py-2 rounded-md transition-colors disabled:opacity-50 ${buttonClass}`}
-                                            title={title}
-                                        >
-                                            {label}
-                                        </button>
-                                    );
-                                })()}
-                        </div>
-                    </div>
-                </div>
-
-                {/* PreviewModal */}
-                {previewResults && (
-                    <PreviewModal
-                        results={previewResults}
-                        selections={previewSelections}
-                        onSelectionChange={(clientId, mode) =>
-                            setPreviewSelections((prev) => ({
-                                ...prev,
-                                [clientId]: mode,
-                            }))
-                        }
-                        onSetAllMode={(mode) => {
-                            const next: Record<number, PreviewSelectionMode> = {};
-                            previewResults.forEach((r) => {
-                                next[r.clientId] = mode;
-                            });
-                            setPreviewSelections(next);
-                        }}
-                        onClose={() => setPreviewResults(null)}
-                        onDownload={handlePreviewDownload}
-                        downloading={scanning}
-                    />
+            <DashboardCards
+                tebligatCount={tebligatlar.length}
+                newTebligatCount={newTebligatPanel.items.reduce(
+                    (s, i) => s + i.tebligatIds.length,
+                    0
                 )}
+                clientCount={clients.length}
+                maxClients={clientLimit?.maxClients || 200}
+                scheduleEnabled={scheduleConfig.enabled}
+                creditBalance={creditBalance?.totalRemaining ?? null}
+                onTabChange={setActiveTab}
+            />
 
-                {/* ScanHistoryModal */}
-                {scanHistoryModal && (
-                    <ScanHistoryModal
-                        data={scanHistoryModal}
-                        onClose={() => setScanHistoryModal(null)}
-                        expandedHistoryId={expandedHistoryId}
-                        onToggleExpand={(id) =>
-                            setExpandedHistoryId(expandedHistoryId === id ? null : id)
-                        }
-                    />
-                )}
-
-                {/* ScanResultsModal */}
-                {scanResultsModal && (
-                    <ScanResultsModal
-                        data={scanResultsModal}
-                        onClose={() => setScanResultsModal(null)}
-                        onRetryFailed={(failedIds) => {
-                            setLastFailedIds(failedIds);
-                            setScanResultsModal(null);
-                        }}
-                    />
-                )}
-
-                {/* ClientManagement Modal */}
-                {showClientModal && (
-                    <ClientManagement
-                        clients={clients}
-                        clientForm={clientForm}
-                        clientErrors={clientErrors}
-                        savingClient={savingClient}
-                        editingClientId={editingClientId}
-                        importing={importing}
-                        importResult={importResult}
-                        importFileRef={importFileRef}
-                        clientTestStatus={clientTestStatus}
-                        onClose={() => setShowClientModal(false)}
-                        onSaveClient={handleSaveClient}
-                        onEditClient={handleEditClient}
-                        onCancelEdit={handleCancelEdit}
-                        onFieldChange={handleClientFieldChange}
-                        onExcelImport={handleExcelImport}
-                        onDownloadTemplate={async () => {
-                            await window.electronAPI.downloadExcelTemplate();
-                        }}
-                        onToggleStatus={handleToggleClientStatus}
-                        onDeleteClient={handleDeleteClient}
-                        onTestLogin={handleTestLogin}
-                        onClearImportResult={() => setImportResult(null)}
-                    />
-                )}
-
-                {/* SchedulePanel */}
-                <SchedulePanel
-                    config={scheduleConfig}
-                    loading={scheduleLoading}
-                    mode={scheduleMode}
-                    startAtTime={startAtTime}
-                    onToggle={handleScheduleToggle}
-                    onTimeChange={handleScheduleTimeChange}
-                    onFrequencyChange={handleFrequencyChange}
-                    onCustomDayToggle={handleCustomDayToggle}
-                    onModeChange={handleScheduleModeChange}
-                    onStartAtTimeChange={handleStartAtTimeChange}
-                />
-
-                {/* ScanControls */}
-                <ScanControls
-                    scanning={scanning}
-                    scanProgress={scanProgress}
-                    scanState={scanState}
-                    rateLimits={rateLimits}
-                    scanEstimate={scanEstimate}
-                    insufficientCredits={insufficientCredits}
-                    lastFailedIds={lastFailedIds}
-                    progressPercent={progressPercent}
-                    onStartScan={handleStartScan}
-                    onStopScan={handleStopScan}
-                    onResumeScan={handleResumeScan}
-                    onPurchaseCredits={() => window.electronAPI.purchaseCredits()}
-                    onRetryFailed={() => {
-                        setScanning(true);
-                        setLogs([]);
-                        setScanProgress(null);
-                        addLog(
-                            `${lastFailedIds.length} ba\u015Far\u0131s\u0131z m\u00FCkellef yeniden taran\u0131yor...`,
-                            'info'
-                        );
-                        window.electronAPI.startScanWithOptions({
-                            clientIds: lastFailedIds,
-                            scanType: 'retry_failed',
+            {/* PreviewModal */}
+            {previewResults && (
+                <PreviewModal
+                    results={previewResults}
+                    selections={previewSelections}
+                    onSelectionChange={(clientId, mode) =>
+                        setPreviewSelections((prev) => ({
+                            ...prev,
+                            [clientId]: mode,
+                        }))
+                    }
+                    onSetAllMode={(mode) => {
+                        const next: Record<number, PreviewSelectionMode> = {};
+                        previewResults.forEach((r) => {
+                            next[r.clientId] = mode;
                         });
+                        setPreviewSelections(next);
                     }}
-                    onOpenHistory={async () => {
-                        try {
-                            const history = await window.electronAPI.getScanHistory(20);
-                            setScanHistoryModal(history as ScanHistoryItem[]);
-                        } catch {
-                            /* ignore */
-                        }
+                    onClose={() => setPreviewResults(null)}
+                    onDownload={handlePreviewDownload}
+                    downloading={scanning}
+                />
+            )}
+
+            {/* ScanHistoryModal */}
+            {scanHistoryModal && (
+                <ScanHistoryModal
+                    data={scanHistoryModal}
+                    onClose={() => setScanHistoryModal(null)}
+                    expandedHistoryId={expandedHistoryId}
+                    onToggleExpand={(id) =>
+                        setExpandedHistoryId(expandedHistoryId === id ? null : id)
+                    }
+                />
+            )}
+
+            {/* ScanResultsModal */}
+            {scanResultsModal && (
+                <ScanResultsModal
+                    data={scanResultsModal}
+                    onClose={() => setScanResultsModal(null)}
+                    onRetryFailed={(failedIds) => {
+                        setLastFailedIds(failedIds);
+                        setScanResultsModal(null);
                     }}
                 />
+            )}
 
-                {/* LogDrawer */}
-                <LogDrawer logs={logs} logsEndRef={logsEndRef} />
+            <div className="bg-white p-6 rounded-lg shadow-md flex-1 flex flex-col overflow-hidden">
+                <Tabs
+                    value={activeTab}
+                    onValueChange={setActiveTab}
+                    className="flex-1 flex flex-col"
+                >
+                    <TabsList className="w-full justify-start bg-gray-100 p-1 mb-2">
+                        <TabsTrigger value="scan">Tarama</TabsTrigger>
+                        <TabsTrigger value="results">
+                            Sonu&ccedil;lar{' '}
+                            <span className="ml-1.5 text-xs bg-indigo-100 text-indigo-600 px-1.5 py-0.5 rounded-full">
+                                {tebligatlar.length}
+                            </span>
+                        </TabsTrigger>
+                        <TabsTrigger value="clients">
+                            M&uuml;kellefler{' '}
+                            <span className="ml-1.5 text-xs bg-indigo-100 text-indigo-600 px-1.5 py-0.5 rounded-full">
+                                {clients.length}
+                            </span>
+                        </TabsTrigger>
+                        <TabsTrigger value="schedule">Zamanlama</TabsTrigger>
+                    </TabsList>
 
-                {/* ResultsView */}
-                <ResultsView
-                    tebligatlar={tebligatlar}
-                    filteredTebligatlar={filteredTebligatlar}
-                    clientGroups={clientGroups}
-                    clients={clients}
-                    allNewTebligatIds={allNewTebligatIds}
-                    loadingTebligatlar={loadingTebligatlar}
-                    filterDateRange={filterDateRange}
-                    filterDateFrom={filterDateFrom}
-                    filterDateTo={filterDateTo}
-                    filterClientId={filterClientId}
-                    filterStatus={filterStatus}
-                    filterSender={filterSender}
-                    searchTerm={searchTerm}
-                    onFilterDateRange={setFilterDateRange}
-                    onFilterDateFrom={setFilterDateFrom}
-                    onFilterDateTo={setFilterDateTo}
-                    onFilterClientId={setFilterClientId}
-                    onFilterStatus={setFilterStatus}
-                    onFilterSender={setFilterSender}
-                    onSearchTerm={setSearchTerm}
-                    statusOptions={statusOptions}
-                    uniqueSenders={uniqueSenders}
-                    expandedClients={expandedClients}
-                    expandedScans={expandedScans}
-                    onToggleClient={toggleClientAccordion}
-                    onToggleScan={toggleScanAccordion}
-                    onSelectTebligat={setSelectedTebligat}
-                    onFetchDocument={handleFetchDocument}
-                    onOpenDocument={handleOpenDocument}
-                    onShareDocument={handleShareDocument}
-                    fetchingDocumentId={fetchingDocumentId}
-                    documentsFolder={documentsFolder}
-                    onOpenDocumentsFolder={handleOpenDocumentsFolder}
-                    onSelectDocumentsFolder={handleSelectDocumentsFolder}
-                    onExportCsv={handleExportCsv}
-                    onExportExcel={handleExportExcel}
-                    onRefresh={fetchTebligatlar}
-                    onResetFilters={resetFilters}
-                />
+                    {/* Tarama Tab */}
+                    <TabsContent value="scan" className="flex-1 flex flex-col overflow-y-auto pt-2">
+                        <ScanControls
+                            scanning={scanning}
+                            scanProgress={scanProgress}
+                            scanState={scanState}
+                            rateLimits={rateLimits}
+                            scanEstimate={scanEstimate}
+                            insufficientCredits={insufficientCredits}
+                            lastFailedIds={lastFailedIds}
+                            progressPercent={progressPercent}
+                            clientCount={clients.length}
+                            onStartScan={handleStartScan}
+                            onStopScan={handleStopScan}
+                            onResumeScan={handleResumeScan}
+                            onPurchaseCredits={() => window.electronAPI.purchaseCredits()}
+                            onRetryFailed={() => {
+                                setScanning(true);
+                                setLogs([]);
+                                setScanProgress(null);
+                                addLog(
+                                    `${lastFailedIds.length} ba\u015Far\u0131s\u0131z m\u00FCkellef yeniden taran\u0131yor...`,
+                                    'info'
+                                );
+                                window.electronAPI.startScanWithOptions({
+                                    clientIds: lastFailedIds,
+                                    scanType: 'retry_failed',
+                                });
+                            }}
+                            onOpenHistory={async () => {
+                                try {
+                                    const history = await window.electronAPI.getScanHistory(20);
+                                    setScanHistoryModal(history as ScanHistoryItem[]);
+                                } catch {
+                                    /* ignore */
+                                }
+                            }}
+                            onStartPreview={async () => {
+                                setPreviewRunning(true);
+                                setPreviewResults(null);
+                                setPreviewSelections({});
+                                addLog(
+                                    'Ke\u015fif ba\u015flat\u0131l\u0131yor (belge indirme yok)...',
+                                    'info'
+                                );
+                                try {
+                                    const result = await window.electronAPI.previewScan();
+                                    if (result.ok && result.results) {
+                                        setPreviewResults(result.results);
+                                        const defaults: Record<number, PreviewSelectionMode> = {};
+                                        result.results.forEach((r) => {
+                                            if (r.ok && (r.count || 0) > 0) {
+                                                defaults[r.clientId] = 'last30';
+                                            } else {
+                                                defaults[r.clientId] = 'skip';
+                                            }
+                                        });
+                                        setPreviewSelections(defaults);
+                                        toast.info(
+                                            `Keşif tamamlandı: ${result.results.length} mükellef tarandı`
+                                        );
+                                    } else {
+                                        addLog(
+                                            `Ke\u015fif hatas\u0131: ${result.error || 'Bilinmeyen hata'}`,
+                                            'error'
+                                        );
+                                    }
+                                } catch (err) {
+                                    addLog(
+                                        `Ke\u015fif hatas\u0131: ${(err as Error).message}`,
+                                        'error'
+                                    );
+                                } finally {
+                                    setPreviewRunning(false);
+                                }
+                            }}
+                            previewRunning={previewRunning}
+                            hasNewClients={clients.filter((c) => !c.last_full_scan_at).length > 0}
+                            newClientsCount={clients.filter((c) => !c.last_full_scan_at).length}
+                        />
+
+                        {/* LogDrawer — fills remaining space */}
+                        <div className="mt-4 flex-1">
+                            <LogDrawer logs={logs} logsEndRef={logsEndRef} />
+                        </div>
+                    </TabsContent>
+
+                    {/* Sonuçlar Tab */}
+                    <TabsContent value="results" className="flex-1 overflow-y-auto pt-2">
+                        <ResultsView
+                            tebligatlar={tebligatlar}
+                            filteredTebligatlar={filteredTebligatlar}
+                            clientGroups={clientGroups}
+                            clients={clients}
+                            allNewTebligatIds={allNewTebligatIds}
+                            loadingTebligatlar={loadingTebligatlar}
+                            filterDateRange={filterDateRange}
+                            filterDateFrom={filterDateFrom}
+                            filterDateTo={filterDateTo}
+                            filterClientId={filterClientId}
+                            filterStatus={filterStatus}
+                            filterSender={filterSender}
+                            searchTerm={searchTerm}
+                            onFilterDateRange={setFilterDateRange}
+                            onFilterDateFrom={setFilterDateFrom}
+                            onFilterDateTo={setFilterDateTo}
+                            onFilterClientId={setFilterClientId}
+                            onFilterStatus={setFilterStatus}
+                            onFilterSender={setFilterSender}
+                            onSearchTerm={setSearchTerm}
+                            statusOptions={statusOptions}
+                            uniqueSenders={uniqueSenders}
+                            expandedClients={expandedClients}
+                            expandedScans={expandedScans}
+                            onToggleClient={toggleClientAccordion}
+                            onToggleScan={toggleScanAccordion}
+                            onSelectTebligat={setSelectedTebligat}
+                            onFetchDocument={handleFetchDocument}
+                            onOpenDocument={handleOpenDocument}
+                            onShareDocument={handleShareDocument}
+                            fetchingDocumentId={fetchingDocumentId}
+                            documentsFolder={documentsFolder}
+                            onOpenDocumentsFolder={handleOpenDocumentsFolder}
+                            onSelectDocumentsFolder={handleSelectDocumentsFolder}
+                            onExportCsv={handleExportCsv}
+                            onExportExcel={handleExportExcel}
+                            onRefresh={fetchTebligatlar}
+                            onResetFilters={resetFilters}
+                        />
+                    </TabsContent>
+
+                    {/* Zamanlama Tab */}
+                    <TabsContent value="schedule" className="flex-1 overflow-y-auto pt-2">
+                        <SchedulePanel
+                            config={scheduleConfig}
+                            loading={scheduleLoading}
+                            mode={scheduleMode}
+                            startAtTime={startAtTime}
+                            onToggle={handleScheduleToggle}
+                            onTimeChange={handleScheduleTimeChange}
+                            onFrequencyChange={handleFrequencyChange}
+                            onCustomDayToggle={handleCustomDayToggle}
+                            onModeChange={handleScheduleModeChange}
+                            onStartAtTimeChange={handleStartAtTimeChange}
+                        />
+                    </TabsContent>
+
+                    {/* Mükellefler Tab */}
+                    <TabsContent
+                        value="clients"
+                        forceMount
+                        className="flex-1 overflow-y-auto pt-2 data-[state=inactive]:hidden"
+                    >
+                        <ClientManagement
+                            clients={clients}
+                            clientForm={clientForm}
+                            clientErrors={clientErrors}
+                            savingClient={savingClient}
+                            editingClientId={editingClientId}
+                            importing={importing}
+                            importResult={importResult}
+                            importFileRef={importFileRef}
+                            clientTestStatus={clientTestStatus}
+                            clientLimit={clientLimit}
+                            onClose={() => {}}
+                            onSaveClient={handleSaveClient}
+                            onEditClient={handleEditClient}
+                            onCancelEdit={handleCancelEdit}
+                            onFieldChange={handleClientFieldChange}
+                            onExcelImport={handleExcelImport}
+                            onDownloadTemplate={async () => {
+                                await window.electronAPI.downloadExcelTemplate();
+                            }}
+                            onToggleStatus={handleToggleClientStatus}
+                            onDeleteClient={handleDeleteClient}
+                            onTestLogin={handleTestLogin}
+                            onClearImportResult={() => setImportResult(null)}
+                        />
+                    </TabsContent>
+                </Tabs>
             </div>
 
             {/* Right Side Panel — New Tebligatlar Detail */}

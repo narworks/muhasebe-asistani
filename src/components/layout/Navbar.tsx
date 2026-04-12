@@ -33,13 +33,13 @@ const Navbar: React.FC = () => {
         fetchStatus();
         const intervalId = setInterval(fetchStatus, 30000);
 
-        window.electronAPI.onCreditsUpdated((updatedCredits) => {
+        const removeCreditsListener = window.electronAPI.onCreditsUpdated((updatedCredits) => {
             setCredits(updatedCredits);
         });
 
         return () => {
             clearInterval(intervalId);
-            window.electronAPI.removeCreditsListeners();
+            removeCreditsListener();
         };
     }, [currentUser]);
 

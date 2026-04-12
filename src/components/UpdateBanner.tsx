@@ -11,7 +11,7 @@ const UpdateBanner: React.FC = () => {
     const [errorMsg, setErrorMsg] = useState('');
 
     useEffect(() => {
-        window.electronAPI.onUpdateStatus((update: UpdateStatus) => {
+        const removeListener = window.electronAPI.onUpdateStatus((update: UpdateStatus) => {
             switch (update.status) {
                 case 'update-available':
                     setState('available');
@@ -32,7 +32,7 @@ const UpdateBanner: React.FC = () => {
                     break;
             }
         });
-        return () => window.electronAPI.removeUpdateListeners();
+        return removeListener;
     }, []);
 
     const handleDownload = () => {

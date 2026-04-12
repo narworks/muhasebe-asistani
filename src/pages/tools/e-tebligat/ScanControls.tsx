@@ -31,12 +31,18 @@ interface ScanControlsProps {
     insufficientCredits: boolean;
     lastFailedIds: number[];
     progressPercent: number;
+    clientCount: number;
     onStartScan: () => void;
     onStopScan: () => void;
     onResumeScan: () => void;
     onPurchaseCredits: () => void;
     onRetryFailed: () => void;
     onOpenHistory: () => void;
+    // Keşif props
+    onStartPreview: () => void;
+    previewRunning: boolean;
+    hasNewClients: boolean;
+    newClientsCount: number;
 }
 
 const ScanControls: React.FC<ScanControlsProps> = ({
@@ -48,135 +54,27 @@ const ScanControls: React.FC<ScanControlsProps> = ({
     insufficientCredits,
     lastFailedIds,
     progressPercent,
+    clientCount,
     onStartScan,
     onStopScan,
     onResumeScan,
     onPurchaseCredits,
     onRetryFailed,
     onOpenHistory,
+    onStartPreview,
+    previewRunning,
+    hasNewClients,
+    newClientsCount,
 }) => {
+    const estimatedMin =
+        scanEstimate && scanEstimate.estimatedMinutes < 60
+            ? `${scanEstimate.estimatedMinutes} dk`
+            : scanEstimate
+              ? `${Math.floor(scanEstimate.estimatedMinutes / 60)}s ${scanEstimate.estimatedMinutes % 60}dk`
+              : null;
+
     return (
         <>
-            {/* Tarama */}
-            <div className="flex justify-between items-center mb-3">
-                <p className="text-sm text-gray-500">
-                    Otomatik sorgulama durumunu buradan takip edebilirsiniz.
-                </p>
-
-                <div className="flex space-x-3">
-                    <button
-                        onClick={onStartScan}
-                        disabled={scanning}
-                        className={`flex items-center px-6 py-3 rounded-lg font-bold text-white shadow-md transition-all ${
-                            scanning
-                                ? 'bg-gray-400 cursor-not-allowed'
-                                : 'bg-indigo-600 hover:bg-indigo-700 hover:shadow-lg'
-                        }`}
-                    >
-                        {scanning ? (
-                            <>
-                                <svg
-                                    className="animate-spin -ml-1 mr-3 h-5 w-5 text-white"
-                                    xmlns="http://www.w3.org/2000/svg"
-                                    fill="none"
-                                    viewBox="0 0 24 24"
-                                >
-                                    <circle
-                                        className="opacity-25"
-                                        cx="12"
-                                        cy="12"
-                                        r="10"
-                                        stroke="currentColor"
-                                        strokeWidth="4"
-                                    ></circle>
-                                    <path
-                                        className="opacity-75"
-                                        fill="currentColor"
-                                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                                    ></path>
-                                </svg>
-                                Taranıyor...
-                            </>
-                        ) : (
-                            <>
-                                <svg
-                                    xmlns="http://www.w3.org/2000/svg"
-                                    className="h-5 w-5 mr-2"
-                                    fill="none"
-                                    viewBox="0 0 24 24"
-                                    stroke="currentColor"
-                                >
-                                    <path
-                                        strokeLinecap="round"
-                                        strokeLinejoin="round"
-                                        strokeWidth={2}
-                                        d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"
-                                    />
-                                    <path
-                                        strokeLinecap="round"
-                                        strokeLinejoin="round"
-                                        strokeWidth={2}
-                                        d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                                    />
-                                </svg>
-                                Taramayı Başlat
-                            </>
-                        )}
-                    </button>
-                    {scanning && (
-                        <button
-                            onClick={onStopScan}
-                            className="flex items-center px-4 py-3 rounded-lg font-bold text-white bg-red-500 hover:bg-red-600 shadow-md transition-all"
-                        >
-                            Durdur
-                        </button>
-                    )}
-                </div>
-                {/* Estimated duration + retry/history buttons */}
-                <div className="flex flex-wrap items-center gap-3 mb-2">
-                    {scanEstimate && scanEstimate.count > 0 && !scanning && (
-                        <span className="text-xs text-gray-500 bg-gray-100 px-2.5 py-1 rounded-full">
-                            {scanEstimate.count} m&uuml;kellef &middot; ~
-                            {scanEstimate.estimatedMinutes < 60
-                                ? `${scanEstimate.estimatedMinutes} dk`
-                                : `${Math.floor(scanEstimate.estimatedMinutes / 60)}s ${scanEstimate.estimatedMinutes % 60}dk`}
-                        </span>
-                    )}
-                    {lastFailedIds.length > 0 && !scanning && (
-                        <button
-                            type="button"
-                            onClick={onRetryFailed}
-                            className="text-xs font-semibold px-3 py-1.5 rounded-md border border-amber-500/40 text-amber-700 hover:bg-amber-50"
-                            title={`Son taramadaki ${lastFailedIds.length} ba\u015Far\u0131s\u0131z m\u00FCkellefi tekrar dene`}
-                        >
-                            Ba&#351;ar&#305;s&#305;zlar&#305; Tekrar Dene ({lastFailedIds.length})
-                        </button>
-                    )}
-                    <button
-                        type="button"
-                        onClick={onOpenHistory}
-                        className="text-xs font-semibold px-3 py-1.5 rounded-md border border-gray-300 text-gray-600 hover:bg-gray-50"
-                    >
-                        Tarama Ge&ccedil;mi&#351;i
-                    </button>
-                </div>
-                {/* Rate limit counters */}
-                <div className="flex items-center gap-4 text-xs text-slate-500">
-                    <span>
-                        Bug&uuml;n:{' '}
-                        <span className="font-semibold text-slate-300">
-                            {rateLimits.dailyUsed}/{rateLimits.dailyLimit}
-                        </span>
-                    </span>
-                    <span>
-                        Bu saat:{' '}
-                        <span className="font-semibold text-slate-300">
-                            {rateLimits.hourlyUsed}/{rateLimits.hourlyLimit}
-                        </span>
-                    </span>
-                </div>
-            </div>
-
             {/* Resume / Restart Panel */}
             {!scanning && scanState && scanState.canResume && (
                 <div className="mb-4 p-4 bg-amber-50 border border-amber-200 rounded-lg">
@@ -222,33 +120,168 @@ const ScanControls: React.FC<ScanControlsProps> = ({
                 </div>
             )}
 
-            {/* Progress Bar */}
-            {scanning && scanProgress && (
-                <div className="mb-4 p-3 bg-gray-100 rounded-lg">
-                    <div className="flex justify-between text-sm text-gray-600 mb-1">
-                        <span>
-                            {scanProgress.currentClient
-                                ? `İşlem: ${scanProgress.currentClient}`
-                                : 'Bekleniyor...'}
-                        </span>
-                        <span>
-                            {scanProgress.current}/{scanProgress.total}
-                        </span>
+            <div className="text-center py-6">
+                {/* Title area */}
+                <h2 className="text-lg font-semibold text-gray-700 mb-1">Tebligatları Tara</h2>
+                <p className="text-sm text-gray-400 mb-6">
+                    T&uuml;m m&uuml;kelleflerin G&#304;B portalı kontrol edilir ve yeni tebligatlar
+                    otomatik indirilir.
+                </p>
+
+                {/* Main buttons - centered (hidden when scanning) */}
+                {!scanning && !scanProgress && (
+                    <div className="flex items-center justify-center gap-3 mb-4">
+                        <button
+                            onClick={onStartScan}
+                            disabled={scanning}
+                            className="px-8 py-3 bg-indigo-600 text-white font-bold rounded-lg text-base shadow-lg hover:bg-indigo-700 hover:shadow-xl transition-all disabled:bg-gray-400 disabled:cursor-not-allowed"
+                        >
+                            <span className="flex items-center gap-2">
+                                <svg
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    className="h-5 w-5"
+                                    fill="none"
+                                    viewBox="0 0 24 24"
+                                    stroke="currentColor"
+                                >
+                                    <path
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                        strokeWidth={2}
+                                        d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"
+                                    />
+                                    <path
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                        strokeWidth={2}
+                                        d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                                    />
+                                </svg>
+                                Taramay&#305; Ba&#351;lat
+                            </span>
+                        </button>
+                        {clientCount > 0 && (
+                            <button
+                                onClick={onStartPreview}
+                                disabled={previewRunning || scanning}
+                                className={`px-6 py-3 font-semibold rounded-lg shadow transition-all disabled:opacity-50 ${
+                                    hasNewClients
+                                        ? 'bg-emerald-600 hover:bg-emerald-700 text-white ring-2 ring-emerald-300 shadow-md shadow-emerald-500/30'
+                                        : 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                                }`}
+                                title={
+                                    hasNewClients
+                                        ? `${newClientsCount} yeni m\u00fckellef i\u00e7in \u00f6nerilen ak\u0131\u015f`
+                                        : 'T\u00fcm m\u00fckelleflerin tebligatlar\u0131n\u0131 \u00f6nizle'
+                                }
+                            >
+                                {previewRunning
+                                    ? 'Ke\u015fif...'
+                                    : hasNewClients
+                                      ? `Ke\u015fif (${newClientsCount} yeni)`
+                                      : 'Ke\u015fif'}
+                            </button>
+                        )}
                     </div>
-                    <div className="w-full bg-gray-300 rounded-full h-2.5">
-                        <div
-                            className="bg-indigo-600 h-2.5 rounded-full transition-all duration-500"
-                            style={{ width: `${progressPercent}%` }}
-                        />
+                )}
+
+                {/* Progress bar - replaces buttons when scanning */}
+                {scanning && scanProgress && (
+                    <div className="mb-4 p-4 bg-gray-50 rounded-lg text-left">
+                        <div className="flex justify-between text-sm text-gray-600 mb-1">
+                            <span>
+                                {scanProgress.currentClient
+                                    ? `İşlem: ${scanProgress.currentClient}`
+                                    : 'Bekleniyor...'}
+                            </span>
+                            <span>
+                                {scanProgress.current}/{scanProgress.total}
+                            </span>
+                        </div>
+                        <div className="w-full bg-gray-300 rounded-full h-2.5">
+                            <div
+                                className="bg-indigo-600 h-2.5 rounded-full transition-all duration-500"
+                                style={{ width: `${progressPercent}%` }}
+                            />
+                        </div>
+                        <div className="flex justify-between text-xs text-gray-500 mt-1">
+                            <span>
+                                {scanProgress.successes} başarılı, {scanProgress.errors} hata
+                            </span>
+                            <span>%{progressPercent}</span>
+                        </div>
+                        <div className="flex justify-center mt-3">
+                            <button
+                                onClick={onStopScan}
+                                className="flex items-center px-4 py-2 rounded-lg font-bold text-white bg-red-500 hover:bg-red-600 shadow-md transition-all text-sm"
+                            >
+                                Durdur
+                            </button>
+                        </div>
                     </div>
-                    <div className="flex justify-between text-xs text-gray-500 mt-1">
-                        <span>
-                            {scanProgress.successes} başarılı, {scanProgress.errors} hata
-                        </span>
-                        <span>%{progressPercent}</span>
+                )}
+
+                {/* Scanning spinner without progress (initial phase) */}
+                {scanning && !scanProgress && (
+                    <div className="mb-4 flex items-center justify-center gap-3">
+                        <svg
+                            className="animate-spin h-5 w-5 text-indigo-600"
+                            xmlns="http://www.w3.org/2000/svg"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                        >
+                            <circle
+                                className="opacity-25"
+                                cx="12"
+                                cy="12"
+                                r="10"
+                                stroke="currentColor"
+                                strokeWidth="4"
+                            ></circle>
+                            <path
+                                className="opacity-75"
+                                fill="currentColor"
+                                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                            ></path>
+                        </svg>
+                        <span className="text-sm text-gray-600 font-medium">Taranıyor...</span>
+                        <button
+                            onClick={onStopScan}
+                            className="ml-2 px-3 py-1.5 rounded-lg font-bold text-white bg-red-500 hover:bg-red-600 shadow-sm transition-all text-xs"
+                        >
+                            Durdur
+                        </button>
                     </div>
+                )}
+
+                {/* Info line */}
+                <p className="text-xs text-gray-400 mb-4">
+                    {clientCount} m&uuml;kellef
+                    {estimatedMin && <> &middot; ~{estimatedMin}</>} &middot; Bug&uuml;n:{' '}
+                    {rateLimits.dailyUsed}/{rateLimits.dailyLimit}
+                </p>
+
+                {/* Secondary actions */}
+                <div className="flex items-center justify-center gap-4 text-xs">
+                    <button
+                        type="button"
+                        onClick={onOpenHistory}
+                        className="text-gray-500 hover:text-indigo-600 transition-colors"
+                    >
+                        Tarama Ge&ccedil;mi&#351;i
+                    </button>
+                    {lastFailedIds.length > 0 && !scanning && (
+                        <button
+                            type="button"
+                            onClick={onRetryFailed}
+                            className="text-amber-600 hover:text-amber-700 font-medium transition-colors"
+                            title={`Son taramadaki ${lastFailedIds.length} ba\u015Far\u0131s\u0131z m\u00FCkellefi tekrar dene`}
+                        >
+                            Ba&#351;ar&#305;s&#305;zlar&#305; Tekrar Dene ({lastFailedIds.length})
+                        </button>
+                    )}
                 </div>
-            )}
+            </div>
         </>
     );
 };
