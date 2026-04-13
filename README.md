@@ -48,6 +48,7 @@ Daha fazla bilgi icin: https://muhasebeasistani.com
 
 Reklam butcesi olmadan organik musteri kazanimi icin hazirlanan operasyon dokumanlari:
 
+- [Marketing OS Web Paneli](apps/marketing-panel/index.html)
 - [Ucretsiz Pazarlama Kiti](docs/pazarlama/README.md)
 - [90 Gunluk Icerik Takvimi](docs/pazarlama/icerik-takvimi-90-gun.csv)
 - [Birebir Ulasim Takip Sablonu](docs/pazarlama/outreach-tracker.csv)

@@ -914,6 +914,30 @@ const loginAndFetch = async (
                     continue;
                 }
 
+                // Skip if previously marked as skip_download (keşifte atlanan)
+                if (teb.documentNo && database.isSkipDownload(client.id, teb.documentNo)) {
+                    teb._newDownload = false;
+                    continue;
+                }
+
+                // Skip if client has scan_date_filter and tebligat is older
+                if (client.scan_date_filter && teb.date) {
+                    try {
+                        const filterDate = new Date(client.scan_date_filter);
+                        // Parse DD/MM/YYYY or ISO format
+                        let tebDate;
+                        const m = String(teb.date).match(/^(\d{2})\/(\d{2})\/(\d{4})/);
+                        if (m) tebDate = new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]));
+                        else tebDate = new Date(teb.date);
+                        if (tebDate < filterDate) {
+                            teb._newDownload = false;
+                            continue;
+                        }
+                    } catch {
+                        /* date parse failed, download anyway */
+                    }
+                }
+
                 status(
                     `Döküman indiriliyor (${i + 1}/${mapped.length}): ${teb.documentNo || '?'}...`
                 );
@@ -2563,6 +2587,27 @@ async function downloadSelectedTebligatlar(onStatusUpdate, apiKey, selections) {
                 // Mark client as scanned so İlk Keşif knows it's done
                 if (clientDownloaded > 0) {
                     database.updateClientScanDate(sel.clientId);
+                }
+
+                // Save scan_date_filter if provided (from keşif preset selection)
+                if (sel.scanDateFilter) {
+                    database.updateClientScanFilter(sel.clientId, sel.scanDateFilter);
+                }
+
+                // Mark skipped tebligatlar (those in the full list but not selected for download)
+                if (sel.skippedDocumentNos && sel.skippedDocumentNos.length > 0) {
+                    // First save them to DB (INSERT OR IGNORE) then mark as skip
+                    const skippedToSave = sel.skippedDocumentNos.map((docNo) => ({
+                        sender: '-',
+                        subject: '-',
+                        documentNo: docNo,
+                        status: 'Atland\u0131',
+                        date: null,
+                        documentUrl: null,
+                        documentPath: null,
+                    }));
+                    database.saveTebligatlar(sel.clientId, skippedToSave);
+                    database.markTebligatlarSkipDownload(sel.clientId, sel.skippedDocumentNos);
                 }
 
                 // Accurate per-client message

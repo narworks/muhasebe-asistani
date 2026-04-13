@@ -1161,13 +1161,33 @@ const ETebligat: React.FC = () => {
             });
         };
 
+        // Calculate filter date for each mode
+        const modeToFilterDate = (mode: string): string | null => {
+            if (mode === 'all' || mode === 'skip') return null;
+            if (mode === 'last15') return last15.toISOString().split('T')[0];
+            if (mode === 'last30') return last30.toISOString().split('T')[0];
+            if (mode === 'last6m') return last6m.toISOString().split('T')[0];
+            if (mode === 'thisYear') return startOfYear.toISOString().split('T')[0];
+            return null;
+        };
+
         const selections = previewResults
             .filter((r) => r.ok)
-            .map((r) => ({
-                clientId: r.clientId,
-                firmName: r.firmName,
-                tebligatList: getSelectedForClient(r),
-            }))
+            .map((r) => {
+                const selected = getSelectedForClient(r);
+                const selectedNos = new Set(selected.map((t) => t.belgeNo));
+                const skippedNos = (r.tebligatList || [])
+                    .filter((t) => !selectedNos.has(t.belgeNo))
+                    .map((t) => t.belgeNo);
+                const mode = previewSelections[r.clientId] || 'skip';
+                return {
+                    clientId: r.clientId,
+                    firmName: r.firmName,
+                    tebligatList: selected,
+                    skippedDocumentNos: skippedNos,
+                    scanDateFilter: modeToFilterDate(mode),
+                };
+            })
             .filter((s) => s.tebligatList.length > 0);
 
         if (selections.length === 0) {

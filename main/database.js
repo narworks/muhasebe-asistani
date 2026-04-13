@@ -103,6 +103,17 @@ function init() {
         CREATE INDEX IF NOT EXISTS idx_scan_history_started
         ON scan_history(started_at DESC)
     `);
+
+    // Migration: scan_date_filter on clients (keşif tarih filtresi)
+    if (!clientCols.includes('scan_date_filter')) {
+        db.exec('ALTER TABLE clients ADD COLUMN scan_date_filter TEXT');
+    }
+
+    // Migration: skip_download on tebligatlar (keşifte bilinçli atlama)
+    const tebCols = db.pragma('table_info(tebligatlar)').map((col) => col.name);
+    if (!tebCols.includes('skip_download')) {
+        db.exec('ALTER TABLE tebligatlar ADD COLUMN skip_download INTEGER DEFAULT 0');
+    }
 }
 
 function saveClient(clientData) {
@@ -484,6 +495,37 @@ function getLastScanFailedClientIds() {
     }
 }
 
+function updateClientScanFilter(clientId, filterDate) {
+    if (!db) init();
+    db.prepare('UPDATE clients SET scan_date_filter = ? WHERE id = ?').run(filterDate, clientId);
+}
+
+function resetClientSkipDownloads(clientId) {
+    if (!db) init();
+    db.prepare('UPDATE tebligatlar SET skip_download = 0 WHERE client_id = ?').run(clientId);
+}
+
+function markTebligatlarSkipDownload(clientId, documentNos) {
+    if (!db) init();
+    if (!documentNos || documentNos.length === 0) return;
+    const stmt = db.prepare(
+        'UPDATE tebligatlar SET skip_download = 1 WHERE client_id = ? AND document_no = ?'
+    );
+    for (const docNo of documentNos) {
+        stmt.run(clientId, docNo);
+    }
+}
+
+function isSkipDownload(clientId, documentNo) {
+    if (!db) init();
+    const row = db
+        .prepare(
+            'SELECT skip_download FROM tebligatlar WHERE client_id = ? AND document_no = ? LIMIT 1'
+        )
+        .get(clientId, documentNo);
+    return row ? row.skip_download === 1 : false;
+}
+
 module.exports = {
     init,
     saveClient,
@@ -506,4 +548,8 @@ module.exports = {
     updateScanHistory,
     getScanHistory,
     getLastScanFailedClientIds,
+    updateClientScanFilter,
+    resetClientSkipDownloads,
+    markTebligatlarSkipDownload,
+    isSkipDownload,
 };

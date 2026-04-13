@@ -11,6 +11,7 @@ Bu klasör, reklam bütçesi olmadan ilk ücretli müşterileri kazanmak için h
 
 ## Dosyalar
 
+- [../../apps/marketing-panel/index.html](../../apps/marketing-panel/index.html): Planı tarayıcıdan takip etmek için statik Marketing OS paneli.
 - [organik-pazarlama-plani.md](./organik-pazarlama-plani.md): 90 günlük uygulama planı, haftalık rutin ve satış akışı.
 - [icerik-takvimi-90-gun.csv](./icerik-takvimi-90-gun.csv): 13 haftalık LinkedIn, YouTube ve SEO içerik takvimi.
 - [mesaj-sablonlari.md](./mesaj-sablonlari.md): LinkedIn, e-posta, takip, demo, referans ve topluluk mesajları.

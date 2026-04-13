@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="tr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Muhasebe Asistanı Marketing OS</title>
+    <meta
+      name="description"
+      content="Muhasebe Asistanı için organik pazarlama, içerik takvimi, potansiyel müşteri ve haftalık skor kartı paneli."
+    />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="brand-mark" aria-hidden="true">
+            <span>MA</span>
+          </div>
+          <div>
+            <p class="eyebrow">Muhasebe Asistanı</p>
+            <h1>Marketing OS</h1>
+          </div>
+        </div>
+
+        <nav class="nav" aria-label="Ana menü">
+          <button class="nav-item active" type="button" data-view="dashboard">Dashboard</button>
+          <button class="nav-item" type="button" data-view="content">İçerik Takvimi</button>
+          <button class="nav-item" type="button" data-view="contacts">Potansiyel Müşteriler</button>
+          <button class="nav-item" type="button" data-view="templates">Mesaj Şablonları</button>
+          <button class="nav-item" type="button" data-view="scorecard">Skor Kartı</button>
+        </nav>
+
+        <div class="side-panel">
+          <label for="currentWeek">Aktif hafta</label>
+          <select id="currentWeek"></select>
+          <p>Her cuma skor kartını doldur, sonraki haftanın mesajını sonuçlara göre ayarla.</p>
+        </div>
+      </aside>
+
+      <main class="main">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow">Sıfır reklam bütçesi</p>
+            <h2 id="viewTitle">Dashboard</h2>
+          </div>
+          <div class="topbar-actions">
+            <button class="button secondary" type="button" id="exportAll">Yedek Al</button>
+            <label class="button secondary file-button" for="importBackup">
+              Yedek Yükle
+              <input id="importBackup" type="file" accept="application/json" />
+            </label>
+            <button class="button danger" type="button" id="resetData">Sıfırla</button>
+          </div>
+        </header>
+
+        <section class="view active" id="dashboardView" aria-labelledby="dashboardTitle">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Bu hafta</p>
+              <h3 id="dashboardTitle">Organik satış ritmi</h3>
+            </div>
+            <button class="button primary" type="button" data-view-jump="contacts">Yeni temas ekle</button>
+          </div>
+
+          <div class="metrics-grid" id="metricsGrid"></div>
+
+          <div class="dashboard-grid">
+            <section class="panel">
+              <div class="panel-heading">
+                <h4>Haftanın işleri</h4>
+                <span id="weekCompletion" class="pill">0/0 tamamlandı</span>
+              </div>
+              <div id="weekTasks" class="task-list"></div>
+            </section>
+
+            <section class="panel">
+              <div class="panel-heading">
+                <h4>Takip bekleyenler</h4>
+                <span id="followupCount" class="pill">0 kişi</span>
+              </div>
+              <div id="followupList" class="contact-stack"></div>
+            </section>
+          </div>
+        </section>
+
+        <section class="view" id="contentView" aria-labelledby="contentTitle">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">13 haftalık plan</p>
+              <h3 id="contentTitle">İçerik Takvimi</h3>
+            </div>
+            <div class="toolbar">
+              <select id="contentWeekFilter" aria-label="Hafta filtresi"></select>
+              <select id="contentStatusFilter" aria-label="Durum filtresi">
+                <option value="all">Tüm durumlar</option>
+                <option value="Taslak">Taslak</option>
+                <option value="Hazır">Hazır</option>
+                <option value="Yayınlandı">Yayınlandı</option>
+                <option value="Yeniden kullanılacak">Yeniden kullanılacak</option>
+              </select>
+              <button class="button secondary" type="button" id="exportContent">CSV indir</button>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Hafta</th>
+                  <th>Gün</th>
+                  <th>Kanal</th>
+                  <th>Konu</th>
+                  <th>CTA</th>
+                  <th>Durum</th>
+                </tr>
+              </thead>
+              <tbody id="contentRows"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="view" id="contactsView" aria-labelledby="contactsTitle">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Organik CRM</p>
+              <h3 id="contactsTitle">Potansiyel Müşteriler</h3>
+            </div>
+            <div class="toolbar">
+              <input id="contactSearch" type="search" placeholder="Ara: kişi, büro, şehir" />
+              <button class="button secondary" type="button" id="exportContacts">CSV indir</button>
+            </div>
+          </div>
+
+          <form class="form-panel" id="contactForm">
+            <input name="name" placeholder="Kişi adı" required />
+            <input name="company" placeholder="Büro adı" />
+            <input name="city" placeholder="Şehir" />
+            <input name="linkedin" placeholder="LinkedIn URL" />
+            <input name="email" type="email" placeholder="E-posta" />
+            <input name="phone" placeholder="Telefon" />
+            <select name="status">
+              <option>Bağlantı gönderildi</option>
+              <option>Araştırılacak</option>
+              <option>Yanıt bekleniyor</option>
+              <option>Demo istendi</option>
+              <option>Deneme başladı</option>
+              <option>Takip gerekiyor</option>
+              <option>Satın aldı</option>
+              <option>Uygun değil</option>
+            </select>
+            <input name="nextActionDate" type="date" />
+            <input name="nextAction" placeholder="Sonraki aksiyon" />
+            <button class="button primary" type="submit">Kişi ekle</button>
+          </form>
+
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Kişi</th>
+                  <th>Büro</th>
+                  <th>Şehir</th>
+                  <th>Durum</th>
+                  <th>Sonraki aksiyon</th>
+                  <th>Not</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="contactRows"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="view" id="templatesView" aria-labelledby="templatesTitle">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Kopyala ve kişiselleştir</p>
+              <h3 id="templatesTitle">Mesaj Şablonları</h3>
+            </div>
+            <div class="toolbar">
+              <input id="templateName" placeholder="Alıcı adı" />
+              <input id="templateCompany" placeholder="Büro adı" />
+            </div>
+          </div>
+          <div class="template-grid" id="templateGrid"></div>
+        </section>
+
+        <section class="view" id="scorecardView" aria-labelledby="scorecardTitle">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Cuma kapanışı</p>
+              <h3 id="scorecardTitle">Haftalık Skor Kartı</h3>
+            </div>
+            <button class="button secondary" type="button" id="exportScorecard">CSV indir</button>
+          </div>
+
+          <form class="score-form" id="scoreForm"></form>
+
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Hafta</th>
+                  <th>Temas</th>
+                  <th>Yanıt</th>
+                  <th>Demo</th>
+                  <th>Deneme</th>
+                  <th>Satış</th>
+                  <th>Karar</th>
+                </tr>
+              </thead>
+              <tbody id="scoreRows"></tbody>
+            </table>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    <script src="./app.js"></script>
+  </body>
+</html>
