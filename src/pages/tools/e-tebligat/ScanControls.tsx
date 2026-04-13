@@ -128,8 +128,33 @@ const ScanControls: React.FC<ScanControlsProps> = ({
                     otomatik indirilir.
                 </p>
 
+                {/* Onboarding banner — shown when there are new (never-scanned) clients */}
+                {!scanning && !scanProgress && hasNewClients && clientCount > 0 && (
+                    <div className="mb-4 mx-auto max-w-lg p-4 bg-emerald-50 border border-emerald-200 rounded-xl text-left">
+                        <p className="text-sm font-semibold text-emerald-800 mb-1">
+                            &#304;lk kurulum &mdash; Ke&#351;if ile ba&#351;lay&#305;n
+                        </p>
+                        <p className="text-xs text-emerald-700 mb-3">
+                            {newClientsCount} yeni m&uuml;kellef eklendi. &Ouml;nce ke&#351;if
+                            yaparak G&#304;B&apos;deki tebligatlar&#305;
+                            g&ouml;r&uuml;nt&uuml;leyin, sonra indirmek istediklerinizi
+                            se&ccedil;in. B&ouml;ylece saatlerce beklemek yerine sadece
+                            ihtiyac&#305;n&#305;z olanlar&#305; indirirsiniz.
+                        </p>
+                        <button
+                            onClick={onStartPreview}
+                            disabled={previewRunning}
+                            className="w-full px-6 py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg shadow-lg hover:shadow-xl transition-all disabled:opacity-50 text-base"
+                        >
+                            {previewRunning
+                                ? 'Ke\u015fif...'
+                                : `Ke\u015ffe Ba\u015fla (${newClientsCount} m\u00fckellef)`}
+                        </button>
+                    </div>
+                )}
+
                 {/* Main buttons - centered (hidden when scanning) */}
-                {!scanning && !scanProgress && (
+                {!scanning && !scanProgress && !hasNewClients && (
                     <div className="flex items-center justify-center gap-3 mb-4">
                         <button
                             onClick={onStartScan}
@@ -164,22 +189,10 @@ const ScanControls: React.FC<ScanControlsProps> = ({
                             <button
                                 onClick={onStartPreview}
                                 disabled={previewRunning || scanning}
-                                className={`px-6 py-3 font-semibold rounded-lg shadow transition-all disabled:opacity-50 ${
-                                    hasNewClients
-                                        ? 'bg-emerald-600 hover:bg-emerald-700 text-white ring-2 ring-emerald-300 shadow-md shadow-emerald-500/30'
-                                        : 'bg-emerald-600 hover:bg-emerald-700 text-white'
-                                }`}
-                                title={
-                                    hasNewClients
-                                        ? `${newClientsCount} yeni m\u00fckellef i\u00e7in \u00f6nerilen ak\u0131\u015f`
-                                        : 'T\u00fcm m\u00fckelleflerin tebligatlar\u0131n\u0131 \u00f6nizle'
-                                }
+                                className="px-5 py-3 font-semibold rounded-lg border border-emerald-500/40 text-emerald-700 hover:bg-emerald-50 transition-all disabled:opacity-50"
+                                title="T&uuml;m m&uuml;kelleflerin tebligatlar&#305;n&#305; &ouml;nizle"
                             >
-                                {previewRunning
-                                    ? 'Ke\u015fif...'
-                                    : hasNewClients
-                                      ? `Ke\u015fif (${newClientsCount} yeni)`
-                                      : 'Ke\u015fif'}
+                                {previewRunning ? 'Ke\u015fif...' : 'Ke\u015fif'}
                             </button>
                         )}
                     </div>

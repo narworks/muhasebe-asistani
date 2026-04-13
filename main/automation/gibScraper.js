@@ -2535,6 +2535,11 @@ async function downloadSelectedTebligatlar(onStatusUpdate, apiKey, selections) {
                     });
                 }
 
+                // Mark client as scanned so İlk Keşif knows it's done
+                if (clientDownloaded > 0) {
+                    database.updateClientScanDate(sel.clientId);
+                }
+
                 // Accurate per-client message
                 if (clientErrors === 0) {
                     onStatusUpdate({
