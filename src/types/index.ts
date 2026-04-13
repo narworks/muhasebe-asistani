@@ -64,6 +64,8 @@ export interface ScanProgress {
     successes: number;
     insufficientCredits?: boolean;
     completed?: boolean;
+    elapsedSeconds?: number;
+    estimatedRemainingSeconds?: number;
 }
 
 export interface ScanState {

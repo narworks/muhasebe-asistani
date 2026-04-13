@@ -1,4 +1,24 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
+
+const PROGRESS_TIPS = [
+    '\u0130\u015Flem arka planda g\u00FCvenle devam ediyor.',
+    '\u0130lk kontrol en uzun s\u00FCrer \u2014 sonraki kontroller \u00E7ok daha h\u0131zl\u0131d\u0131r.',
+    'Bilgisayar\u0131n\u0131z\u0131 uyku moduna almay\u0131n, i\u015Flem kesintiye u\u011Frayabilir.',
+    '\u0130stedi\u011Finiz zaman \u201CDurdur\u201D ile i\u015Flemi kesebilir, sonra kald\u0131\u011F\u0131n\u0131z yerden devam edebilirsiniz.',
+    'Tebligatlar otomatik olarak m\u00FCkellef klas\u00F6rlerine kaydedilir.',
+    '\u0130\u015Flem bitti\u011Finde detayl\u0131 rapor g\u00F6sterilecek.',
+    'M\u00FCkellef say\u0131s\u0131 artt\u0131k\u00E7a kontrol s\u00FCresi de uzar \u2014 bu normaldir.',
+    '\u0130\u015Flemi gece ba\u015Flat\u0131p sabah sonu\u00E7lar\u0131 g\u00F6rebilirsiniz.',
+    'Her m\u00FCkellef s\u0131rayla kontrol edilir \u2014 g\u00FCvenli ve kesintisiz.',
+];
+
+const formatDuration = (seconds: number): string => {
+    if (seconds < 60) return `${seconds} sn`;
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    if (h > 0) return `${h}s ${m}dk`;
+    return `${m} dk`;
+};
 
 interface ScanControlsProps {
     scanning: boolean;
@@ -9,6 +29,8 @@ interface ScanControlsProps {
         errors: number;
         successes: number;
         completed?: boolean;
+        elapsedSeconds?: number;
+        estimatedRemainingSeconds?: number;
     } | null;
     scanState: {
         canResume: boolean;
@@ -73,8 +95,97 @@ const ScanControls: React.FC<ScanControlsProps> = ({
               ? `${Math.floor(scanEstimate.estimatedMinutes / 60)}s ${scanEstimate.estimatedMinutes % 60}dk`
               : null;
 
+    // Elapsed timer — counts up every second while scanning
+    const [localElapsed, setLocalElapsed] = useState(0);
+    const [tipIndex, setTipIndex] = useState(0);
+
+    useEffect(() => {
+        if (!scanning) {
+            setLocalElapsed(0);
+            return;
+        }
+        const interval = setInterval(() => setLocalElapsed((s) => s + 1), 1000);
+        return () => clearInterval(interval);
+    }, [scanning]);
+
+    // Rotate tips every 15 seconds
+    useEffect(() => {
+        if (!scanning) return;
+        const interval = setInterval(
+            () => setTipIndex((i) => (i + 1) % PROGRESS_TIPS.length),
+            15000
+        );
+        return () => clearInterval(interval);
+    }, [scanning]);
+
+    // Use backend elapsed if available, otherwise local counter
+    const elapsed = scanProgress?.elapsedSeconds ?? localElapsed;
+    const remaining = scanProgress?.estimatedRemainingSeconds ?? 0;
+
+    // Dynamic tip with successes count
+    const currentTip = PROGRESS_TIPS[tipIndex].replace(
+        '{successes}',
+        String(scanProgress?.successes ?? 0)
+    );
+
+    // Confirm modal state
+    const [confirmAction, setConfirmAction] = useState<'scan' | 'preview' | null>(null);
+
     return (
         <>
+            {/* Confirm Modal — shown before starting scan or preview */}
+            {confirmAction && (
+                <div
+                    className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"
+                    onClick={() => setConfirmAction(null)}
+                >
+                    <div
+                        className="bg-white rounded-xl shadow-2xl w-full max-w-md p-6"
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <h3 className="text-lg font-bold text-gray-800 mb-2">
+                            Tahmini S&uuml;re: ~{estimatedMin || '?'}
+                        </h3>
+                        <p className="text-sm text-gray-600 mb-4">
+                            {clientCount} m&uuml;kellefin tebligatlar&#305;{' '}
+                            {confirmAction === 'preview' ? 'kontrol edilecek' : 'taranacak'}.
+                        </p>
+                        <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4 text-xs text-amber-800 space-y-1">
+                            <p>Bu s&uuml;re boyunca:</p>
+                            <ul className="list-disc list-inside space-y-0.5">
+                                <li>Bilgisayar&#305;n&#305;z&#305; a&ccedil;&#305;k tutun</li>
+                                <li>Uygulamay&#305; kapatmay&#305;n</li>
+                                <li>&#304;nternet ba&#287;lant&#305;n&#305;z aktif olsun</li>
+                            </ul>
+                            <p className="mt-2">
+                                &#304;stedi&#287;iniz zaman &ldquo;Durdur&rdquo; ile i&#351;lemi
+                                kesebilir ve kald&#305;&#287;&#305;n&#305;z yerden devam
+                                edebilirsiniz.
+                            </p>
+                        </div>
+                        <div className="flex justify-end gap-3">
+                            <button
+                                onClick={() => setConfirmAction(null)}
+                                className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800"
+                            >
+                                Vazge&ccedil;
+                            </button>
+                            <button
+                                onClick={() => {
+                                    const action = confirmAction;
+                                    setConfirmAction(null);
+                                    if (action === 'preview') onStartPreview();
+                                    else onStartScan();
+                                }}
+                                className="px-6 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-lg text-sm"
+                            >
+                                Ba&#351;lat
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* Resume / Restart Panel */}
             {!scanning && scanState && scanState.canResume && (
                 <div className="mb-4 p-4 bg-amber-50 border border-amber-200 rounded-lg">
@@ -142,7 +253,7 @@ const ScanControls: React.FC<ScanControlsProps> = ({
                             ihtiyac&#305;n&#305;z olanlar&#305; indirirsiniz.
                         </p>
                         <button
-                            onClick={onStartPreview}
+                            onClick={() => setConfirmAction('preview')}
                             disabled={previewRunning}
                             className="w-full px-6 py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg shadow-lg hover:shadow-xl transition-all disabled:opacity-50 text-base"
                         >
@@ -157,7 +268,7 @@ const ScanControls: React.FC<ScanControlsProps> = ({
                 {!scanning && !scanProgress && !hasNewClients && (
                     <div className="flex items-center justify-center gap-3 mb-4">
                         <button
-                            onClick={onStartScan}
+                            onClick={() => setConfirmAction('scan')}
                             disabled={scanning}
                             className="px-8 py-3 bg-indigo-600 text-white font-bold rounded-lg text-base shadow-lg hover:bg-indigo-700 hover:shadow-xl transition-all disabled:bg-gray-400 disabled:cursor-not-allowed"
                         >
@@ -198,35 +309,61 @@ const ScanControls: React.FC<ScanControlsProps> = ({
                     </div>
                 )}
 
-                {/* Progress bar - replaces buttons when scanning */}
+                {/* Rich Progress Card - replaces buttons when scanning */}
                 {scanning && scanProgress && (
-                    <div className="mb-4 p-4 bg-gray-50 rounded-lg text-left">
-                        <div className="flex justify-between text-sm text-gray-600 mb-1">
-                            <span>
-                                {scanProgress.currentClient
-                                    ? `İşlem: ${scanProgress.currentClient}`
-                                    : 'Bekleniyor...'}
+                    <div className="mb-4 p-5 bg-white border border-gray-200 rounded-xl shadow-sm text-left">
+                        {/* Progress bar + counts */}
+                        <div className="flex justify-between text-sm text-gray-700 mb-2">
+                            <span className="font-semibold">
+                                {scanProgress.current} / {scanProgress.total} m&uuml;kellef
                             </span>
-                            <span>
-                                {scanProgress.current}/{scanProgress.total}
-                            </span>
+                            <span className="text-indigo-600 font-bold">%{progressPercent}</span>
                         </div>
-                        <div className="w-full bg-gray-300 rounded-full h-2.5">
+                        <div className="w-full bg-gray-200 rounded-full h-3 mb-3">
                             <div
-                                className="bg-indigo-600 h-2.5 rounded-full transition-all duration-500"
+                                className="bg-indigo-600 h-3 rounded-full transition-all duration-500"
                                 style={{ width: `${progressPercent}%` }}
                             />
                         </div>
-                        <div className="flex justify-between text-xs text-gray-500 mt-1">
-                            <span>
-                                {scanProgress.successes} başarılı, {scanProgress.errors} hata
-                            </span>
-                            <span>%{progressPercent}</span>
+
+                        {/* Elapsed + Remaining */}
+                        <div className="flex justify-between text-xs text-gray-500 mb-3">
+                            <span>Ge&ccedil;en: {formatDuration(elapsed)}</span>
+                            {remaining > 0 && scanProgress.current > 2 && (
+                                <span>Kalan: ~{formatDuration(remaining)}</span>
+                            )}
                         </div>
-                        <div className="flex justify-center mt-3">
+
+                        {/* Success / Error counters */}
+                        <div className="flex items-center gap-4 text-xs mb-3">
+                            <span className="text-emerald-600 font-medium">
+                                {scanProgress.successes} ba&#351;ar&#305;l&#305;
+                            </span>
+                            {scanProgress.errors > 0 && (
+                                <span className="text-red-500 font-medium">
+                                    {scanProgress.errors} hatal&#305;
+                                </span>
+                            )}
+                        </div>
+
+                        {/* Current client */}
+                        {scanProgress.currentClient && (
+                            <div className="text-xs text-gray-500 mb-3">
+                                <span className="inline-block w-2 h-2 bg-indigo-500 rounded-full animate-pulse mr-1.5" />
+                                {scanProgress.currentClient} kontrol ediliyor...
+                            </div>
+                        )}
+
+                        {/* Rotating tip */}
+                        <div className="text-xs text-gray-400 italic mb-4 min-h-[1.2rem] transition-opacity duration-500">
+                            {currentTip}
+                        </div>
+
+                        {/* Stop button */}
+                        <div className="flex justify-center">
                             <button
                                 onClick={onStopScan}
-                                className="flex items-center px-4 py-2 rounded-lg font-bold text-white bg-red-500 hover:bg-red-600 shadow-md transition-all text-sm"
+                                className="px-5 py-2 rounded-lg font-bold text-white bg-red-500 hover:bg-red-600 shadow-md transition-all text-sm"
                             >
                                 Durdur
                             </button>

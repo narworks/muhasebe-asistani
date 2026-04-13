@@ -7,11 +7,13 @@ Muhasebe Asistani, mali musavirlerin gunluk islerini hizlandirmak ve otomatikles
 ## Ozellikler
 
 ### Banka Ekstresi Donusturucu
+
 - PDF, Excel, resim formatlarindaki banka ekstrelerini Excel'e donusturur
 - AI kullanarak akilli veri cikarimi
 - Muhasebe yazilimlarına uyumlu format
 
 ### E-Tebligat Otomasyonu
+
 - GIB E-Tebligat portalindan otomatik tebligat taramasi
 - Musteri bazli takip ve bildirim
 - Zamanli tarama ozelligi
@@ -21,6 +23,7 @@ Muhasebe Asistani, mali musavirlerin gunluk islerini hizlandirmak ve otomatikles
 En son surumu indirmek icin [Releases](https://github.com/narworks/muhasebe-asistani/releases/latest) sayfasini ziyaret edin.
 
 **Sabit indirme linki:**
+
 ```
 https://github.com/narworks/muhasebe-asistani/releases/latest/download/Muhasebe-Asistani-arm64.dmg
 ```
@@ -40,6 +43,14 @@ Daha fazla bilgi icin: https://muhasebeasistani.com
 
 - **Website:** https://muhasebeasistani.com
 - **Destek:** support@muhasebeasistani.com
+
+## Pazarlama
+
+Reklam butcesi olmadan organik musteri kazanimi icin hazirlanan operasyon dokumanlari:
+
+- [Ucretsiz Pazarlama Kiti](docs/pazarlama/README.md)
+- [90 Gunluk Icerik Takvimi](docs/pazarlama/icerik-takvimi-90-gun.csv)
+- [Birebir Ulasim Takip Sablonu](docs/pazarlama/outreach-tracker.csv)
 
 ---
 

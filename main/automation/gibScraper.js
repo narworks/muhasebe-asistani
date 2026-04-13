@@ -1361,6 +1361,26 @@ async function run(onStatusUpdate, apiKey, scanConfig = {}, options = {}, deduct
     const scanHistoryId = database.createScanHistory(options.scanType || 'full');
     const scanStartTime = Date.now();
 
+    // Helper: build progress object with elapsed + estimated remaining
+    const buildProgress = (current, total, currentClient, errors, successes, extra = {}) => {
+        const elapsed = Math.round((Date.now() - scanStartTime) / 1000);
+        const avgPerItem = current > 0 ? elapsed / current : 0;
+        const remaining = Math.round(avgPerItem * (total - current));
+        return {
+            type: 'progress',
+            progress: {
+                current,
+                total,
+                currentClient,
+                errors,
+                successes,
+                elapsedSeconds: elapsed,
+                estimatedRemainingSeconds: remaining,
+                ...extra,
+            },
+        };
+    };
+
     if (!apiKey) {
         onStatusUpdate({ message: 'API anahtarı bulunamadı.', type: 'error' });
         isRunning = false;
@@ -1401,16 +1421,7 @@ async function run(onStatusUpdate, apiKey, scanConfig = {}, options = {}, deduct
     // Track per-client scan results for final report
     const scanResults = isResume ? lastScanState.scanResults || [] : [];
 
-    onStatusUpdate({
-        type: 'progress',
-        progress: {
-            current: alreadyDone,
-            total: totalAll,
-            currentClient: null,
-            errors: errorCount,
-            successes: successCount,
-        },
-    });
+    onStatusUpdate(buildProgress(alreadyDone, totalAll, null, errorCount, successCount));
 
     let browser;
 
@@ -2239,6 +2250,26 @@ async function previewScan(onStatusUpdate, apiKey) {
 
     const results = [];
     const INTER_CLIENT_DELAY = 15000; // 15s between clients (GIB rate limiting)
+    const previewStartTime = Date.now();
+
+    // Helper: build progress for preview with elapsed/estimated
+    const buildPreviewProgress = (current, total, currentClient, successes) => {
+        const elapsed = Math.round((Date.now() - previewStartTime) / 1000);
+        const avgPerItem = current > 0 ? elapsed / current : 0;
+        const remaining = Math.round(avgPerItem * (total - current));
+        return {
+            type: 'progress',
+            progress: {
+                current,
+                total,
+                currentClient,
+                errors: 0,
+                successes,
+                elapsedSeconds: elapsed,
+                estimatedRemainingSeconds: remaining,
+            },
+        };
+    };
 
     try {
         for (let i = 0; i < activeClients.length; i++) {
@@ -2248,16 +2279,10 @@ async function previewScan(onStatusUpdate, apiKey) {
             }
 
             const client = activeClients[i];
-            onStatusUpdate({
-                type: 'progress',
-                progress: {
-                    current: i + 1,
-                    total: activeClients.length,
-                    currentClient: client.firm_name,
-                    errors: 0,
-                    successes: results.filter((r) => r.ok).length,
-                },
-            });
+            const okCount = results.filter((r) => r.ok).length;
+            onStatusUpdate(
+                buildPreviewProgress(i + 1, activeClients.length, client.firm_name, okCount)
+            );
             onStatusUpdate({
                 message: `[${i + 1}/${activeClients.length}] ${client.firm_name} keşfediliyor...`,
                 type: 'process',
