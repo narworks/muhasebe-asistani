@@ -8,6 +8,24 @@ type VersionLog = { version: string; date: string; entries: ChangeEntry[] };
 
 const CHANGELOG: VersionLog[] = [
     {
+        version: '1.3.4',
+        date: '2026-04-14',
+        entries: [
+            {
+                type: '~',
+                text: 'Ke\u015fif sonras\u0131 indirme hatas\u0131 (409 Conflict) d\u00fczeltildi',
+            },
+            {
+                type: '~',
+                text: '\u0130lk Ke\u015fif sonras\u0131 Tara butonu g\u00f6r\u00fcnmeme sorunu d\u00fczeltildi',
+            },
+            {
+                type: '~',
+                text: 'T\u00fcm tebligatlar\u0131 atla se\u00e7ene\u011fi art\u0131k m\u00fckellefi ke\u015fif yap\u0131lm\u0131\u015f olarak i\u015faretler',
+            },
+        ],
+    },
+    {
         version: '1.3.0',
         date: '2026-04-12',
         entries: [
