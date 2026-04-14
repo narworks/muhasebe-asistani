@@ -240,7 +240,7 @@ const ScanControls: React.FC<ScanControlsProps> = ({
                 </p>
 
                 {/* Onboarding banner — shown when there are new (never-scanned) clients */}
-                {!scanning && !scanProgress && hasNewClients && clientCount > 0 && (
+                {!scanning && hasNewClients && clientCount > 0 && (
                     <div className="mb-4 mx-auto max-w-lg p-4 bg-emerald-50 border border-emerald-200 rounded-xl text-left">
                         <p className="text-sm font-semibold text-emerald-800 mb-1">
                             &#304;lk kurulum &mdash; Ke&#351;if ile ba&#351;lay&#305;n
@@ -265,7 +265,7 @@ const ScanControls: React.FC<ScanControlsProps> = ({
                 )}
 
                 {/* Main buttons - centered (hidden when scanning) */}
-                {!scanning && !scanProgress && !hasNewClients && (
+                {!scanning && !hasNewClients && (
                     <div className="flex items-center justify-center gap-3 mb-4">
                         <button
                             onClick={() => setConfirmAction('scan')}

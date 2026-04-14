@@ -8,6 +8,16 @@ type VersionLog = { version: string; date: string; entries: ChangeEntry[] };
 
 const CHANGELOG: VersionLog[] = [
     {
+        version: '1.3.41',
+        date: '2026-04-14',
+        entries: [
+            {
+                type: '~',
+                text: 'Ke\u015fif a\u011f hatas\u0131 sonras\u0131 Tara/Ke\u015fif butonlar\u0131n\u0131n kaybolma sorunu d\u00fczeltildi',
+            },
+        ],
+    },
+    {
         version: '1.3.4',
         date: '2026-04-14',
         entries: [

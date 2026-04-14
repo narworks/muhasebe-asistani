@@ -1430,6 +1430,7 @@ const ETebligat: React.FC = () => {
                                 setPreviewRunning(true);
                                 setPreviewResults(null);
                                 setPreviewSelections({});
+                                setScanProgress(null);
                                 addLog(
                                     'Ke\u015fif ba\u015flat\u0131l\u0131yor (belge indirme yok)...',
                                     'info'
@@ -1463,6 +1464,9 @@ const ETebligat: React.FC = () => {
                                     );
                                 } finally {
                                     setPreviewRunning(false);
+                                    // Preview doesn't go through handleComplete/handleError,
+                                    // so reset scanProgress here — otherwise buttons stay hidden.
+                                    setScanProgress(null);
                                 }
                             }}
                             previewRunning={previewRunning}
