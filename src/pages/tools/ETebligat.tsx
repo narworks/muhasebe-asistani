@@ -1188,7 +1188,8 @@ const ETebligat: React.FC = () => {
                     scanDateFilter: modeToFilterDate(mode),
                 };
             })
-            .filter((s) => s.tebligatList.length > 0);
+            // Keep skip-only clients (0 selected, >0 skipped) so backend marks them as scanned.
+            .filter((s) => s.tebligatList.length > 0 || s.skippedDocumentNos.length > 0);
 
         if (selections.length === 0) {
             addLog('Hiçbir tebligat seçilmedi', 'info');

@@ -2458,7 +2458,32 @@ async function downloadSelectedTebligatlar(onStatusUpdate, apiKey, selections) {
             if (scanCancelled) break;
 
             const sel = selections[i];
-            if (!sel.tebligatList || sel.tebligatList.length === 0) continue;
+            const hasDownloads = sel.tebligatList && sel.tebligatList.length > 0;
+            const hasSkips = sel.skippedDocumentNos && sel.skippedDocumentNos.length > 0;
+            if (!hasDownloads && !hasSkips) continue;
+
+            // Skip-only path: user chose to skip everything for this client.
+            // No login needed — just persist skip marks and mark as scanned.
+            if (!hasDownloads && hasSkips) {
+                const skippedToSave = sel.skippedDocumentNos.map((docNo) => ({
+                    sender: '-',
+                    subject: '-',
+                    documentNo: docNo,
+                    status: 'Atland\u0131',
+                    date: null,
+                    documentUrl: null,
+                    documentPath: null,
+                }));
+                database.saveTebligatlar(sel.clientId, skippedToSave);
+                database.markTebligatlarSkipDownload(sel.clientId, sel.skippedDocumentNos);
+                database.updateClientScanDate(sel.clientId);
+                onStatusUpdate({
+                    message: `${sel.firmName}: ${sel.skippedDocumentNos.length} tebligat atland\u0131`,
+                    type: 'success',
+                    firmId: sel.clientId,
+                });
+                continue;
+            }
 
             const allClients = database.getClients();
             const client = allClients.find((c) => c.id === sel.clientId);
@@ -2491,21 +2516,34 @@ async function downloadSelectedTebligatlar(onStatusUpdate, apiKey, selections) {
             });
 
             let browser;
+            let attempted = false;
             try {
                 const loginResult = await loginAndGetToken(client, password, apiKey);
                 browser = loginResult.browser;
                 const apiClient = gibApiClient.createApiClient(loginResult.bearerToken);
+
+                // Re-list in the fresh session to get valid secureIds.
+                // secureIds from the preview session are bound to that bearer token
+                // and return 409 Conflict when reused in a new session.
+                const freshDtos = await gibApiClient.fetchAllTebligatlar(apiClient);
+                const freshByBelgeNo = new Map();
+                for (const dto of freshDtos) {
+                    if (dto.belgeNo) freshByBelgeNo.set(dto.belgeNo, dto);
+                }
 
                 const newTebligatIds = [];
                 const toSave = [];
                 let clientDownloaded = 0;
                 let clientErrors = 0;
 
+                attempted = sel.tebligatList.length > 0;
+
                 for (let j = 0; j < sel.tebligatList.length; j++) {
                     if (scanCancelled) break;
                     const t = sel.tebligatList[j];
+                    const fresh = freshByBelgeNo.get(t.belgeNo);
 
-                    // Convert preview shape to scraper shape
+                    // Convert preview shape to scraper shape (prefer fresh secureIds)
                     const scraperTeb = {
                         sender: t.sender,
                         subject: t.subject,
@@ -2517,10 +2555,10 @@ async function downloadSelectedTebligatlar(onStatusUpdate, apiKey, selections) {
                         readDate: null,
                         documentUrl: null,
                         documentPath: null,
-                        tarafId: t._tarafId,
-                        tarafSecureId: t._tarafSecureId,
-                        tebligId: t._tebligId,
-                        tebligSecureId: t._tebligSecureId,
+                        tarafId: fresh?.tarafId ?? t._tarafId,
+                        tarafSecureId: fresh?.tarafSecureId ?? t._tarafSecureId,
+                        tebligId: fresh?.tebligId ?? t._tebligId,
+                        tebligSecureId: fresh?.tebligSecureId ?? t._tebligSecureId,
                     };
 
                     // Download (skip if already exists)
@@ -2584,8 +2622,10 @@ async function downloadSelectedTebligatlar(onStatusUpdate, apiKey, selections) {
                     });
                 }
 
-                // Mark client as scanned so İlk Keşif knows it's done
-                if (clientDownloaded > 0) {
+                // Mark client as scanned so İlk Keşif knows the user completed discovery.
+                // Set regardless of download outcome — otherwise a 409/transient error
+                // traps the client in the "new" state forever.
+                if (attempted || (sel.skippedDocumentNos && sel.skippedDocumentNos.length > 0)) {
                     database.updateClientScanDate(sel.clientId);
                 }
 
