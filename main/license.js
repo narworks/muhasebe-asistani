@@ -55,10 +55,14 @@ const generateCreditSignature = (credits, deviceId) => {
 const verifyCreditSignature = (credits, deviceId) => {
     if (!credits.signature) return false;
     const expected = generateCreditSignature(credits, deviceId);
-    return crypto.timingSafeEqual(
-        Buffer.from(credits.signature, 'hex'),
-        Buffer.from(expected, 'hex')
-    );
+    try {
+        const signatureBuffer = Buffer.from(credits.signature, 'hex');
+        const expectedBuffer = Buffer.from(expected, 'hex');
+        if (signatureBuffer.length !== expectedBuffer.length) return false;
+        return crypto.timingSafeEqual(signatureBuffer, expectedBuffer);
+    } catch {
+        return false;
+    }
 };
 
 /**

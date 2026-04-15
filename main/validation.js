@@ -135,7 +135,7 @@ function validateScheduleConfig(config) {
     }
 
     // Frequency validation
-    const validFrequencies = ['daily', 'weekly', 'custom'];
+    const validFrequencies = ['daily', 'weekdays', 'weekends', 'custom'];
     if (frequency && !validFrequencies.includes(frequency)) {
         throw new Error('Geçersiz sıklık değeri.');
     }

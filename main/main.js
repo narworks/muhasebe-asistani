@@ -178,6 +178,11 @@ const scheduler = require('./scheduler');
 const validation = require('./validation');
 const autoUpdater = require('./autoUpdater');
 
+const getCheckoutBaseUrl = () => {
+    const raw = process.env.BILLING_URL || 'https://muhasebeasistani.com/billing';
+    return raw.replace(/\/(pricing|billing)\/?$/, '/billing');
+};
+
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (require('electron-squirrel-startup')) {
     app.quit();
@@ -934,6 +939,11 @@ ipcMain.handle('download-excel-template', async () => {
 
 // Excel'den toplu mükellef importı
 const EXPECTED_HEADERS = ['firma adı', 'vergi numarası', 'gib kullanıcı kodu', 'gib şifresi'];
+const normalizeExcelHeader = (value) =>
+    String(value || '')
+        .trim()
+        .toLocaleLowerCase('tr-TR')
+        .replace(/\s+/g, ' ');
 
 ipcMain.handle('import-clients-from-excel', async (event, fileBuffer) => {
     const workbook = new ExcelJS.Workbook();
@@ -954,10 +964,11 @@ ipcMain.handle('import-clients-from-excel', async (event, fileBuffer) => {
     // Header doğrulama
     const headerRow = worksheet.getRow(1);
     const headers = headerRow.values
-        ? headerRow.values.slice(1).map((v) => (v != null ? String(v).trim().toLowerCase() : ''))
+        ? headerRow.values.slice(1).map((v) => normalizeExcelHeader(v))
         : [];
+    const hasExpectedHeaders = EXPECTED_HEADERS.every((header, index) => headers[index] === header);
 
-    if (headers.length < 1 || !headers[0].includes('firma')) {
+    if (!hasExpectedHeaders) {
         return {
             saved: 0,
             errors: [],
@@ -1153,8 +1164,7 @@ ipcMain.handle('open-checkout', async (event, params) => {
     urlParams.set('name', name);
     if (phone) urlParams.set('phone', phone);
 
-    const billingBase = process.env.BILLING_URL || 'https://muhasebeasistani.com/billing';
-    const checkoutUrl = `${billingBase}/checkout?${urlParams.toString()}`;
+    const checkoutUrl = `${getCheckoutBaseUrl()}/checkout?${urlParams.toString()}`;
 
     const checkoutWindow = new BrowserWindow({
         width: 520,
