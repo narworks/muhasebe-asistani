@@ -1563,21 +1563,14 @@ async function run(onStatusUpdate, apiKey, scanConfig = {}, options = {}, deduct
                 break;
             }
 
-            // Hourly limit check — wait if needed
-            const nowHour = new Date().getHours();
-            if (hourlyScanHour !== nowHour) {
-                hourlyScanHour = nowHour;
-                hourlyScanCount = 0;
-            }
+            // Rate limit check — 10 min cooldown when limit reached
             if (hourlyScanCount >= HOURLY_CLIENT_LIMIT) {
-                const waitMinutes = 60 - new Date().getMinutes();
+                const COOLDOWN_MINUTES = 10;
                 onStatusUpdate({
-                    message: `Saatlik güvenli limit (${HOURLY_CLIENT_LIMIT} mükellef). ${waitMinutes} dakika bekleniyor...`,
+                    message: `Güvenli limit (${HOURLY_CLIENT_LIMIT} mükellef). ${COOLDOWN_MINUTES} dakika bekleniyor...`,
                     type: 'info',
                 });
-                // Wait until next hour
-                await new Promise((r) => setTimeout(r, waitMinutes * 60 * 1000));
-                hourlyScanHour = new Date().getHours();
+                await new Promise((r) => setTimeout(r, COOLDOWN_MINUTES * 60 * 1000));
                 hourlyScanCount = 0;
                 if (scanCancelled) break;
             }
