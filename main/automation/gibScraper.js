@@ -12,6 +12,7 @@ const GIB_LOGIN_URL = 'https://dijital.gib.gov.tr/portal/login';
 const settings = require('../settings');
 const logger = require('../logger');
 const gibApiClient = require('./gibApiClient');
+const gibHttpLogin = require('./gibHttpLogin');
 let Sentry;
 try {
     Sentry = require('@sentry/electron/main');
@@ -150,7 +151,7 @@ const downloadDocumentByClick = async (page, rowIndex, tableSelector, filePath) 
             return null;
         }
 
-        await page.waitForNavigation({ waitUntil: 'networkidle0', timeout: 15000 }).catch(() => {});
+        await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 15000 }).catch(() => {});
         await new Promise((r) => setTimeout(r, 2000));
 
         // Step 3: Click "BELGE GÖRÜNTÜLE" — triggers direct file download
@@ -177,7 +178,7 @@ const downloadDocumentByClick = async (page, rowIndex, tableSelector, filePath) 
                 }
             }
         });
-        await page.waitForNavigation({ waitUntil: 'networkidle0', timeout: 10000 }).catch(() => {});
+        await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 10000 }).catch(() => {});
 
         // Rename the downloaded file (Chrome saves with guid as filename)
         if (guid) {
@@ -340,9 +341,9 @@ const randomDelay = async (minSec, maxSec) => {
 // Named delays for human-like behavior simulation
 // Competitor-matched timing (tebligattakip.com runs 150 clients 3x/day without blocks)
 const HUMAN_DELAYS = {
-    betweenDocuments: [5, 10], // Between document downloads
-    betweenPages: [3, 5], // Between pagination
-    afterPageLoad: [2, 4], // After page load
+    betweenDocuments: [1, 3], // Between document downloads (API calls within authenticated session)
+    betweenPages: [1, 3], // Between pagination
+    afterPageLoad: [1, 2], // After page load
     betweenClients: [15, 30], // Between client sessions
     batchPause: [60, 120], // Break between batches
 };
@@ -448,7 +449,7 @@ const checkForIPBlock = async (page) => {
 
 const ensureLoginForm = async (page) => {
     logger.debug('[DEBUG] Navigating to GIB login page:', GIB_LOGIN_URL);
-    await page.goto(GIB_LOGIN_URL, { waitUntil: 'networkidle0', timeout: 60000 });
+    await page.goto(GIB_LOGIN_URL, { waitUntil: 'domcontentloaded', timeout: 60000 });
 
     // Check for IP block BEFORE anything else
     await checkForIPBlock(page);
@@ -553,7 +554,7 @@ const logoutFromGIB = async (page) => {
         if (loggedOut) {
             logger.debug('[DEBUG] Logout button clicked');
             await page
-                .waitForNavigation({ waitUntil: 'networkidle0', timeout: 10000 })
+                .waitForNavigation({ waitUntil: 'networkidle2', timeout: 10000 })
                 .catch(() => {});
             await new Promise((r) => setTimeout(r, 2000));
         } else {
@@ -591,14 +592,14 @@ const logoutFromGIB = async (page) => {
 
             if (menuLogout) {
                 await page
-                    .waitForNavigation({ waitUntil: 'networkidle0', timeout: 10000 })
+                    .waitForNavigation({ waitUntil: 'networkidle2', timeout: 10000 })
                     .catch(() => {});
             } else {
                 // Strategy 3: Direct logout URL
                 logger.debug('[DEBUG] Trying direct logout URL...');
                 await page
                     .goto('https://dijital.gib.gov.tr/portal/logout', {
-                        waitUntil: 'networkidle0',
+                        waitUntil: 'networkidle2',
                         timeout: 10000,
                     })
                     .catch(() => {});
@@ -763,6 +764,100 @@ const hasDataOnPage = async (page, selector) => {
     return count > 0;
 };
 
+/**
+ * HTTP-only login + API fetch. No Puppeteer needed.
+ * ~3-5s login + ~2-5s fetch vs ~30-45s with Puppeteer.
+ */
+const httpLoginAndFetch = async (client, password, apiKey, isFirstScan, config, onStatusUpdate) => {
+    const status = (msg) => {
+        if (onStatusUpdate)
+            onStatusUpdate({ message: `  → ${msg}`, type: 'process', firmId: client.id });
+    };
+
+    const loginResult = await gibHttpLogin.httpLogin(
+        client.gib_user_code,
+        password,
+        apiKey,
+        config.maxCaptchaRetries
+    );
+    const apiClient = gibApiClient.createApiClient(loginResult.token);
+    status('API ile tebligatlar çekiliyor (HTTP)...');
+
+    let allDtos = [];
+    if (isFirstScan) {
+        const [nonArchived, archived] = await Promise.all([
+            gibApiClient.fetchAllTebligatlar(apiClient),
+            gibApiClient.fetchAllTebligatlar(apiClient, { arsivDurum: 1 }),
+        ]);
+        allDtos = [...nonArchived, ...archived];
+    } else {
+        allDtos = await gibApiClient.fetchAllTebligatlar(apiClient);
+    }
+
+    const mapped = allDtos.map(gibApiClient.mapTebligatDto);
+    status(`${mapped.length} tebligat bulundu (HTTP API).`);
+
+    for (let mi = 0; mi < mapped.length; mi++) {
+        if (scanCancelled) break;
+        const teb = mapped[mi];
+        const docsDir = getDocumentsDir(
+            client.id,
+            client.firm_name,
+            teb.date || teb.notificationDate || teb.sendDate
+        );
+        const safeDocNo = (teb.documentNo || 'doc').replace(/[^a-zA-Z0-9-_]/g, '_');
+        const baseName = `tebligat_${safeDocNo}`;
+        const filePath = path.join(docsDir, `${baseName}.pdf`);
+
+        const existingFile = ['.pdf', '.imz', '.jpg', '.png'].reduce((found, ext) => {
+            if (found) return found;
+            const p = path.join(docsDir, `${baseName}${ext}`);
+            return fs.existsSync(p) ? p : null;
+        }, null);
+
+        if (existingFile) {
+            teb.documentPath = existingFile;
+            teb._newDownload = false;
+            continue;
+        }
+        if (teb.documentNo && database.isSkipDownload(client.id, teb.documentNo)) {
+            teb._newDownload = false;
+            continue;
+        }
+        if (client.scan_date_filter && teb.date) {
+            try {
+                const filterDate = new Date(client.scan_date_filter);
+                let tebDate;
+                const m = String(teb.date).match(/^(\d{2})\/(\d{2})\/(\d{4})/);
+                if (m) tebDate = new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]));
+                else tebDate = new Date(teb.date);
+                if (tebDate < filterDate) {
+                    teb._newDownload = false;
+                    continue;
+                }
+            } catch {
+                /* date parse failed, download anyway */
+            }
+        }
+
+        status(`Döküman indiriliyor (${mi + 1}/${mapped.length}): ${teb.documentNo || '?'}...`);
+        try {
+            const dlPath = await gibApiClient.downloadDocument(apiClient, teb, filePath);
+            if (dlPath) {
+                teb.documentPath = dlPath;
+                teb._newDownload = true;
+            }
+        } catch (dlErr) {
+            logger.debug(`[HTTP DL] ${teb.documentNo}: ${dlErr.message}`);
+        }
+        if (mi < mapped.length - 1) {
+            await randomDelay(...HUMAN_DELAYS.betweenDocuments);
+        }
+    }
+
+    return mapped;
+};
+
 const loginAndFetch = async (
     page,
     client,
@@ -824,7 +919,7 @@ const loginAndFetch = async (
             logger.debug('[DEBUG] Login button found:', selector);
             await Promise.all([
                 page
-                    .waitForNavigation({ waitUntil: 'networkidle0', timeout: 15000 })
+                    .waitForNavigation({ waitUntil: 'networkidle2', timeout: 15000 })
                     .catch(() => {}),
                 page.click(selector),
             ]);
@@ -849,7 +944,7 @@ const loginAndFetch = async (
         });
         if (clickedByText) {
             await page
-                .waitForNavigation({ waitUntil: 'networkidle0', timeout: 15000 })
+                .waitForNavigation({ waitUntil: 'networkidle2', timeout: 15000 })
                 .catch(() => {});
         } else {
             throw new Error('Giriş butonu bulunamadı.');
@@ -979,7 +1074,7 @@ const loginAndFetch = async (
 
     if (eTebligatLink) {
         await Promise.all([
-            page.waitForNavigation({ waitUntil: 'networkidle0', timeout: 20000 }).catch(() => {}),
+            page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 20000 }).catch(() => {}),
             page.evaluate(() => {
                 const links = Array.from(document.querySelectorAll('a'));
                 const link = links.find(
@@ -996,7 +1091,7 @@ const loginAndFetch = async (
     } else {
         await page
             .goto('https://dijital.gib.gov.tr/portal/e-tebligat', {
-                waitUntil: 'networkidle0',
+                waitUntil: 'networkidle2',
                 timeout: 20000,
             })
             .catch(() => {});
@@ -1174,7 +1269,7 @@ const loginAndFetch = async (
                         ) {
                             await page
                                 .goto('https://dijital.gib.gov.tr/portal/e-tebligat', {
-                                    waitUntil: 'networkidle0',
+                                    waitUntil: 'networkidle2',
                                     timeout: 20000,
                                 })
                                 .catch(() => {});
@@ -1190,7 +1285,7 @@ const loginAndFetch = async (
                         // Try to recover to the list page
                         await page
                             .goto('https://dijital.gib.gov.tr/portal/e-tebligat', {
-                                waitUntil: 'networkidle0',
+                                waitUntil: 'networkidle2',
                                 timeout: 20000,
                             })
                             .catch(() => {});
@@ -1333,20 +1428,20 @@ async function run(onStatusUpdate, apiKey, scanConfig = {}, options = {}, deduct
     // A real accountant spends 5-7 minutes per client session.
     // We simulate this by enforcing strict minimums that cannot be overridden.
     const merged = {
-        delayMin: 60,
-        delayMax: 180,
-        batchSize: 10,
-        batchPauseMin: 300,
-        batchPauseMax: 600,
+        delayMin: 20,
+        delayMax: 45,
+        batchSize: 25,
+        batchPauseMin: 120,
+        batchPauseMax: 240,
         maxCaptchaRetries: 2,
         ...scanConfig,
     };
     const config = {
         ...merged,
-        delayMin: Math.max(merged.delayMin, 15), // Min 15s between clients
-        delayMax: Math.max(merged.delayMax, 30), // Min 30s max delay
-        batchSize: Math.min(merged.batchSize, 20), // Max 20 clients per batch
-        batchPauseMin: Math.max(merged.batchPauseMin, 60), // Min 1 min batch pause
+        delayMin: Math.max(merged.delayMin, 10), // Min 10s between clients
+        delayMax: Math.max(merged.delayMax, 15), // Min 15s max delay
+        batchSize: Math.min(merged.batchSize, 50), // Max 50 clients per batch
+        batchPauseMin: Math.max(merged.batchPauseMin, 30), // Min 30s batch pause
     };
 
     let activeClients = database.getClients().filter((c) => c.status === 'active');
@@ -1444,6 +1539,7 @@ async function run(onStatusUpdate, apiKey, scanConfig = {}, options = {}, deduct
 
     // Track per-client scan results for final report
     const scanResults = isResume ? lastScanState.scanResults || [] : [];
+    let consecutiveApiSuccesses = 0; // Track API-only streak for batch pause skip
 
     onStatusUpdate(buildProgress(alreadyDone, totalAll, null, errorCount, successCount));
 
@@ -1538,9 +1634,8 @@ async function run(onStatusUpdate, apiKey, scanConfig = {}, options = {}, deduct
                 continue;
             }
 
-            // Batch pause (based on processed count in this session)
-            if (i > 0 && i % config.batchSize === 0) {
-                // Silent batch pause
+            // Batch pause — skip if all recent clients used API mode (lightweight requests)
+            if (i > 0 && i % config.batchSize === 0 && consecutiveApiSuccesses < config.batchSize) {
                 await randomDelay(config.batchPauseMin, config.batchPauseMax);
                 if (scanCancelled) {
                     lastScanState.wasCancelled = true;
@@ -1593,27 +1688,20 @@ async function run(onStatusUpdate, apiKey, scanConfig = {}, options = {}, deduct
             let succeeded = false;
             let lastErrorType = null;
             let lastErrorMessage = null;
+            const clientIsFirstScan = !client.last_full_scan_at;
 
-            // Max attempts need to cover captcha retries; per-error-type logic inside catch
-            for (let attempt = 1; attempt <= config.maxCaptchaRetries; attempt++) {
-                if (scanCancelled) break;
-
-                let page;
+            // --- HTTP-only login (fast path: ~3-5s vs ~30-45s with Puppeteer) ---
+            if (!scanCancelled) {
                 try {
-                    page = await browser.newPage();
-                    await page.setUserAgent(USER_AGENT);
-                    await page.setViewport({ width: 1920, height: 1080 });
-
-                    await ensureLoginForm(page);
-                    const clientIsFirstScan = !client.last_full_scan_at;
-                    const tebligatlar = await loginAndFetch(
-                        page,
+                    const httpResult = await httpLoginAndFetch(
                         client,
                         password,
                         apiKey,
-                        onStatusUpdate,
-                        clientIsFirstScan
+                        clientIsFirstScan,
+                        config,
+                        onStatusUpdate
                     );
+                    const tebligatlar = httpResult;
 
                     const count = tebligatlar.length;
                     let savedCount = 0;
@@ -1682,6 +1770,7 @@ async function run(onStatusUpdate, apiKey, scanConfig = {}, options = {}, deduct
                     hourlyScanCount++;
                     saveRateLimits();
                     succeeded = true;
+                    consecutiveApiSuccesses++;
 
                     // Mark first scan complete for this client
                     if (clientIsFirstScan) {
@@ -1690,41 +1779,17 @@ async function run(onStatusUpdate, apiKey, scanConfig = {}, options = {}, deduct
 
                     // Mark this client as processed
                     lastScanState.processedClientIds.add(client.id);
-
-                    break;
-                } catch (err) {
-                    // PII-safe: don't include firm_name in Sentry-forwarded logs
+                } catch (httpErr) {
+                    // HTTP login failed — will fall through to Puppeteer
                     logger.debug(
-                        `[${client.firm_name}] Deneme ${attempt}/${config.maxCaptchaRetries}:`,
-                        err.message
+                        `[HTTP-Login] ${client.firm_name}: ${httpErr.errorType || 'error'} — ${httpErr.message}`
                     );
 
-                    // Determine error type (either from classified login error or legacy patterns)
-                    let errorType = err.errorType || null;
-                    if (!errorType) {
-                        if (err.message === 'GIB_IP_BLOCKED') {
-                            errorType = 'ip_blocked';
-                        } else if (err.message.includes('Navigation timeout')) {
-                            errorType = 'network_timeout';
-                        } else if (
-                            err.message.toLowerCase().includes('captcha') ||
-                            err.message.includes('login sayfasında')
-                        ) {
-                            errorType = 'captcha_failed';
-                        } else if (err.message.includes('Giriş başarısız')) {
-                            errorType = 'captcha_failed'; // legacy fallback
-                        } else {
-                            errorType = 'unknown';
-                        }
-                    }
-                    lastErrorType = errorType;
-                    lastErrorMessage = err.message;
-
-                    // CRITICAL: IP block — stop entire scan
-                    if (errorType === 'ip_blocked') {
+                    // IP block in HTTP mode stops everything too
+                    if (httpErr.errorType === 'ip_blocked') {
                         onStatusUpdate({
                             message:
-                                '⛔ DİKKAT: GİB tarafından IP adresiniz engellenmiş. Tarama durduruluyor. Lütfen GİB ile iletişime geçin.',
+                                '⛔ DİKKAT: GİB tarafından IP adresiniz engellenmiş. Tarama durduruluyor.',
                             type: 'error',
                         });
                         scanCancelled = true;
@@ -1736,51 +1801,201 @@ async function run(onStatusUpdate, apiKey, scanConfig = {}, options = {}, deduct
                         return;
                     }
 
-                    // Fail-fast for definitive errors — no retry
-                    if (errorType === 'wrong_credentials' || errorType === 'account_locked') {
-                        break;
-                    }
-
-                    // Retry strategies per error type
-                    let maxRetry = 1;
-                    let backoffSec = 5;
-                    if (errorType === 'captcha_failed') {
-                        maxRetry = config.maxCaptchaRetries; // 2 retries (3 attempts total)
-                        backoffSec = 5 * Math.pow(2, attempt - 1); // 5, 10s
-                    } else if (errorType === 'network_timeout') {
-                        maxRetry = 1; // 1 retry only
-                        backoffSec = 30;
-                    } else {
-                        maxRetry = 1; // unknown → 1 retry
-                        backoffSec = 10;
-                    }
-
-                    if (attempt < maxRetry) {
-                        await new Promise((r) => setTimeout(r, backoffSec * 1000));
-                    } else {
-                        break;
-                    }
-                } finally {
-                    if (page) {
-                        try {
-                            await logoutFromGIB(page);
-                        } catch (logoutErr) {
-                            logger.debug('[DEBUG] Logout error (ignored):', logoutErr.message);
-                        }
-                        try {
-                            await page.close();
-                        } catch (closeErr) {
-                            logger.debug('[DEBUG] Page close error (ignored):', closeErr.message);
-                        }
+                    // Wrong credentials / account locked — no point retrying with Puppeteer
+                    if (
+                        httpErr.errorType === 'wrong_credentials' ||
+                        httpErr.errorType === 'account_locked'
+                    ) {
+                        lastErrorType = httpErr.errorType;
+                        lastErrorMessage = httpErr.message;
                     }
                 }
             }
 
+            // --- Puppeteer fallback (only if HTTP path did not succeed) ---
+            if (
+                !succeeded &&
+                !scanCancelled &&
+                lastErrorType !== 'wrong_credentials' &&
+                lastErrorType !== 'account_locked'
+            ) {
+                for (let attempt = 1; attempt <= config.maxCaptchaRetries; attempt++) {
+                    if (scanCancelled) break;
+
+                    let page;
+                    try {
+                        page = await browser.newPage();
+                        await page.setUserAgent(USER_AGENT);
+                        await page.setViewport({ width: 1920, height: 1080 });
+
+                        await ensureLoginForm(page);
+                        const tebligatlar = await loginAndFetch(
+                            page,
+                            client,
+                            password,
+                            apiKey,
+                            onStatusUpdate,
+                            clientIsFirstScan
+                        );
+
+                        const count = tebligatlar.length;
+                        let savedCount = 0;
+                        let newTebligatIds = [];
+
+                        if (count === 0) {
+                            const existingCount = database.getTebligatlarByClient(client.id).length;
+                            if (existingCount === 0) {
+                                const noNotificationRecord = [
+                                    {
+                                        sender: '-',
+                                        subject: '-',
+                                        documentNo: '-',
+                                        status: 'Tebligat yok',
+                                        date: new Date().toLocaleDateString('tr-TR'),
+                                        endDate: null,
+                                        documentUrl: null,
+                                        documentPath: null,
+                                    },
+                                ];
+                                const saveResult = database.saveTebligatlar(
+                                    client.id,
+                                    noNotificationRecord
+                                );
+                                savedCount = saveResult.inserted;
+                            }
+                            onStatusUpdate({ type: 'data-updated' });
+                            onStatusUpdate({
+                                message: `${client.firm_name}: Yeni tebligat bulunamadı.`,
+                                type: 'success',
+                                firmId: client.id,
+                            });
+                        } else {
+                            const newlyDownloaded = tebligatlar.filter(
+                                (t) => t.documentPath && t._newDownload
+                            ).length;
+                            const alreadyDownloaded = tebligatlar.filter(
+                                (t) => t.documentPath && !t._newDownload
+                            ).length;
+                            const saveResult = database.saveTebligatlar(client.id, tebligatlar);
+                            savedCount = saveResult.inserted;
+                            newTebligatIds = saveResult.newIds;
+                            onStatusUpdate({
+                                type: 'data-updated',
+                                newTebligatIds,
+                                clientId: client.id,
+                                clientName: client.firm_name,
+                            });
+                            const parts = [`${client.firm_name}: ${count} tebligat bulundu`];
+                            if (savedCount > 0) parts.push(`${savedCount} yeni kayıt`);
+                            if (newlyDownloaded > 0)
+                                parts.push(`${newlyDownloaded} yeni döküman indirildi`);
+                            if (alreadyDownloaded > 0)
+                                parts.push(`${alreadyDownloaded} döküman zaten mevcut`);
+                            onStatusUpdate({
+                                message: parts.join(', ') + '.',
+                                type: 'success',
+                                firmId: client.id,
+                            });
+                        }
+
+                        successCount++;
+                        dailyScanCount++;
+                        hourlyScanCount++;
+                        saveRateLimits();
+                        succeeded = true;
+                        consecutiveApiSuccesses++;
+                        if (clientIsFirstScan) database.updateClientScanDate(client.id);
+                        lastScanState.processedClientIds.add(client.id);
+                        break;
+                    } catch (err) {
+                        // PII-safe: don't include firm_name in Sentry-forwarded logs
+                        logger.debug(
+                            `[${client.firm_name}] Deneme ${attempt}/${config.maxCaptchaRetries}:`,
+                            err.message
+                        );
+
+                        // Determine error type (either from classified login error or legacy patterns)
+                        let errorType = err.errorType || null;
+                        if (!errorType) {
+                            if (err.message === 'GIB_IP_BLOCKED') {
+                                errorType = 'ip_blocked';
+                            } else if (err.message.includes('Navigation timeout')) {
+                                errorType = 'network_timeout';
+                            } else if (
+                                err.message.toLowerCase().includes('captcha') ||
+                                err.message.includes('login sayfasında')
+                            ) {
+                                errorType = 'captcha_failed';
+                            } else if (err.message.includes('Giriş başarısız')) {
+                                errorType = 'captcha_failed'; // legacy fallback
+                            } else {
+                                errorType = 'unknown';
+                            }
+                        }
+                        lastErrorType = errorType;
+                        lastErrorMessage = err.message;
+
+                        // CRITICAL: IP block — stop entire scan
+                        if (errorType === 'ip_blocked') {
+                            onStatusUpdate({
+                                message:
+                                    '⛔ DİKKAT: GİB tarafından IP adresiniz engellenmiş. Tarama durduruluyor. Lütfen GİB ile iletişime geçin.',
+                                type: 'error',
+                            });
+                            scanCancelled = true;
+                            if (activeBrowser) {
+                                activeBrowser.close().catch(() => {});
+                                activeBrowser = null;
+                            }
+                            isRunning = false;
+                            return;
+                        }
+
+                        // Fail-fast for definitive errors — no retry
+                        if (errorType === 'wrong_credentials' || errorType === 'account_locked') {
+                            break;
+                        }
+
+                        // Retry strategies per error type
+                        let maxRetry = 1;
+                        let backoffSec = 5;
+                        if (errorType === 'captcha_failed') {
+                            maxRetry = config.maxCaptchaRetries; // 2 retries (3 attempts total)
+                            backoffSec = 5 * Math.pow(2, attempt - 1); // 5, 10s
+                        } else if (errorType === 'network_timeout') {
+                            maxRetry = 1; // 1 retry only
+                            backoffSec = 30;
+                        } else {
+                            maxRetry = 1; // unknown → 1 retry
+                            backoffSec = 10;
+                        }
+
+                        if (attempt < maxRetry) {
+                            await new Promise((r) => setTimeout(r, backoffSec * 1000));
+                        } else {
+                            break;
+                        }
+                    } finally {
+                        if (page) {
+                            try {
+                                await page.close();
+                            } catch (closeErr) {
+                                logger.debug(
+                                    '[DEBUG] Page close error (ignored):',
+                                    closeErr.message
+                                );
+                            }
+                        }
+                    }
+                }
+            } // end Puppeteer fallback if
+
             if (!succeeded) {
                 errorCount++;
-                dailyScanCount++; // Count failed attempts too — GIB still saw the request
+                dailyScanCount++;
                 hourlyScanCount++;
                 saveRateLimits();
+                consecutiveApiSuccesses = 0;
                 lastScanState.processedClientIds.add(client.id);
 
                 // Record failed client with error classification
@@ -1994,7 +2209,7 @@ async function fetchSingleDocument(tebligat, apiKey) {
             if (btn) {
                 await Promise.all([
                     page
-                        .waitForNavigation({ waitUntil: 'networkidle0', timeout: 15000 })
+                        .waitForNavigation({ waitUntil: 'networkidle2', timeout: 15000 })
                         .catch(() => {}),
                     page.click(selector),
                 ]);
@@ -2030,7 +2245,7 @@ async function fetchSingleDocument(tebligat, apiKey) {
         // Fallback: Puppeteer-based DOM download
         await page
             .goto('https://dijital.gib.gov.tr/portal/e-tebligat', {
-                waitUntil: 'networkidle0',
+                waitUntil: 'networkidle2',
                 timeout: 20000,
             })
             .catch(() => {});
@@ -2145,6 +2360,26 @@ function getRateLimits() {
  * Used by preview and download functions.
  */
 async function loginAndGetToken(client, password, apiKey) {
+    // Try HTTP-only login first (no browser needed, ~3-5s)
+    try {
+        const result = await gibHttpLogin.httpLogin(client.gib_user_code, password, apiKey);
+        logger.debug(`[loginAndGetToken] HTTP login OK for ${client.gib_user_code}`);
+        return { browser: null, page: null, bearerToken: result.token };
+    } catch (httpErr) {
+        // IP block and credential errors propagate immediately
+        if (
+            httpErr.errorType === 'ip_blocked' ||
+            httpErr.errorType === 'wrong_credentials' ||
+            httpErr.errorType === 'account_locked'
+        ) {
+            throw httpErr;
+        }
+        logger.debug(
+            `[loginAndGetToken] HTTP login failed (${httpErr.errorType}), trying Puppeteer...`
+        );
+    }
+
+    // Puppeteer fallback
     const browser = await puppeteer.launch({
         headless: 'new',
         args: ['--no-sandbox', '--disable-setuid-sandbox'],
@@ -2189,7 +2424,7 @@ async function loginAndGetToken(client, password, apiKey) {
         if (btn) {
             await Promise.all([
                 page
-                    .waitForNavigation({ waitUntil: 'networkidle0', timeout: 15000 })
+                    .waitForNavigation({ waitUntil: 'networkidle2', timeout: 15000 })
                     .catch(() => {}),
                 page.click(selector),
             ]);
@@ -2273,7 +2508,8 @@ async function previewScan(onStatusUpdate, apiKey) {
     }
 
     const results = [];
-    const INTER_CLIENT_DELAY = 15000; // 15s between clients (GIB rate limiting)
+    const INTER_CLIENT_DELAY_MIN = 5; // 5-8s between clients (HTTP-only, lightweight)
+    const INTER_CLIENT_DELAY_MAX = 8;
     const previewStartTime = Date.now();
 
     // Helper: build progress for preview with elapsed/estimated
@@ -2295,121 +2531,141 @@ async function previewScan(onStatusUpdate, apiKey) {
         };
     };
 
-    try {
-        for (let i = 0; i < activeClients.length; i++) {
-            if (scanCancelled) {
-                onStatusUpdate({ message: 'Keşif durduruldu.', type: 'info' });
-                break;
-            }
+    const CONCURRENCY = 5;
+    let completedCount = 0;
 
-            const client = activeClients[i];
-            const okCount = results.filter((r) => r.ok).length;
-            onStatusUpdate(
-                buildPreviewProgress(i + 1, activeClients.length, client.firm_name, okCount)
+    const processOneClient = async (client, index) => {
+        if (scanCancelled) return;
+
+        onStatusUpdate({
+            message: `[${index + 1}/${activeClients.length}] ${client.firm_name} keşfediliyor...`,
+            type: 'process',
+            firmId: client.id,
+        });
+
+        const password = database.getClientPassword(client.id);
+        if (!password) {
+            results.push({
+                clientId: client.id,
+                firmName: client.firm_name,
+                ok: false,
+                error: 'Şifre yok',
+            });
+            return;
+        }
+
+        let browser;
+        try {
+            const loginResult = await loginAndGetToken(client, password, apiKey);
+            browser = loginResult.browser;
+            const { bearerToken } = loginResult;
+
+            const apiClient = gibApiClient.createApiClient(bearerToken);
+            const listResp = await apiClient.post('/etebligat/etebligat/tebligat-listele', {
+                meta: {
+                    pagination: { pageNo: 1, pageSize: 1000 },
+                    sortFieldName: 'id',
+                    sortType: 'ASC',
+                    filters: [],
+                },
+            });
+            const dtoList = listResp.data?.data?.tebligatDtoList || [];
+            const count = listResp.data?.data?.count || 0;
+
+            const existingTebligatlar = database.getTebligatlarByClient(client.id);
+            const existingDocNos = new Set(
+                existingTebligatlar.filter((t) => t.document_path).map((t) => t.document_no)
             );
+
+            const tebligatList = dtoList.map((dto) => ({
+                belgeNo: dto.belgeNo,
+                sender: dto.kurumAciklama || 'GİB',
+                subject: `${dto.belgeTuruAciklama || ''}${dto.altKurum ? ' - ' + dto.altKurum : ''}`,
+                sendDate: dto.gonderimZamani,
+                notificationDate: dto.tebligZamani,
+                status: dto.mukellefOkumaZamani ? 'Okunmuş' : 'Okunmamış',
+                _alreadyDownloaded: existingDocNos.has(dto.belgeNo),
+                _tebligId: dto.tebligId,
+                _tebligSecureId: dto.tebligSecureId,
+                _tarafId: dto.tarafId,
+                _tarafSecureId: dto.tarafSecureId,
+            }));
+
+            results.push({
+                clientId: client.id,
+                firmName: client.firm_name,
+                ok: true,
+                count,
+                tebligatList,
+            });
             onStatusUpdate({
-                message: `[${i + 1}/${activeClients.length}] ${client.firm_name} keşfediliyor...`,
-                type: 'process',
+                message: `${client.firm_name}: ${count} tebligat bulundu`,
+                type: 'success',
                 firmId: client.id,
             });
-
-            const password = database.getClientPassword(client.id);
-            if (!password) {
-                results.push({
-                    clientId: client.id,
-                    firmName: client.firm_name,
-                    ok: false,
-                    error: 'Şifre yok',
-                });
-                continue;
-            }
-
-            let browser;
-            try {
-                const loginResult = await loginAndGetToken(client, password, apiKey);
-                browser = loginResult.browser;
-                const { bearerToken } = loginResult;
-
-                const apiClient = gibApiClient.createApiClient(bearerToken);
-                // Single large page fetch (pageSize=1000, verified via API test)
-                const listResp = await apiClient.post('/etebligat/etebligat/tebligat-listele', {
-                    meta: {
-                        pagination: { pageNo: 1, pageSize: 1000 },
-                        sortFieldName: 'id',
-                        sortType: 'ASC',
-                        filters: [],
-                    },
-                });
-                const dtoList = listResp.data?.data?.tebligatDtoList || [];
-                const count = listResp.data?.data?.count || 0;
-
-                // Check which tebligatlar are already in local DB
-                const existingTebligatlar = database.getTebligatlarByClient(client.id);
-                const existingDocNos = new Set(
-                    existingTebligatlar.filter((t) => t.document_path).map((t) => t.document_no)
-                );
-
-                // Map to minimal preview format with download status
-                const tebligatList = dtoList.map((dto) => ({
-                    belgeNo: dto.belgeNo,
-                    sender: dto.kurumAciklama || 'GİB',
-                    subject: `${dto.belgeTuruAciklama || ''}${dto.altKurum ? ' - ' + dto.altKurum : ''}`,
-                    sendDate: dto.gonderimZamani,
-                    notificationDate: dto.tebligZamani,
-                    status: dto.mukellefOkumaZamani ? 'Okunmuş' : 'Okunmamış',
-                    _alreadyDownloaded: existingDocNos.has(dto.belgeNo),
-                    // Internal IDs for later download (not exposed to UI)
-                    _tebligId: dto.tebligId,
-                    _tebligSecureId: dto.tebligSecureId,
-                    _tarafId: dto.tarafId,
-                    _tarafSecureId: dto.tarafSecureId,
-                }));
-
-                results.push({
-                    clientId: client.id,
-                    firmName: client.firm_name,
-                    ok: true,
-                    count,
-                    tebligatList,
-                });
-
+        } catch (err) {
+            if (err.errorType === 'ip_blocked') {
+                scanCancelled = true;
                 onStatusUpdate({
-                    message: `${client.firm_name}: ${count} tebligat bulundu`,
-                    type: 'success',
-                    firmId: client.id,
-                });
-            } catch (err) {
-                if (Sentry) {
-                    Sentry.captureException(err, {
-                        tags: { component: 'preview-scan', phase: 'login-or-list' },
-                    });
-                }
-                results.push({
-                    clientId: client.id,
-                    firmName: client.firm_name,
-                    ok: false,
-                    error: err.message,
-                });
-                onStatusUpdate({
-                    message: `${client.firm_name}: hata — ${err.message}`,
+                    message: '⛔ GİB IP engellemesi — keşif durduruldu.',
                     type: 'error',
-                    firmId: client.id,
                 });
-            } finally {
-                if (browser) {
-                    try {
-                        await browser.close();
-                    } catch {
-                        /* ignore */
+                return;
+            }
+            if (Sentry) {
+                Sentry.captureException(err, {
+                    tags: { component: 'preview-scan', phase: 'login-or-list' },
+                });
+            }
+            results.push({
+                clientId: client.id,
+                firmName: client.firm_name,
+                ok: false,
+                error: err.message,
+            });
+            onStatusUpdate({
+                message: `${client.firm_name}: hata — ${err.message}`,
+                type: 'error',
+                firmId: client.id,
+            });
+        } finally {
+            if (browser) {
+                try {
+                    await browser.close();
+                } catch {
+                    /* ignore */
+                }
+            }
+            completedCount++;
+            const okCount = results.filter((r) => r.ok).length;
+            onStatusUpdate(
+                buildPreviewProgress(completedCount, activeClients.length, null, okCount)
+            );
+        }
+    };
+
+    try {
+        // Process clients with limited concurrency (staggered start)
+        const queue = activeClients.map((client, i) => ({ client, index: i }));
+        const workers = [];
+
+        for (let w = 0; w < Math.min(CONCURRENCY, queue.length); w++) {
+            const workerFn = async () => {
+                while (queue.length > 0 && !scanCancelled) {
+                    const item = queue.shift();
+                    if (!item) break;
+                    await processOneClient(item.client, item.index);
+                    if (queue.length > 0 && !scanCancelled) {
+                        await randomDelay(INTER_CLIENT_DELAY_MIN, INTER_CLIENT_DELAY_MAX);
                     }
                 }
-            }
-
-            // Inter-client delay
-            if (i < activeClients.length - 1 && !scanCancelled) {
-                await new Promise((r) => setTimeout(r, INTER_CLIENT_DELAY));
-            }
+            };
+            // Stagger worker starts by 1s each (HTTP-only, lightweight)
+            if (w > 0) await new Promise((r) => setTimeout(r, 1000));
+            workers.push(workerFn());
         }
+
+        await Promise.all(workers);
 
         onStatusUpdate({
             type: 'progress',
@@ -2687,7 +2943,7 @@ async function downloadSelectedTebligatlar(onStatusUpdate, apiKey, selections) {
             }
 
             if (i < selections.length - 1 && !scanCancelled) {
-                await new Promise((r) => setTimeout(r, 15000));
+                await randomDelay(8, 12);
             }
         }
 

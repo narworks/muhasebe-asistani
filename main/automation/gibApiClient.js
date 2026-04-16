@@ -43,7 +43,7 @@ async function listTebligatlar(apiClient, { pageNo = 1, pageSize = 100, arsivDur
 
 // Fetch all tebligatlar across pages (pageSize=100)
 async function fetchAllTebligatlar(apiClient, { arsivDurum = null } = {}) {
-    const PAGE_SIZE = 100;
+    const PAGE_SIZE = 1000;
     let pageNo = 1;
     const allItems = [];
 
