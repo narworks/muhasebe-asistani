@@ -215,8 +215,8 @@ let isRunning = false;
 let activeBrowser = null;
 
 // Rate limiting to prevent GIB IP blocking
-const DAILY_CLIENT_LIMIT = 200; // Competitors handle 150-450/day without blocks
-const HOURLY_CLIENT_LIMIT = 50; // ~1 client per 1-2 min
+const DAILY_CLIENT_LIMIT = 400; // Competitors handle 150-450/day without blocks
+const HOURLY_CLIENT_LIMIT = 100; // ~2 clients per min (HTTP-only, safe margin)
 
 // Persisted rate limit state — survives app restart
 // Monotonic time checks prevent OS clock manipulation:
