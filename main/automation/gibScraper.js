@@ -752,21 +752,35 @@ const httpLoginAndFetch = async (client, password, apiKey, isFirstScan, config, 
         config.maxCaptchaRetries
     );
     const apiClient = gibApiClient.createApiClient(loginResult.token);
-    status('API ile tebligatlar çekiliyor (HTTP)...');
 
     let allDtos = [];
     if (isFirstScan) {
+        // First scan: fetch all (non-archived + archived)
+        status('API ile tüm tebligat geçmişi çekiliyor (ilk tarama)...');
         const [nonArchived, archived] = await Promise.all([
             gibApiClient.fetchAllTebligatlar(apiClient),
             gibApiClient.fetchAllTebligatlar(apiClient, { arsivDurum: 1 }),
         ]);
         allDtos = [...nonArchived, ...archived];
+    } else if (client.last_full_scan_at) {
+        // Incremental: only tebligatlar since last scan
+        status(
+            `API: son taramadan (${new Date(client.last_full_scan_at).toLocaleDateString('tr-TR')}) sonraki yeni tebligatlar çekiliyor...`
+        );
+        allDtos = await gibApiClient.fetchAllTebligatlar(apiClient, {
+            sinceDate: client.last_full_scan_at,
+        });
     } else {
+        // No last_full_scan_at but not first scan — safety fallback, fetch non-archived only
+        status('API ile tebligatlar çekiliyor...');
         allDtos = await gibApiClient.fetchAllTebligatlar(apiClient);
     }
 
     const mapped = allDtos.map(gibApiClient.mapTebligatDto);
-    status(`${mapped.length} tebligat bulundu (HTTP API).`);
+    const foundMsg = isFirstScan
+        ? `${mapped.length} tebligat bulundu (tam geçmiş).`
+        : `${mapped.length} yeni tebligat bulundu.`;
+    status(foundMsg);
 
     // Filter: skip already-downloaded, skip-marked, and date-filtered tebligatlar
     const toDownload = [];
@@ -949,21 +963,32 @@ const loginAndFetch = async (
     if (bearerToken) {
         try {
             const apiClient = gibApiClient.createApiClient(bearerToken);
-            status('API ile tebligatlar çekiliyor...');
 
             let allDtos = [];
             if (isFirstScan) {
+                status('API ile tüm tebligat geçmişi çekiliyor (ilk tarama)...');
                 const [nonArchived, archived] = await Promise.all([
                     gibApiClient.fetchAllTebligatlar(apiClient),
                     gibApiClient.fetchAllTebligatlar(apiClient, { arsivDurum: 1 }),
                 ]);
                 allDtos = [...nonArchived, ...archived];
+            } else if (client.last_full_scan_at) {
+                status(
+                    `API: son taramadan (${new Date(client.last_full_scan_at).toLocaleDateString('tr-TR')}) sonraki yeni tebligatlar çekiliyor...`
+                );
+                allDtos = await gibApiClient.fetchAllTebligatlar(apiClient, {
+                    sinceDate: client.last_full_scan_at,
+                });
             } else {
+                status('API ile tebligatlar çekiliyor...');
                 allDtos = await gibApiClient.fetchAllTebligatlar(apiClient);
             }
 
             const mapped = allDtos.map(gibApiClient.mapTebligatDto);
-            status(`${mapped.length} tebligat bulundu (API), dökümanlar indiriliyor...`);
+            const foundMsg = isFirstScan
+                ? `${mapped.length} tebligat bulundu (tam geçmiş), dökümanlar indiriliyor...`
+                : `${mapped.length} yeni tebligat bulundu, dökümanlar indiriliyor...`;
+            status(foundMsg);
 
             // Filter: skip already-downloaded, skip-marked, date-filtered
             const toDownload = [];

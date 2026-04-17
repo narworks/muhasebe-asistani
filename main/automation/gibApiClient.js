@@ -23,7 +23,10 @@ function createApiClient(token) {
 }
 
 // POST /etebligat/etebligat/tebligat-listele
-async function listTebligatlar(apiClient, { pageNo = 1, pageSize = 100, arsivDurum = null } = {}) {
+async function listTebligatlar(
+    apiClient,
+    { pageNo = 1, pageSize = 100, arsivDurum = null, sortDesc = false } = {}
+) {
     const filters = [];
     if (arsivDurum !== null) {
         filters.push({ fieldName: 'arsivDurum', values: [String(arsivDurum)] });
@@ -33,7 +36,7 @@ async function listTebligatlar(apiClient, { pageNo = 1, pageSize = 100, arsivDur
         meta: {
             pagination: { pageNo, pageSize },
             sortFieldName: 'id',
-            sortType: 'ASC',
+            sortType: sortDesc ? 'DESC' : 'ASC',
             filters,
         },
     });
@@ -41,9 +44,38 @@ async function listTebligatlar(apiClient, { pageNo = 1, pageSize = 100, arsivDur
     return resp.data;
 }
 
-// Fetch all tebligatlar across pages (pageSize=100)
-async function fetchAllTebligatlar(apiClient, { arsivDurum = null } = {}) {
+/**
+ * Parse GIB date string to timestamp. Supports:
+ * - DD/MM/YYYY (HH:MM)
+ * - ISO 8601
+ * Returns null if unparseable.
+ */
+function parseGibDate(dateStr) {
+    if (!dateStr) return null;
+    const s = String(dateStr).trim();
+    const m = s.match(/^(\d{2})\/(\d{2})\/(\d{4})(?:\s+(\d{1,2}):(\d{2}))?/);
+    if (m) {
+        return new Date(
+            Number(m[3]),
+            Number(m[2]) - 1,
+            Number(m[1]),
+            Number(m[4] || 0),
+            Number(m[5] || 0)
+        ).getTime();
+    }
+    const t = new Date(s).getTime();
+    return Number.isNaN(t) ? null : t;
+}
+
+/**
+ * Fetch all tebligatlar across pages.
+ * If sinceDate is provided, uses DESC sort + early termination: stops paging
+ * once items older than sinceDate appear. Older items are dropped.
+ */
+async function fetchAllTebligatlar(apiClient, { arsivDurum = null, sinceDate = null } = {}) {
     const PAGE_SIZE = 1000;
+    const cutoff = sinceDate ? parseGibDate(sinceDate) || new Date(sinceDate).getTime() : null;
+    const useIncremental = cutoff !== null;
     let pageNo = 1;
     const allItems = [];
 
@@ -52,9 +84,24 @@ async function fetchAllTebligatlar(apiClient, { arsivDurum = null } = {}) {
             pageNo,
             pageSize: PAGE_SIZE,
             arsivDurum,
+            sortDesc: useIncremental,
         });
         const items = result.data?.tebligatDtoList || [];
-        allItems.push(...items);
+
+        if (useIncremental) {
+            let sawOlder = false;
+            for (const dto of items) {
+                const t = parseGibDate(dto.tebligZamani || dto.gonderimZamani);
+                if (t !== null && t < cutoff) {
+                    sawOlder = true;
+                    break;
+                }
+                allItems.push(dto);
+            }
+            if (sawOlder) break;
+        } else {
+            allItems.push(...items);
+        }
 
         const totalCount = result.data?.count || 0;
         if (allItems.length >= totalCount || items.length < PAGE_SIZE) break;
