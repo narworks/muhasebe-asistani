@@ -1,5 +1,5 @@
 const puppeteer = require('puppeteer');
-const { GoogleGenerativeAI } = require('@google/generative-ai');
+const pLimit = require('p-limit');
 const database = require('../database');
 const path = require('path');
 const fs = require('fs');
@@ -13,6 +13,7 @@ const settings = require('../settings');
 const logger = require('../logger');
 const gibApiClient = require('./gibApiClient');
 const gibHttpLogin = require('./gibHttpLogin');
+const captchaSolver = require('./captchaSolver');
 let Sentry;
 try {
     Sentry = require('@sentry/electron/main');
@@ -216,7 +217,7 @@ let activeBrowser = null;
 
 // Rate limiting to prevent GIB IP blocking
 const DAILY_CLIENT_LIMIT = 400; // Competitors handle 150-450/day without blocks
-const HOURLY_CLIENT_LIMIT = 100; // ~2 clients per min (HTTP-only, safe margin)
+const HOURLY_CLIENT_LIMIT = 200; // Single-session capacity (full daily limit in one hour)
 
 // Persisted rate limit state — survives app restart
 // Monotonic time checks prevent OS clock manipulation:
@@ -487,40 +488,10 @@ const solveCaptcha = async (page, apiKey) => {
     const captchaBuffer = await captchaElement.screenshot();
     const captchaBase64 = captchaBuffer.toString('base64');
 
-    logger.debug('[DEBUG] Sending CAPTCHA to Gemini AI...');
-    const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
-
-    // Retry Gemini API calls with backoff for rate limits
-    for (let attempt = 1; attempt <= 3; attempt++) {
-        try {
-            const result = await model.generateContent([
-                {
-                    text: 'Bu resimdeki metni oku. Sadece metni döndür, boşluksuz. Başka hiçbir şey yazma.',
-                },
-                { inlineData: { mimeType: 'image/png', data: captchaBase64 } },
-            ]);
-            const response = await result.response;
-            const captchaText = response.text().trim().replace(/\s/g, '');
-            logger.debug('[DEBUG] Gemini solved CAPTCHA:', captchaText);
-            return captchaText;
-        } catch (err) {
-            const isRateLimit =
-                err.message &&
-                (err.message.includes('429') ||
-                    err.message.includes('Rate') ||
-                    err.message.includes('exhausted'));
-            if (isRateLimit && attempt < 3) {
-                const waitSec = 30 * attempt;
-                logger.debug(
-                    `[DEBUG] Gemini rate limited, waiting ${waitSec}s (attempt ${attempt}/3)`
-                );
-                await new Promise((r) => setTimeout(r, waitSec * 1000));
-                continue;
-            }
-            throw err;
-        }
-    }
+    // Hybrid: Tesseract local first, Gemini fallback
+    const captchaText = await captchaSolver.solveCaptcha(captchaBase64, apiKey);
+    logger.debug('[DEBUG] CAPTCHA solved:', captchaText);
+    return captchaText;
 };
 
 const logoutFromGIB = async (page) => {
@@ -797,9 +768,9 @@ const httpLoginAndFetch = async (client, password, apiKey, isFirstScan, config, 
     const mapped = allDtos.map(gibApiClient.mapTebligatDto);
     status(`${mapped.length} tebligat bulundu (HTTP API).`);
 
-    for (let mi = 0; mi < mapped.length; mi++) {
-        if (scanCancelled) break;
-        const teb = mapped[mi];
+    // Filter: skip already-downloaded, skip-marked, and date-filtered tebligatlar
+    const toDownload = [];
+    for (const teb of mapped) {
         const docsDir = getDocumentsDir(
             client.id,
             client.firm_name,
@@ -839,21 +810,32 @@ const httpLoginAndFetch = async (client, password, apiKey, isFirstScan, config, 
                 /* date parse failed, download anyway */
             }
         }
-
-        status(`Döküman indiriliyor (${mi + 1}/${mapped.length}): ${teb.documentNo || '?'}...`);
-        try {
-            const dlPath = await gibApiClient.downloadDocument(apiClient, teb, filePath);
-            if (dlPath) {
-                teb.documentPath = dlPath;
-                teb._newDownload = true;
-            }
-        } catch (dlErr) {
-            logger.debug(`[HTTP DL] ${teb.documentNo}: ${dlErr.message}`);
-        }
-        if (mi < mapped.length - 1) {
-            await randomDelay(...HUMAN_DELAYS.betweenDocuments);
-        }
+        toDownload.push({ teb, filePath });
     }
+
+    // Parallel download with concurrency limit — 3 concurrent per client
+    const limit = pLimit(3);
+    let completedDownloads = 0;
+    await Promise.all(
+        toDownload.map(({ teb, filePath }) =>
+            limit(async () => {
+                if (scanCancelled) return;
+                try {
+                    const dlPath = await gibApiClient.downloadDocument(apiClient, teb, filePath);
+                    if (dlPath) {
+                        teb.documentPath = dlPath;
+                        teb._newDownload = true;
+                    }
+                } catch (dlErr) {
+                    logger.debug(`[HTTP DL] ${teb.documentNo}: ${dlErr.message}`);
+                }
+                completedDownloads++;
+                status(
+                    `Döküman indirildi (${completedDownloads}/${toDownload.length}): ${teb.documentNo || '?'}`
+                );
+            })
+        )
+    );
 
     return mapped;
 };
@@ -983,10 +965,9 @@ const loginAndFetch = async (
             const mapped = allDtos.map(gibApiClient.mapTebligatDto);
             status(`${mapped.length} tebligat bulundu (API), dökümanlar indiriliyor...`);
 
-            for (let i = 0; i < mapped.length; i++) {
-                if (scanCancelled) break;
-
-                const teb = mapped[i];
+            // Filter: skip already-downloaded, skip-marked, date-filtered
+            const toDownload = [];
+            for (const teb of mapped) {
                 const docsDir = getDocumentsDir(
                     client.id,
                     client.firm_name,
@@ -996,7 +977,6 @@ const loginAndFetch = async (
                 const baseName = `tebligat_${safeDocNo}`;
                 const filePath = path.join(docsDir, `${baseName}.pdf`);
 
-                // Check for existing file with any extension (.pdf, .imz, etc.)
                 const existingFile = ['.pdf', '.imz', '.jpg', '.png'].reduce((found, ext) => {
                     if (found) return found;
                     const p = path.join(docsDir, `${baseName}${ext}`);
@@ -1008,18 +988,13 @@ const loginAndFetch = async (
                     teb._newDownload = false;
                     continue;
                 }
-
-                // Skip if previously marked as skip_download (keşifte atlanan)
                 if (teb.documentNo && database.isSkipDownload(client.id, teb.documentNo)) {
                     teb._newDownload = false;
                     continue;
                 }
-
-                // Skip if client has scan_date_filter and tebligat is older
                 if (client.scan_date_filter && teb.date) {
                     try {
                         const filterDate = new Date(client.scan_date_filter);
-                        // Parse DD/MM/YYYY or ISO format
                         let tebDate;
                         const m = String(teb.date).match(/^(\d{2})\/(\d{2})\/(\d{4})/);
                         if (m) tebDate = new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]));
@@ -1032,25 +1007,36 @@ const loginAndFetch = async (
                         /* date parse failed, download anyway */
                     }
                 }
-
-                status(
-                    `Döküman indiriliyor (${i + 1}/${mapped.length}): ${teb.documentNo || '?'}...`
-                );
-
-                try {
-                    const dlPath = await gibApiClient.downloadDocument(apiClient, teb, filePath);
-                    if (dlPath) {
-                        teb.documentPath = dlPath;
-                        teb._newDownload = true;
-                    }
-                } catch (dlErr) {
-                    logger.debug(`[API DL] ${teb.documentNo}: ${dlErr.message}`);
-                }
-
-                if (i < mapped.length - 1) {
-                    await randomDelay(...HUMAN_DELAYS.betweenDocuments);
-                }
+                toDownload.push({ teb, filePath });
             }
+
+            // Parallel download with 3-concurrent limit per client
+            const limit = pLimit(3);
+            let completed = 0;
+            await Promise.all(
+                toDownload.map(({ teb, filePath }) =>
+                    limit(async () => {
+                        if (scanCancelled) return;
+                        try {
+                            const dlPath = await gibApiClient.downloadDocument(
+                                apiClient,
+                                teb,
+                                filePath
+                            );
+                            if (dlPath) {
+                                teb.documentPath = dlPath;
+                                teb._newDownload = true;
+                            }
+                        } catch (dlErr) {
+                            logger.debug(`[API DL] ${teb.documentNo}: ${dlErr.message}`);
+                        }
+                        completed++;
+                        status(
+                            `Döküman indirildi (${completed}/${toDownload.length}): ${teb.documentNo || '?'}`
+                        );
+                    })
+                )
+            );
 
             status(`Tarama tamamlandı: ${mapped.length} tebligat (API).`);
             return mapped;
@@ -1428,11 +1414,11 @@ async function run(onStatusUpdate, apiKey, scanConfig = {}, options = {}, deduct
     // A real accountant spends 5-7 minutes per client session.
     // We simulate this by enforcing strict minimums that cannot be overridden.
     const merged = {
-        delayMin: 20,
-        delayMax: 45,
-        batchSize: 25,
-        batchPauseMin: 120,
-        batchPauseMax: 240,
+        delayMin: 18,
+        delayMax: 22,
+        batchSize: 50,
+        batchPauseMin: 60,
+        batchPauseMax: 120,
         maxCaptchaRetries: 2,
         ...scanConfig,
     };

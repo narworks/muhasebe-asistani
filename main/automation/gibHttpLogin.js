@@ -1,6 +1,6 @@
 const axios = require('axios');
-const { GoogleGenerativeAI } = require('@google/generative-ai');
 const logger = require('../logger');
+const captchaSolver = require('./captchaSolver');
 
 const GIB_API_BASE = 'https://dijital.gib.gov.tr/apigateway';
 const CAPTCHA_URL = `${GIB_API_BASE}/captcha/getnewcaptcha`;
@@ -27,38 +27,7 @@ async function fetchCaptcha() {
     return { imageBase64: captchaImgBase64, cid };
 }
 
-async function solveCaptchaWithGemini(imageBase64, apiKey) {
-    const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
-
-    for (let attempt = 1; attempt <= 3; attempt++) {
-        try {
-            const result = await model.generateContent([
-                {
-                    text: 'Bu resimdeki metni oku. Sadece metni döndür, boşluksuz. Başka hiçbir şey yazma.',
-                },
-                { inlineData: { mimeType: 'image/png', data: imageBase64 } },
-            ]);
-            const response = await result.response;
-            return response.text().trim().replace(/\s/g, '');
-        } catch (err) {
-            const isRateLimit =
-                err.message &&
-                (err.message.includes('429') ||
-                    err.message.includes('Rate') ||
-                    err.message.includes('exhausted'));
-            if (isRateLimit && attempt < 3) {
-                const waitSec = 30 * attempt;
-                logger.debug(
-                    `[HTTP-Login] Gemini rate limited, waiting ${waitSec}s (attempt ${attempt}/3)`
-                );
-                await new Promise((r) => setTimeout(r, waitSec * 1000));
-                continue;
-            }
-            throw err;
-        }
-    }
-}
+// CAPTCHA solving delegated to captchaSolver (Tesseract local + Gemini fallback)
 
 async function postLogin(userid, sifre, captchaText, captchaCid) {
     const resp = await axios.post(
@@ -121,7 +90,7 @@ async function httpLogin(userid, password, apiKey, maxAttempts = 3) {
             const captcha = await fetchCaptcha();
             logger.debug(`[HTTP-Login] CAPTCHA fetched (cid: ${captcha.cid.substring(0, 8)}...)`);
 
-            const captchaText = await solveCaptchaWithGemini(captcha.imageBase64, apiKey);
+            const captchaText = await captchaSolver.solveCaptcha(captcha.imageBase64, apiKey);
             logger.debug(`[HTTP-Login] CAPTCHA solved: ${captchaText}`);
 
             const result = await postLogin(userid, password, captchaText, captcha.cid);
@@ -179,4 +148,4 @@ async function httpLogin(userid, password, apiKey, maxAttempts = 3) {
     }
 }
 
-module.exports = { httpLogin, fetchCaptcha, solveCaptchaWithGemini };
+module.exports = { httpLogin, fetchCaptcha };
