@@ -44,6 +44,10 @@ build/*
 !build/entitlements.mac.plist
 !build/icon.png
 !build/icon.svg
+!build/trayIcon.png
+!build/trayIcon@2x.png
+!build/trayIconTemplate.png
+!build/trayIconTemplate@2x.png
 supabase/.temp/
 
 # Next.js build output
