@@ -379,7 +379,31 @@ const getUserInfo = () => {
     return {
         userId: state.userId,
         email: state.email,
+        diagnosticEnabled: state.diagnosticEnabled === true,
     };
+};
+
+/**
+ * Supabase'den diagnostic_enabled flag'ini çeker ve lokal state'e yazar.
+ * Whitelisted kullanıcılar için "Tanı Paketi İndir" butonunu açar.
+ */
+const syncDiagnosticFlag = async () => {
+    ensureLoaded();
+    if (!state.userId) return false;
+    try {
+        const supabase = require('./supabase').getClient();
+        if (!supabase) return false;
+        const { data, error } = await supabase
+            .from('users')
+            .select('diagnostic_enabled')
+            .eq('id', state.userId)
+            .single();
+        if (error || !data) return false;
+        state.diagnosticEnabled = Boolean(data.diagnostic_enabled);
+        return state.diagnosticEnabled;
+    } catch {
+        return false;
+    }
 };
 
 /**
@@ -617,6 +641,7 @@ module.exports = {
     getSubscriptionStatus,
     getBillingUrl,
     getUserInfo,
+    syncDiagnosticFlag,
     syncCredits,
     deductCredits,
     refundCredits,

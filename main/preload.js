@@ -41,6 +41,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getLastScanResults: () => ipcRenderer.invoke('get-last-scan-results'),
     getScanHistory: (limit) => ipcRenderer.invoke('get-scan-history', limit),
     getLastScanFailedIds: () => ipcRenderer.invoke('get-last-scan-failed-ids'),
+    exportDiagBundle: (scanHistoryId) => ipcRenderer.invoke('export-diag-bundle', scanHistoryId),
     estimateScanDuration: (clientCount) =>
         ipcRenderer.invoke('estimate-scan-duration', clientCount),
     startScanWithOptions: (options) => ipcRenderer.send('start-scan-with-options', options),

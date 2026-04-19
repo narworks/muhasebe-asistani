@@ -476,6 +476,11 @@ function getScanHistory(limit = 50) {
         .all(limit);
 }
 
+function getScanHistoryById(scanHistoryId) {
+    if (!db) init();
+    return db.prepare(`SELECT * FROM scan_history WHERE id = ?`).get(scanHistoryId);
+}
+
 function getLastScanFailedClientIds() {
     if (!db) init();
     const latest = db
@@ -547,6 +552,7 @@ module.exports = {
     createScanHistory,
     updateScanHistory,
     getScanHistory,
+    getScanHistoryById,
     getLastScanFailedClientIds,
     updateClientScanFilter,
     resetClientSkipDownloads,

@@ -90,7 +90,12 @@ async function httpLogin(userid, password, apiKey, maxAttempts = 3) {
             const captcha = await fetchCaptcha();
             logger.debug(`[HTTP-Login] CAPTCHA fetched (cid: ${captcha.cid.substring(0, 8)}...)`);
 
-            const captchaText = await captchaSolver.solveCaptcha(captcha.imageBase64, apiKey);
+            const captchaResult = await captchaSolver.solveCaptchaWithSource(
+                captcha.imageBase64,
+                apiKey
+            );
+            const captchaText = captchaResult.text;
+            logger.debug(`[HTTP-Login] CAPTCHA solved by ${captchaResult.source}: ${captchaText}`);
             logger.debug(`[HTTP-Login] CAPTCHA solved: ${captchaText}`);
 
             const result = await postLogin(userid, password, captchaText, captcha.cid);

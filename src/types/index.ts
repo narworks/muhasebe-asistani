@@ -139,6 +139,7 @@ export interface Subscription {
 export interface UserInfo {
     userId: string | null;
     email: string | null;
+    diagnosticEnabled?: boolean;
 }
 
 // Auth types

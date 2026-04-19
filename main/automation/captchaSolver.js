@@ -7,6 +7,25 @@ let tesseractInitPromise = null;
 // CAPTCHA text validation: 4-7 alphanumeric characters
 const CAPTCHA_VALID_REGEX = /^[A-Za-z0-9]{4,7}$/;
 
+// Aggregate solver stats (exposed for telemetry)
+const stats = {
+    tesseract_success: 0,
+    tesseract_fail: 0,
+    gemini_success: 0,
+    gemini_fail: 0,
+};
+
+function resetStats() {
+    stats.tesseract_success = 0;
+    stats.tesseract_fail = 0;
+    stats.gemini_success = 0;
+    stats.gemini_fail = 0;
+}
+
+function getStats() {
+    return { ...stats };
+}
+
 /**
  * Lazy-initialize Tesseract worker. Single worker reused across solves.
  * First call pays ~500ms init cost, subsequent calls are fast.
@@ -59,12 +78,15 @@ async function solveWithTesseract(imageBase64) {
         const text = (data.text || '').trim().replace(/\s+/g, '');
 
         if (CAPTCHA_VALID_REGEX.test(text)) {
+            stats.tesseract_success++;
             logger.debug(`[CAPTCHA] Tesseract solved: ${text} (confidence: ${data.confidence})`);
             return { text, source: 'tesseract', confidence: data.confidence };
         }
+        stats.tesseract_fail++;
         logger.debug(`[CAPTCHA] Tesseract result invalid: "${text}"`);
         return null;
     } catch (err) {
+        stats.tesseract_fail++;
         logger.debug(`[CAPTCHA] Tesseract error: ${err.message}`);
         return null;
     }
@@ -87,6 +109,7 @@ async function solveWithGemini(imageBase64, apiKey) {
             ]);
             const response = await result.response;
             const text = response.text().trim().replace(/\s/g, '');
+            stats.gemini_success++;
             logger.debug(`[CAPTCHA] Gemini solved: ${text}`);
             return { text, source: 'gemini' };
         } catch (err) {
@@ -101,6 +124,7 @@ async function solveWithGemini(imageBase64, apiKey) {
                 await new Promise((r) => setTimeout(r, waitSec * 1000));
                 continue;
             }
+            stats.gemini_fail++;
             throw err;
         }
     }
@@ -113,15 +137,20 @@ async function solveWithGemini(imageBase64, apiKey) {
  * @returns {Promise<string>} solved CAPTCHA text
  */
 async function solveCaptcha(imageBase64, apiKey) {
-    // Try local OCR first
+    const result = await solveCaptchaWithSource(imageBase64, apiKey);
+    return result.text;
+}
+
+/**
+ * Same as solveCaptcha but returns { text, source } to let callers log solver stats.
+ */
+async function solveCaptchaWithSource(imageBase64, apiKey) {
     const tesseractResult = await solveWithTesseract(imageBase64);
     if (tesseractResult) {
-        return tesseractResult.text;
+        return { text: tesseractResult.text, source: 'tesseract' };
     }
-
-    // Fallback to Gemini
     const geminiResult = await solveWithGemini(imageBase64, apiKey);
-    return geminiResult.text;
+    return { text: geminiResult.text, source: 'gemini' };
 }
 
 /**
@@ -140,4 +169,12 @@ async function terminate() {
     }
 }
 
-module.exports = { solveCaptcha, solveWithTesseract, solveWithGemini, terminate };
+module.exports = {
+    solveCaptcha,
+    solveCaptchaWithSource,
+    solveWithTesseract,
+    solveWithGemini,
+    terminate,
+    getStats,
+    resetStats,
+};

@@ -23,10 +23,7 @@ function createApiClient(token) {
 }
 
 // POST /etebligat/etebligat/tebligat-listele
-async function listTebligatlar(
-    apiClient,
-    { pageNo = 1, pageSize = 100, arsivDurum = null, sortDesc = false } = {}
-) {
+async function listTebligatlar(apiClient, { pageNo = 1, pageSize = 100, arsivDurum = null } = {}) {
     const filters = [];
     if (arsivDurum !== null) {
         filters.push({ fieldName: 'arsivDurum', values: [String(arsivDurum)] });
@@ -36,7 +33,7 @@ async function listTebligatlar(
         meta: {
             pagination: { pageNo, pageSize },
             sortFieldName: 'id',
-            sortType: sortDesc ? 'DESC' : 'ASC',
+            sortType: 'ASC',
             filters,
         },
     });
@@ -68,14 +65,13 @@ function parseGibDate(dateStr) {
 }
 
 /**
- * Fetch all tebligatlar across pages.
- * If sinceDate is provided, uses DESC sort + early termination: stops paging
- * once items older than sinceDate appear. Older items are dropped.
+ * Fetch all tebligatlar across pages with ASC sort (GIB-native).
+ * If sinceDate is provided, items older than that date are filtered out locally
+ * after fetching. Pagination continues until all items fetched or totalCount reached.
  */
 async function fetchAllTebligatlar(apiClient, { arsivDurum = null, sinceDate = null } = {}) {
     const PAGE_SIZE = 1000;
     const cutoff = sinceDate ? parseGibDate(sinceDate) || new Date(sinceDate).getTime() : null;
-    const useIncremental = cutoff !== null;
     let pageNo = 1;
     const allItems = [];
 
@@ -84,28 +80,22 @@ async function fetchAllTebligatlar(apiClient, { arsivDurum = null, sinceDate = n
             pageNo,
             pageSize: PAGE_SIZE,
             arsivDurum,
-            sortDesc: useIncremental,
         });
         const items = result.data?.tebligatDtoList || [];
-
-        if (useIncremental) {
-            let sawOlder = false;
-            for (const dto of items) {
-                const t = parseGibDate(dto.tebligZamani || dto.gonderimZamani);
-                if (t !== null && t < cutoff) {
-                    sawOlder = true;
-                    break;
-                }
-                allItems.push(dto);
-            }
-            if (sawOlder) break;
-        } else {
-            allItems.push(...items);
-        }
+        allItems.push(...items);
 
         const totalCount = result.data?.count || 0;
         if (allItems.length >= totalCount || items.length < PAGE_SIZE) break;
         pageNo++;
+    }
+
+    // Local filter by date if sinceDate provided
+    if (cutoff !== null) {
+        return allItems.filter((dto) => {
+            const t = parseGibDate(dto.tebligZamani || dto.gonderimZamani);
+            if (t === null) return true; // keep if date unparseable (safer)
+            return t >= cutoff;
+        });
     }
 
     return allItems;

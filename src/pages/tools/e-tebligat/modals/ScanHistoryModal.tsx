@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import type { ScanHistoryItem } from '../types';
 
 interface Props {
@@ -6,6 +6,7 @@ interface Props {
     onClose: () => void;
     expandedHistoryId: number | null;
     onToggleExpand: (id: number) => void;
+    diagnosticEnabled?: boolean;
 }
 
 export default function ScanHistoryModal({
@@ -13,7 +14,24 @@ export default function ScanHistoryModal({
     onClose,
     expandedHistoryId,
     onToggleExpand,
+    diagnosticEnabled = false,
 }: Props) {
+    const [exportingId, setExportingId] = useState<number | null>(null);
+
+    const handleExportDiag = async (scanId: number, e: React.MouseEvent) => {
+        e.stopPropagation();
+        setExportingId(scanId);
+        try {
+            const result = await window.electronAPI.exportDiagBundle(scanId);
+            if (result.saved) {
+                alert(`Tan\u0131 paketi kaydedildi:\n${result.path}`);
+            } else if (result.reason !== 'cancelled') {
+                alert(`Hata: ${result.reason || 'Bilinmeyen hata'}`);
+            }
+        } finally {
+            setExportingId(null);
+        }
+    };
     return (
         <div
             className="fixed inset-0 bg-black/50 z-40 flex items-center justify-center p-4"
@@ -49,6 +67,9 @@ export default function ScanHistoryModal({
                                     </th>
                                     <th className="px-4 py-2 text-center">Hatal&#305;</th>
                                     <th className="px-4 py-2 text-right">S&uuml;re</th>
+                                    {diagnosticEnabled && (
+                                        <th className="px-4 py-2 text-center">Tan&#305;</th>
+                                    )}
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-100">
@@ -110,6 +131,22 @@ export default function ScanHistoryModal({
                                                         ? `${Math.floor(durMin / 60)}s ${durMin % 60}dk`
                                                         : `${durMin} dk`}
                                                 </td>
+                                                {diagnosticEnabled && (
+                                                    <td className="px-4 py-2 text-center">
+                                                        <button
+                                                            onClick={(e) =>
+                                                                handleExportDiag(h.id, e)
+                                                            }
+                                                            disabled={exportingId === h.id}
+                                                            className="text-xs px-2 py-1 rounded bg-indigo-100 text-indigo-700 hover:bg-indigo-200 disabled:opacity-50"
+                                                            title="Tan\u0131 paketini indir (anonim)"
+                                                        >
+                                                            {exportingId === h.id
+                                                                ? '\u23f3'
+                                                                : '\u2b07 Tan\u0131'}
+                                                        </button>
+                                                    </td>
+                                                )}
                                             </tr>
                                             {isExpanded &&
                                                 hasResults &&
@@ -127,7 +164,7 @@ export default function ScanHistoryModal({
                                                     return (
                                                         <tr>
                                                             <td
-                                                                colSpan={6}
+                                                                colSpan={diagnosticEnabled ? 7 : 6}
                                                                 className="px-4 py-2 bg-gray-50"
                                                             >
                                                                 <div className="grid grid-cols-2 gap-1.5 text-xs">

@@ -151,6 +151,9 @@ export interface IElectronAPI {
         }>
     >;
     getLastScanFailedIds: () => Promise<number[]>;
+    exportDiagBundle: (
+        scanHistoryId: number
+    ) => Promise<{ saved: boolean; path?: string; reason?: string }>;
     estimateScanDuration: (clientCount?: number) => Promise<{
         count: number;
         estimatedMinutes: number;

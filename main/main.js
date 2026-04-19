@@ -48,7 +48,14 @@ if (process.env.SENTRY_DSN) {
         release: `muhasebe-asistani@${app.getVersion()}`,
         environment: app.isPackaged ? 'production' : 'development',
         sendDefaultPii: false,
-        tracesSampleRate: 0.1,
+        tracesSampler: (ctx) => {
+            // Sample 100% of GIB scan transactions (bounded by tiny volume),
+            // 10% of everything else. This gives us per-user scan performance data
+            // without burning through Sentry's free tier quota.
+            const name = ctx.transactionContext?.name || ctx.name || '';
+            if (name.startsWith('gib.scan')) return 1.0;
+            return 0.1;
+        },
         beforeSend(event) {
             // Strip user identification
             if (event.user) {
@@ -390,6 +397,12 @@ ipcMain.handle('get-subscription-status', async () => {
 });
 
 ipcMain.handle('get-user-info', async () => {
+    // Lazy-refresh diagnostic flag on user info query
+    try {
+        await licenseManager.syncDiagnosticFlag();
+    } catch {
+        /* ignore, fall back to cached value */
+    }
     return licenseManager.getUserInfo();
 });
 
@@ -648,6 +661,17 @@ ipcMain.handle('get-scan-history', async (_event, limit) => {
     } catch (err) {
         logger.error('[get-scan-history] error:', err);
         return [];
+    }
+});
+
+// Export diagnostic bundle for a specific scan (PII-safe JSON for developer support)
+ipcMain.handle('export-diag-bundle', async (_event, scanHistoryId) => {
+    try {
+        const diagBundle = require('./diagBundle');
+        return await diagBundle.exportBundle(scanHistoryId);
+    } catch (err) {
+        logger.error('[export-diag-bundle] error:', err);
+        return { saved: false, reason: err.message };
     }
 });
 

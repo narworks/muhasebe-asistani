@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { clientCreateSchema, clientEditSchema, validateForm } from '../../lib/validations';
 import type { ScheduleStatus, Client, Tebligat, ScanUpdate } from '../../types';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../../context/AuthContext';
 import LegalConsentModal from '../../components/LegalConsentModal';
 import LimitReachedModal from '../../components/LimitReachedModal';
 import type {
@@ -28,6 +29,7 @@ import { toast } from 'sonner';
 import DashboardCards from './e-tebligat/DashboardCards';
 
 const ETebligat: React.FC = () => {
+    const { currentUser } = useAuth();
     const [activeTab, setActiveTab] = useState('scan');
     const [scanning, setScanning] = useState(false);
     const [logs, setLogs] = useState<LogEntry[]>([]);
@@ -1351,6 +1353,7 @@ const ETebligat: React.FC = () => {
                     onToggleExpand={(id) =>
                         setExpandedHistoryId(expandedHistoryId === id ? null : id)
                     }
+                    diagnosticEnabled={currentUser?.diagnosticEnabled === true}
                 />
             )}
 

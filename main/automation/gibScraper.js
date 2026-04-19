@@ -14,6 +14,8 @@ const logger = require('../logger');
 const gibApiClient = require('./gibApiClient');
 const gibHttpLogin = require('./gibHttpLogin');
 const captchaSolver = require('./captchaSolver');
+const tracer = require('./tracer');
+const telemetry = require('../telemetry');
 let Sentry;
 try {
     Sentry = require('@sentry/electron/main');
@@ -739,41 +741,49 @@ const hasDataOnPage = async (page, selector) => {
  * HTTP-only login + API fetch. No Puppeteer needed.
  * ~3-5s login + ~2-5s fetch vs ~30-45s with Puppeteer.
  */
-const httpLoginAndFetch = async (client, password, apiKey, isFirstScan, config, onStatusUpdate) => {
+const httpLoginAndFetch = async (
+    client,
+    password,
+    apiKey,
+    isFirstScan,
+    config,
+    onStatusUpdate,
+    trace = null
+) => {
     const status = (msg) => {
         if (onStatusUpdate)
             onStatusUpdate({ message: `  → ${msg}`, type: 'process', firmId: client.id });
     };
 
-    const loginResult = await gibHttpLogin.httpLogin(
-        client.gib_user_code,
-        password,
-        apiKey,
-        config.maxCaptchaRetries
-    );
+    const loginFn = async () =>
+        gibHttpLogin.httpLogin(client.gib_user_code, password, apiKey, config.maxCaptchaRetries);
+    const loginResult = trace ? await trace.span('login.http', loginFn) : await loginFn();
     const apiClient = gibApiClient.createApiClient(loginResult.token);
 
     let allDtos = [];
     if (isFirstScan) {
-        // First scan: fetch all (non-archived + archived)
         status('API ile tüm tebligat geçmişi çekiliyor (ilk tarama)...');
-        const [nonArchived, archived] = await Promise.all([
-            gibApiClient.fetchAllTebligatlar(apiClient),
-            gibApiClient.fetchAllTebligatlar(apiClient, { arsivDurum: 1 }),
-        ]);
-        allDtos = [...nonArchived, ...archived];
+        const fetchBoth = async () => {
+            const [nonArchived, archived] = await Promise.all([
+                gibApiClient.fetchAllTebligatlar(apiClient),
+                gibApiClient.fetchAllTebligatlar(apiClient, { arsivDurum: 1 }),
+            ]);
+            return [...nonArchived, ...archived];
+        };
+        allDtos = trace ? await trace.span('api.list_non_archived', fetchBoth) : await fetchBoth();
     } else if (client.last_full_scan_at) {
-        // Incremental: only tebligatlar since last scan
         status(
             `API: son taramadan (${new Date(client.last_full_scan_at).toLocaleDateString('tr-TR')}) sonraki yeni tebligatlar çekiliyor...`
         );
-        allDtos = await gibApiClient.fetchAllTebligatlar(apiClient, {
-            sinceDate: client.last_full_scan_at,
-        });
+        const fetchIncr = async () =>
+            gibApiClient.fetchAllTebligatlar(apiClient, { sinceDate: client.last_full_scan_at });
+        allDtos = trace ? await trace.span('api.list_incremental', fetchIncr) : await fetchIncr();
     } else {
-        // No last_full_scan_at but not first scan — safety fallback, fetch non-archived only
         status('API ile tebligatlar çekiliyor...');
-        allDtos = await gibApiClient.fetchAllTebligatlar(apiClient);
+        const fetchSimple = async () => gibApiClient.fetchAllTebligatlar(apiClient);
+        allDtos = trace
+            ? await trace.span('api.list_non_archived', fetchSimple)
+            : await fetchSimple();
     }
 
     const mapped = allDtos.map(gibApiClient.mapTebligatDto);
@@ -782,8 +792,12 @@ const httpLoginAndFetch = async (client, password, apiKey, isFirstScan, config, 
         : `${mapped.length} yeni tebligat bulundu.`;
     status(foundMsg);
 
+    if (trace) trace.measurement('docs.found', mapped.length);
+
     // Filter: skip already-downloaded, skip-marked, and date-filtered tebligatlar
     const toDownload = [];
+    let skippedExisting = 0;
+    let skippedFilter = 0;
     for (const teb of mapped) {
         const docsDir = getDocumentsDir(
             client.id,
@@ -803,10 +817,12 @@ const httpLoginAndFetch = async (client, password, apiKey, isFirstScan, config, 
         if (existingFile) {
             teb.documentPath = existingFile;
             teb._newDownload = false;
+            skippedExisting++;
             continue;
         }
         if (teb.documentNo && database.isSkipDownload(client.id, teb.documentNo)) {
             teb._newDownload = false;
+            skippedFilter++;
             continue;
         }
         if (client.scan_date_filter && teb.date) {
@@ -818,6 +834,7 @@ const httpLoginAndFetch = async (client, password, apiKey, isFirstScan, config, 
                 else tebDate = new Date(teb.date);
                 if (tebDate < filterDate) {
                     teb._newDownload = false;
+                    skippedFilter++;
                     continue;
                 }
             } catch {
@@ -827,29 +844,43 @@ const httpLoginAndFetch = async (client, password, apiKey, isFirstScan, config, 
         toDownload.push({ teb, filePath });
     }
 
+    if (trace) {
+        trace.measurement('docs.skipped_existing', skippedExisting);
+        trace.measurement('docs.skipped_filter', skippedFilter);
+    }
+
     // Parallel download with concurrency limit — 3 concurrent per client
     const limit = pLimit(3);
     let completedDownloads = 0;
-    await Promise.all(
-        toDownload.map(({ teb, filePath }) =>
-            limit(async () => {
-                if (scanCancelled) return;
-                try {
-                    const dlPath = await gibApiClient.downloadDocument(apiClient, teb, filePath);
-                    if (dlPath) {
-                        teb.documentPath = dlPath;
-                        teb._newDownload = true;
+    const downloadBatchFn = async () =>
+        Promise.all(
+            toDownload.map(({ teb, filePath }) =>
+                limit(async () => {
+                    if (scanCancelled) return;
+                    try {
+                        const dlPath = await gibApiClient.downloadDocument(
+                            apiClient,
+                            teb,
+                            filePath
+                        );
+                        if (dlPath) {
+                            teb.documentPath = dlPath;
+                            teb._newDownload = true;
+                        }
+                    } catch (dlErr) {
+                        logger.debug(`[HTTP DL] ${teb.documentNo}: ${dlErr.message}`);
                     }
-                } catch (dlErr) {
-                    logger.debug(`[HTTP DL] ${teb.documentNo}: ${dlErr.message}`);
-                }
-                completedDownloads++;
-                status(
-                    `Döküman indirildi (${completedDownloads}/${toDownload.length}): ${teb.documentNo || '?'}`
-                );
-            })
-        )
-    );
+                    completedDownloads++;
+                    status(
+                        `Döküman indirildi (${completedDownloads}/${toDownload.length}): ${teb.documentNo || '?'}`
+                    );
+                })
+            )
+        );
+    if (trace) await trace.span('download.batch', downloadBatchFn);
+    else await downloadBatchFn();
+
+    if (trace) trace.measurement('docs.downloaded', completedDownloads);
 
     return mapped;
 };
@@ -1490,6 +1521,9 @@ async function run(onStatusUpdate, apiKey, scanConfig = {}, options = {}, deduct
     // Create scan history entry
     const scanHistoryId = database.createScanHistory(options.scanType || 'full');
     const scanStartTime = Date.now();
+    const perClientTraces = []; // collected for telemetry + diag bundle
+    let rateLimitWaitMs = 0;
+    captchaSolver.resetStats(); // track captcha solver stats for this scan
 
     // Helper: build progress object with elapsed + estimated remaining
     const buildProgress = (current, total, currentClient, errors, successes, extra = {}) => {
@@ -1581,7 +1615,9 @@ async function run(onStatusUpdate, apiKey, scanConfig = {}, options = {}, deduct
                     message: `Güvenli limit (${HOURLY_CLIENT_LIMIT} mükellef). ${COOLDOWN_MINUTES} dakika bekleniyor...`,
                     type: 'info',
                 });
+                const waitStart = Date.now();
                 await new Promise((r) => setTimeout(r, COOLDOWN_MINUTES * 60 * 1000));
+                rateLimitWaitMs += Date.now() - waitStart;
                 hourlyScanCount = 0;
                 if (scanCancelled) break;
             }
@@ -1693,6 +1729,7 @@ async function run(onStatusUpdate, apiKey, scanConfig = {}, options = {}, deduct
             let lastErrorType = null;
             let lastErrorMessage = null;
             const clientIsFirstScan = !client.last_full_scan_at;
+            const clientTrace = tracer.startClientTrace(client.id);
 
             // --- HTTP-only login (fast path: ~3-5s vs ~30-45s with Puppeteer) ---
             if (!scanCancelled) {
@@ -1703,7 +1740,8 @@ async function run(onStatusUpdate, apiKey, scanConfig = {}, options = {}, deduct
                         apiKey,
                         clientIsFirstScan,
                         config,
-                        onStatusUpdate
+                        onStatusUpdate,
+                        clientTrace
                     );
                     const tebligatlar = httpResult;
 
@@ -2042,6 +2080,19 @@ async function run(onStatusUpdate, apiKey, scanConfig = {}, options = {}, deduct
                     success: true,
                 });
             }
+
+            // Finish per-client trace and collect for telemetry
+            try {
+                const traceResult = clientTrace.finish({
+                    success: succeeded,
+                    errorType: lastErrorType,
+                });
+                perClientTraces.push(traceResult);
+                // Forward timing to renderer for live display
+                onStatusUpdate({ type: 'timing', timing: traceResult });
+            } catch {
+                /* trace finalization should never break scan */
+            }
         }
     } catch (error) {
         lastScanState.wasError = true;
@@ -2080,6 +2131,52 @@ async function run(onStatusUpdate, apiKey, scanConfig = {}, options = {}, deduct
                 logger.debug('[DEBUG] Browser close error (ignored):', browserCloseErr.message);
             }
         }
+
+        // Send anonymous telemetry (fire-and-forget, errors are logged but don't block)
+        try {
+            if (perClientTraces.length > 0) {
+                const aggregated = tracer.aggregateTraces(perClientTraces);
+                const totalDurationSec = Math.round((Date.now() - scanStartTime) / 1000);
+                const hasFirstScan = perClientTraces.some((t) => {
+                    const c = activeClients.find((cc) => cc.id === t.clientId);
+                    return c && !c.last_full_scan_at;
+                });
+
+                // Persist raw per-client timings to scan_history.results_json for diag bundle
+                try {
+                    database.updateScanHistory(scanHistoryId, {
+                        results_json: JSON.stringify({
+                            scanResults,
+                            timings: perClientTraces,
+                            aggregated,
+                            rateLimitWaitMs,
+                        }),
+                    });
+                } catch (dbErr) {
+                    logger.debug(`[Telemetry] DB persist error: ${dbErr.message}`);
+                }
+
+                // Send aggregate to Supabase (fire-and-forget)
+                const userId = options.userId || null;
+                telemetry
+                    .sendScanTelemetry({
+                        userId,
+                        scanType: options.scanType || 'full',
+                        isFirstScan: hasFirstScan,
+                        totalDurationSec,
+                        aggregated,
+                        scanConfig: config,
+                        rateLimitWaitMs,
+                        captchaStats: captchaSolver.getStats(),
+                    })
+                    .catch(() => {
+                        /* ignore telemetry errors */
+                    });
+            }
+        } catch (telErr) {
+            logger.debug(`[Telemetry] Send error (ignored): ${telErr.message}`);
+        }
+
         isRunning = false;
     }
 
