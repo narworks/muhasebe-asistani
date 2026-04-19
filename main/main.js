@@ -324,10 +324,25 @@ app.whenReady().then(() => {
         autoUpdater.quitAndInstall();
     });
 
-    // System tray
-    const trayIcon = nativeImage.createFromDataURL(
-        'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAABHNCSVQICAgIfAhkiAAAAAlwSFlzAAAAbwAAAG8B8aLcQwAAABl0RVh0U29mdHdhcmUAd3d3Lmlua3NjYXBlLm9yZ5vuPBoAAABjSURBVDiNY/j//z8DCjAxMDAwMDIy/mdgYGBgAmH8gImBgYGBiRCfkYGBgQlfIBMxBjAxMjL+JxTNROvCxMjI+B9fNBMDmBgYGBhIjUamhw8fUu4FYgNqJSNKk9F/Ag4BAOqQFBETnp7LAAAAAElFTkSuQmCC'
-    );
+    // System tray — use bundled app icon, resized to 16px for menu bar.
+    // Color icon shown as-is (not template) so user sees the branded logo.
+    let trayIcon;
+    try {
+        const iconPath = app.isPackaged
+            ? path.join(process.resourcesPath, 'icon.png')
+            : path.join(__dirname, '..', 'build', 'icon.png');
+        trayIcon = nativeImage.createFromPath(iconPath);
+        if (trayIcon.isEmpty()) throw new Error('icon.png not found');
+        // macOS: 22px (retina-friendly), Win/Linux: 16px
+        const size = process.platform === 'darwin' ? 22 : 16;
+        trayIcon = trayIcon.resize({ width: size, height: size });
+    } catch {
+        // Fallback: inline icon (template-style black square)
+        trayIcon = nativeImage.createFromDataURL(
+            'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAOklEQVQ4jWNgGAWjYBSMglEwCkbBgAEmBgYGhv///////38DAwMjAwMDIwMDAyMDAwMjEwMDAwMAADmjBVrvCwcIAAAAAElFTkSuQmCC'
+        );
+        if (process.platform === 'darwin') trayIcon.setTemplateImage(true);
+    }
     tray = new Tray(trayIcon);
     const updateTrayMenu = () => {
         const daemonState = daemonScheduler.getState();
