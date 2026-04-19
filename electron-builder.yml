@@ -19,12 +19,20 @@ asarUnpack:
   - "node_modules/puppeteer/**/*"
   - "node_modules/@puppeteer/**/*"
 
-# Bundle Puppeteer Chromium binary as extraResources so it ships with installer
+# Bundle Puppeteer Chromium binary + tray icons as extraResources
 extraResources:
   - from: ".puppeteer-cache"
     to: "puppeteer-cache"
     filter:
       - "**/*"
+  - from: "build/trayIconTemplate.png"
+    to: "trayIconTemplate.png"
+  - from: "build/trayIconTemplate@2x.png"
+    to: "trayIconTemplate@2x.png"
+  - from: "build/trayIcon.png"
+    to: "trayIcon.png"
+  - from: "build/trayIcon@2x.png"
+    to: "trayIcon@2x.png"
 
 mac:
   target:

@@ -324,22 +324,27 @@ app.whenReady().then(() => {
         autoUpdater.quitAndInstall();
     });
 
-    // System tray — use bundled app icon, resized to 16px for menu bar.
-    // Color icon shown as-is (not template) so user sees the branded logo.
+    // System tray — dedicated template icon for macOS (auto-tints to menu bar color),
+    // colored version for Windows/Linux.
     let trayIcon;
     try {
+        const isMac = process.platform === 'darwin';
+        const iconName = isMac ? 'trayIconTemplate.png' : 'trayIcon.png';
         const iconPath = app.isPackaged
-            ? path.join(process.resourcesPath, 'icon.png')
-            : path.join(__dirname, '..', 'build', 'icon.png');
+            ? path.join(process.resourcesPath, iconName)
+            : path.join(__dirname, '..', 'build', iconName);
         trayIcon = nativeImage.createFromPath(iconPath);
-        if (trayIcon.isEmpty()) throw new Error('icon.png not found');
-        // macOS: 22px (retina-friendly), Win/Linux: 16px
-        const size = process.platform === 'darwin' ? 22 : 16;
-        trayIcon = trayIcon.resize({ width: size, height: size });
-    } catch {
-        // Fallback: inline icon (template-style black square)
+        if (trayIcon.isEmpty()) throw new Error(`${iconName} not found`);
+        if (isMac) {
+            // Tell macOS this is a template image — it will render in menu bar
+            // color (white/dark mode, black/light mode) automatically.
+            trayIcon.setTemplateImage(true);
+        }
+    } catch (err) {
+        logger.debug(`[Tray] icon load error: ${err.message}, using inline fallback`);
+        // Fallback: inline simple template (black M on transparent)
         trayIcon = nativeImage.createFromDataURL(
-            'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAOklEQVQ4jWNgGAWjYBSMglEwCkbBgAEmBgYGhv///////38DAwMjAwMDIwMDAyMDAwMjEwMDAwMAADmjBVrvCwcIAAAAAElFTkSuQmCC'
+            'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAAy0lEQVRYhe3XMQrCQBCF4f8lJmAjWFtYWlh4AC/gFTyAF/AA3sDKwsLCQgsLC0UQBCvBQhBBBBGEgIrBZJ1iEpIVNom7mxFy4JF5b+bN7uwMK3KJpJykBTAERpJWkuaAG0R5M5IyST5JGUnGk4BDkraShgx+DlBJGgC3gH/dAb/KwAOYxfRngLnHDyJMIsK5px8OAE44A8YB7wLgEkGeOwBnz98AXB2AZ4AGEaVgO4APAs0OQPYbYdgB4wOvCLg5AFeAMUl5AHkJWAKNlKR/ACZZHvVVCxpLAAAAAElFTkSuQmCC'
         );
         if (process.platform === 'darwin') trayIcon.setTemplateImage(true);
     }
