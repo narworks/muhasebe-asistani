@@ -182,6 +182,7 @@ const gibScraper = require('./automation/gibScraper');
 const statementConverter = require('./automation/statementConverter');
 const settings = require('./settings');
 const scheduler = require('./scheduler');
+const daemonScheduler = require('./daemonScheduler');
 const validation = require('./validation');
 const autoUpdater = require('./autoUpdater');
 
@@ -229,9 +230,10 @@ const createWindow = () => {
         return { action: 'deny' };
     });
 
-    // On macOS: minimize to tray. On Windows/Linux: quit fully to avoid zombie processes
+    // Minimize to tray on all platforms (daemon continues running in background).
+    // "Çıkış" menu item sets isQuitting=true to allow actual quit.
     mainWindow.on('close', (event) => {
-        if (!isQuitting && process.platform === 'darwin') {
+        if (!isQuitting) {
             event.preventDefault();
             mainWindow.hide();
         } else {
@@ -327,29 +329,85 @@ app.whenReady().then(() => {
         'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAABHNCSVQICAgIfAhkiAAAAAlwSFlzAAAAbwAAAG8B8aLcQwAAABl0RVh0U29mdHdhcmUAd3d3Lmlua3NjYXBlLm9yZ5vuPBoAAABjSURBVDiNY/j//z8DCjAxMDAwMDIy/mdgYGBgAmH8gImBgYGBiRCfkYGBgQlfIBMxBjAxMjL+JxTNROvCxMjI+B9fNBMDmBgYGBhIjUamhw8fUu4FYgNqJSNKk9F/Ag4BAOqQFBETnp7LAAAAAElFTkSuQmCC'
     );
     tray = new Tray(trayIcon);
-    const trayMenu = Menu.buildFromTemplate([
-        {
-            label: 'Aç',
-            click: () => {
-                mainWindow.show();
-                mainWindow.focus();
+    const updateTrayMenu = () => {
+        const daemonState = daemonScheduler.getState();
+        const trayMenu = Menu.buildFromTemplate([
+            {
+                label: 'Aç',
+                click: () => {
+                    mainWindow.show();
+                    mainWindow.focus();
+                },
             },
-        },
-        { type: 'separator' },
-        {
-            label: 'Çıkış',
-            click: () => {
-                isQuitting = true;
-                app.quit();
+            { type: 'separator' },
+            {
+                label: daemonState.running
+                    ? daemonState.paused
+                        ? '⏸ Arka Plan Tarama: Duraklatıldı'
+                        : '🟢 Arka Plan Tarama: Aktif'
+                    : '⚪ Arka Plan Tarama: Kapalı',
+                enabled: false,
             },
-        },
-    ]);
+            {
+                label: `Bu oturum: ${daemonState.stats.successes}/${daemonState.stats.totalScans} başarılı`,
+                enabled: false,
+            },
+            { type: 'separator' },
+            {
+                label: daemonState.running ? 'Duraklat (1 saat)' : 'Başlat',
+                click: () => {
+                    if (daemonState.running) daemonScheduler.pause(60 * 60 * 1000);
+                    else
+                        daemonScheduler.start((event) => {
+                            if (mainWindow && !mainWindow.isDestroyed()) {
+                                mainWindow.webContents.send('daemon-event', event);
+                            }
+                            updateTrayMenu();
+                        });
+                    updateTrayMenu();
+                },
+            },
+            { type: 'separator' },
+            {
+                label: 'Çıkış',
+                click: () => {
+                    isQuitting = true;
+                    daemonScheduler.stop();
+                    app.quit();
+                },
+            },
+        ]);
+        tray.setContextMenu(trayMenu);
+    };
     tray.setToolTip('Muhasebe Asistanı');
-    tray.setContextMenu(trayMenu);
+    updateTrayMenu();
     tray.on('double-click', () => {
         mainWindow.show();
         mainWindow.focus();
     });
+
+    // Start background daemon (only after user login — but module not required for now)
+    // Daemon auto-checks module access and settings at tick time
+    const daemonSettings = (settings.readSettings() || {}).daemon || {};
+    if (daemonSettings.enabled !== false) {
+        daemonScheduler.start((event) => {
+            if (mainWindow && !mainWindow.isDestroyed()) {
+                mainWindow.webContents.send('daemon-event', event);
+            }
+            updateTrayMenu();
+        });
+    }
+
+    // Auto-launch on OS boot (configurable)
+    try {
+        const autoLaunchEnabled = daemonSettings.autoLaunch !== false;
+        app.setLoginItemSettings({
+            openAtLogin: autoLaunchEnabled,
+            openAsHidden: true, // Start minimized to tray
+        });
+    } catch (err) {
+        logger.debug(`[AutoLaunch] setLoginItemSettings error: ${err.message}`);
+    }
 
     app.on('activate', () => {
         if (BrowserWindow.getAllWindows().length === 0) {
@@ -672,6 +730,88 @@ ipcMain.handle('export-diag-bundle', async (_event, scanHistoryId) => {
     } catch (err) {
         logger.error('[export-diag-bundle] error:', err);
         return { saved: false, reason: err.message };
+    }
+});
+
+// Daemon settings IPC
+ipcMain.handle('daemon-get-settings', async () => {
+    const s = settings.readSettings() || {};
+    return s.daemon || {};
+});
+
+ipcMain.handle('daemon-update-settings', async (_event, newSettings) => {
+    const current = settings.readSettings() || {};
+    const merged = { ...(current.daemon || {}), ...newSettings };
+    settings.updateSettings({ daemon: merged });
+
+    // Apply autoLaunch immediately if changed
+    if (typeof newSettings.autoLaunch === 'boolean') {
+        try {
+            app.setLoginItemSettings({
+                openAtLogin: newSettings.autoLaunch,
+                openAsHidden: true,
+            });
+        } catch (err) {
+            logger.debug(`[daemon-update-settings] autoLaunch error: ${err.message}`);
+        }
+    }
+
+    // Start/stop daemon if enabled changed
+    if (newSettings.enabled === false) {
+        daemonScheduler.stop();
+    } else if (newSettings.enabled === true) {
+        daemonScheduler.start((event) => {
+            if (mainWindow && !mainWindow.isDestroyed()) {
+                mainWindow.webContents.send('daemon-event', event);
+            }
+        });
+    }
+
+    return { ok: true, settings: merged };
+});
+
+// Daemon scheduler IPC
+ipcMain.handle('daemon-get-state', async () => daemonScheduler.getState());
+
+ipcMain.handle('daemon-start', async () => {
+    daemonScheduler.start((event) => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('daemon-event', event);
+        }
+    });
+    return { ok: true };
+});
+
+ipcMain.handle('daemon-stop', async () => {
+    daemonScheduler.stop();
+    return { ok: true };
+});
+
+ipcMain.handle('daemon-pause', async (_event, durationMs) => {
+    daemonScheduler.pause(durationMs || 60 * 60 * 1000);
+    return { ok: true };
+});
+
+ipcMain.handle('daemon-resume', async () => {
+    daemonScheduler.resume();
+    return { ok: true };
+});
+
+// Scan a single client on demand (right-click → "Şimdi Tara")
+ipcMain.handle('scan-single-client', async (_event, clientId) => {
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) return { success: false, errorMessage: 'API anahtarı yok' };
+    try {
+        const result = await gibScraper.scanSingleClient(clientId, apiKey, {
+            onStatusUpdate: (status) => {
+                if (mainWindow && !mainWindow.isDestroyed()) {
+                    mainWindow.webContents.send('scan-update', status);
+                }
+            },
+        });
+        return result;
+    } catch (err) {
+        return { success: false, errorMessage: err.message };
     }
 });
 

@@ -18,6 +18,28 @@ import type {
     ApiResponse,
 } from './index';
 
+export interface DaemonState {
+    running: boolean;
+    paused: boolean;
+    pauseUntil: number;
+    lastTickAt: number;
+    nextTickAt: number;
+    lastResult: unknown;
+    stats: {
+        totalScans: number;
+        successes: number;
+        failures: number;
+        newTebligatFound: number;
+        startedAt: number | null;
+    };
+}
+
+export type DaemonEvent = {
+    event: string;
+    data: Record<string, unknown>;
+    state: DaemonState;
+};
+
 export interface IElectronAPI {
     // License & Auth
     login: (credentials: LoginCredentials) => Promise<LoginResult>;
@@ -154,6 +176,36 @@ export interface IElectronAPI {
     exportDiagBundle: (
         scanHistoryId: number
     ) => Promise<{ saved: boolean; path?: string; reason?: string }>;
+    // Daemon
+    daemonGetState: () => Promise<DaemonState>;
+    daemonStart: () => Promise<{ ok: boolean }>;
+    daemonStop: () => Promise<{ ok: boolean }>;
+    daemonPause: (durationMs?: number) => Promise<{ ok: boolean }>;
+    daemonResume: () => Promise<{ ok: boolean }>;
+    daemonGetSettings: () => Promise<{
+        enabled?: boolean;
+        intervalMs?: number;
+        acOnly?: boolean;
+        nightModeAggressive?: boolean;
+        notifications?: boolean;
+        autoLaunch?: boolean;
+    }>;
+    daemonUpdateSettings: (settings: {
+        enabled?: boolean;
+        intervalMs?: number;
+        acOnly?: boolean;
+        nightModeAggressive?: boolean;
+        notifications?: boolean;
+        autoLaunch?: boolean;
+    }) => Promise<{ ok: boolean; settings: Record<string, unknown> }>;
+    onDaemonEvent: (callback: (event: DaemonEvent) => void) => () => void;
+    scanSingleClient: (clientId: number) => Promise<{
+        success: boolean;
+        newTebligatCount?: number;
+        errorType?: string;
+        errorMessage?: string;
+        durationMs?: number;
+    }>;
     estimateScanDuration: (clientCount?: number) => Promise<{
         count: number;
         estimatedMinutes: number;

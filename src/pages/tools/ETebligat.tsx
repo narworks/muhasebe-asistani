@@ -24,6 +24,7 @@ import LogDrawer from './e-tebligat/LogDrawer';
 import ClientManagement from './e-tebligat/ClientManagement';
 import ScanControls from './e-tebligat/ScanControls';
 import ResultsView from './e-tebligat/ResultsView';
+import DaemonStatusPanel from './e-tebligat/DaemonStatusPanel';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../../components/ui/tabs';
 import { toast } from 'sonner';
 import DashboardCards from './e-tebligat/DashboardCards';
@@ -1394,6 +1395,7 @@ const ETebligat: React.FC = () => {
 
                     {/* Tarama Tab */}
                     <TabsContent value="scan" className="flex-1 flex flex-col overflow-y-auto pt-2">
+                        <DaemonStatusPanel />
                         <ScanControls
                             scanning={scanning}
                             scanProgress={scanProgress}
@@ -1573,6 +1575,33 @@ const ETebligat: React.FC = () => {
                             onDeleteClient={handleDeleteClient}
                             onTestLogin={handleTestLogin}
                             onClearImportResult={() => setImportResult(null)}
+                            onScanNow={async (client) => {
+                                toast.loading(`${client.firm_name} taranıyor...`, {
+                                    id: `scan-${client.id}`,
+                                });
+                                try {
+                                    const result = await window.electronAPI.scanSingleClient(
+                                        client.id
+                                    );
+                                    if (result.success) {
+                                        toast.success(
+                                            `${client.firm_name}: ${result.newTebligatCount || 0} yeni tebligat`,
+                                            { id: `scan-${client.id}` }
+                                        );
+                                        fetchTebligatlar();
+                                    } else {
+                                        toast.error(
+                                            `${client.firm_name}: ${result.errorMessage || 'Hata'}`,
+                                            { id: `scan-${client.id}` }
+                                        );
+                                    }
+                                } catch (err) {
+                                    toast.error(
+                                        `${client.firm_name}: ${err instanceof Error ? err.message : 'Hata'}`,
+                                        { id: `scan-${client.id}` }
+                                    );
+                                }
+                            }}
                         />
                     </TabsContent>
                 </Tabs>

@@ -3066,6 +3066,129 @@ async function downloadSelectedTebligatlar(onStatusUpdate, apiKey, selections) {
     }
 }
 
+/**
+ * Scan a single client — used by daemon scheduler for continuous background scanning.
+ * Fast path: HTTP-only login + incremental fetch (only tebligat since last scan).
+ * Returns: { success, newTebligatCount, errorType?, errorMessage?, durationMs, trace }
+ */
+async function scanSingleClient(clientId, apiKey, options = {}) {
+    const client = database.getClients().find((c) => c.id === clientId);
+    if (!client) {
+        return {
+            success: false,
+            errorType: 'client_not_found',
+            errorMessage: 'Mükellef bulunamadı',
+        };
+    }
+    if (client.status !== 'active') {
+        return {
+            success: false,
+            errorType: 'client_inactive',
+            errorMessage: 'Mükellef aktif değil',
+        };
+    }
+
+    const password = database.getClientPassword(clientId);
+    if (!password) {
+        return { success: false, errorType: 'no_password', errorMessage: 'Şifre bulunamadı' };
+    }
+
+    const scanConfig = settings.readSettings().scan || {};
+    const config = {
+        delayMin: 18,
+        delayMax: 22,
+        batchSize: 50,
+        batchPauseMin: 60,
+        batchPauseMax: 120,
+        maxCaptchaRetries: 2,
+        ...scanConfig,
+    };
+
+    const clientIsFirstScan = !client.last_full_scan_at;
+    const trace = tracer.startClientTrace(client.id);
+    const startTime = Date.now();
+
+    const statusCb = options.onStatusUpdate || (() => {});
+
+    try {
+        const tebligatlar = await httpLoginAndFetch(
+            client,
+            password,
+            apiKey,
+            clientIsFirstScan,
+            config,
+            statusCb,
+            trace
+        );
+
+        let savedCount = 0;
+        let newTebligatIds = [];
+        if (tebligatlar.length > 0) {
+            const saveResult = database.saveTebligatlar(client.id, tebligatlar);
+            savedCount = saveResult.inserted;
+            newTebligatIds = saveResult.newIds;
+        }
+
+        // Mark first scan complete (if applicable) and update daemon scan timestamp
+        if (clientIsFirstScan) {
+            database.updateClientScanDate(client.id);
+        }
+        database.updateClientDaemonScan(client.id);
+        database.refreshRecentTebligatCount(client.id);
+
+        const result = trace.finish({ success: true });
+
+        // Send telemetry for this single-client scan (fire-and-forget)
+        try {
+            const aggregated = tracer.aggregateTraces([result]);
+            telemetry
+                .sendScanTelemetry({
+                    userId: options.userId || null,
+                    scanType: options.telemetryType || 'daemon_tick',
+                    isFirstScan: clientIsFirstScan,
+                    totalDurationSec: Math.round((Date.now() - startTime) / 1000),
+                    aggregated,
+                    scanConfig: config,
+                    rateLimitWaitMs: 0,
+                    captchaStats: captchaSolver.getStats(),
+                })
+                .catch(() => {});
+        } catch {
+            /* ignore telemetry errors */
+        }
+
+        return {
+            success: true,
+            newTebligatCount: savedCount,
+            newTebligatIds,
+            durationMs: Date.now() - startTime,
+            trace: result,
+            client: { id: client.id, firm_name: client.firm_name },
+        };
+    } catch (err) {
+        const errorType = err.errorType || 'unknown';
+        const result = trace.finish({ success: false, errorType });
+
+        // IP block → propagate so daemon can pause
+        if (errorType === 'ip_blocked') {
+            if (Sentry) {
+                Sentry.captureException(err, {
+                    tags: { component: 'daemon-scan', errorType: 'ip_blocked' },
+                });
+            }
+        }
+
+        return {
+            success: false,
+            errorType,
+            errorMessage: err.message,
+            durationMs: Date.now() - startTime,
+            trace: result,
+            client: { id: client.id, firm_name: client.firm_name },
+        };
+    }
+}
+
 module.exports = {
     run,
     cancelScan,
@@ -3078,4 +3201,5 @@ module.exports = {
     testClientLogin,
     getLastScanResults,
     sanitizeFirmName,
+    scanSingleClient,
 };

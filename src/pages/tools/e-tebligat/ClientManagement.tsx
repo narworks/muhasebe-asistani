@@ -38,6 +38,7 @@ interface ClientManagementProps {
     onDeleteClient: (client: Client) => void;
     onTestLogin: (client: Client) => void;
     onClearImportResult: () => void;
+    onScanNow?: (client: Client) => void;
 }
 
 const ClientManagement: React.FC<ClientManagementProps> = ({
@@ -61,6 +62,7 @@ const ClientManagement: React.FC<ClientManagementProps> = ({
     onDeleteClient,
     onTestLogin,
     onClearImportResult,
+    onScanNow,
 }) => {
     return (
         <div>
@@ -370,6 +372,16 @@ const ClientManagement: React.FC<ClientManagementProps> = ({
                                                 </button>
                                             );
                                         })()}
+                                        {onScanNow && client.status === 'active' && (
+                                            <button
+                                                type="button"
+                                                onClick={() => onScanNow(client)}
+                                                title="Bu mükellefi hemen tara"
+                                                className="text-xs px-2 py-1 rounded border border-emerald-500/30 text-emerald-500 hover:bg-emerald-500/10 transition-colors"
+                                            >
+                                                ⚡ Tara
+                                            </button>
+                                        )}
                                         <button
                                             type="button"
                                             onClick={() => onToggleStatus(client)}

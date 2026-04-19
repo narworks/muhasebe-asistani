@@ -114,6 +114,16 @@ function init() {
     if (!tebCols.includes('skip_download')) {
         db.exec('ALTER TABLE tebligatlar ADD COLUMN skip_download INTEGER DEFAULT 0');
     }
+
+    // Migration: last_scan_at (daemon sürekli tarama son zamanı)
+    if (!clientCols.includes('last_scan_at')) {
+        db.exec('ALTER TABLE clients ADD COLUMN last_scan_at TEXT');
+    }
+
+    // Migration: recent_tebligat_count (son 7 gün priority için)
+    if (!clientCols.includes('recent_tebligat_count')) {
+        db.exec('ALTER TABLE clients ADD COLUMN recent_tebligat_count INTEGER DEFAULT 0');
+    }
 }
 
 function saveClient(clientData) {
@@ -352,6 +362,83 @@ function updateClientScanDate(id) {
     return stmt.run(new Date().toISOString(), id);
 }
 
+/**
+ * Update the last_scan_at timestamp (daemon tick or manual scan of single client).
+ */
+function updateClientDaemonScan(id) {
+    if (!db) init();
+    const stmt = db.prepare('UPDATE clients SET last_scan_at = ? WHERE id = ?');
+    return stmt.run(new Date().toISOString(), id);
+}
+
+/**
+ * Recompute and store the count of tebligat for this client received in last 7 days.
+ * Used to calculate priority score.
+ */
+function refreshRecentTebligatCount(id) {
+    if (!db) init();
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+    const result = db
+        .prepare(
+            `SELECT COUNT(*) as c FROM tebligatlar
+             WHERE client_id = ?
+             AND (notification_date >= ? OR send_date >= ? OR created_at >= ?)`
+        )
+        .get(id, sevenDaysAgo, sevenDaysAgo, sevenDaysAgo);
+    const count = result?.c || 0;
+    db.prepare('UPDATE clients SET recent_tebligat_count = ? WHERE id = ?').run(count, id);
+    return count;
+}
+
+/**
+ * Pick the next client to scan based on priority score.
+ * Called every 2 minutes by daemon scheduler.
+ * Returns null if no client is eligible (all too recently scanned).
+ */
+function getNextClientForDaemonScan() {
+    if (!db) init();
+    const now = Date.now();
+
+    const clients = db
+        .prepare(
+            `SELECT id, firm_name, gib_user_code, last_scan_at, last_full_scan_at,
+                    recent_tebligat_count, scan_date_filter, status
+             FROM clients
+             WHERE status = 'active'`
+        )
+        .all();
+
+    if (clients.length === 0) return null;
+
+    const scored = clients.map((c) => {
+        const lastScanMs = c.last_scan_at ? new Date(c.last_scan_at).getTime() : 0;
+        const minutesSinceScan = lastScanMs ? (now - lastScanMs) / 60000 : Infinity;
+
+        let base;
+        const recentCount = c.recent_tebligat_count || 0;
+        if (!c.last_full_scan_at) base = 150;
+        else if (recentCount >= 3) base = 100;
+        else if (recentCount >= 1) base = 50;
+        else base = 10;
+
+        const activityBonus = Math.min(recentCount * 5, 50);
+
+        let recencyAdj;
+        if (minutesSinceScan < 30) recencyAdj = -500;
+        else if (minutesSinceScan < 120) recencyAdj = -100;
+        else if (minutesSinceScan < 480) recencyAdj = 0;
+        else if (minutesSinceScan < 1440) recencyAdj = 50;
+        else recencyAdj = 100;
+
+        return { client: c, score: base + activityBonus + recencyAdj };
+    });
+
+    scored.sort((a, b) => b.score - a.score);
+    const top = scored[0];
+    if (!top || top.score < 0) return null;
+    return top.client;
+}
+
 // Update document path for a tebligat
 function updateTebligatDocument(tebligatId, documentPath) {
     if (!db) init();
@@ -553,6 +640,9 @@ module.exports = {
     updateScanHistory,
     getScanHistory,
     getScanHistoryById,
+    getNextClientForDaemonScan,
+    updateClientDaemonScan,
+    refreshRecentTebligatCount,
     getLastScanFailedClientIds,
     updateClientScanFilter,
     resetClientSkipDownloads,

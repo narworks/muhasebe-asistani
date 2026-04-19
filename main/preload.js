@@ -42,6 +42,20 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getScanHistory: (limit) => ipcRenderer.invoke('get-scan-history', limit),
     getLastScanFailedIds: () => ipcRenderer.invoke('get-last-scan-failed-ids'),
     exportDiagBundle: (scanHistoryId) => ipcRenderer.invoke('export-diag-bundle', scanHistoryId),
+    // Daemon control
+    daemonGetState: () => ipcRenderer.invoke('daemon-get-state'),
+    daemonStart: () => ipcRenderer.invoke('daemon-start'),
+    daemonStop: () => ipcRenderer.invoke('daemon-stop'),
+    daemonPause: (durationMs) => ipcRenderer.invoke('daemon-pause', durationMs),
+    daemonResume: () => ipcRenderer.invoke('daemon-resume'),
+    daemonGetSettings: () => ipcRenderer.invoke('daemon-get-settings'),
+    daemonUpdateSettings: (settings) => ipcRenderer.invoke('daemon-update-settings', settings),
+    onDaemonEvent: (callback) => {
+        const handler = (_event, value) => callback(value);
+        ipcRenderer.on('daemon-event', handler);
+        return () => ipcRenderer.removeListener('daemon-event', handler);
+    },
+    scanSingleClient: (clientId) => ipcRenderer.invoke('scan-single-client', clientId),
     estimateScanDuration: (clientCount) =>
         ipcRenderer.invoke('estimate-scan-duration', clientCount),
     startScanWithOptions: (options) => ipcRenderer.send('start-scan-with-options', options),
