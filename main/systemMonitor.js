@@ -145,8 +145,9 @@ function shouldScanNow(state, settings = {}) {
         return { shouldScan: false, reason: 'cpu_busy', delayMs: 3 * 60 * 1000 };
     }
 
-    // Memory: pause if very low
-    if (state.free_memory_percent < 10) {
+    // Memory: pause if extremely low (system near OOM)
+    // Mac's free memory metric is misleading (doesn't count compressed/cached), so use 3%
+    if (state.free_memory_percent < 3) {
         return { shouldScan: false, reason: 'low_memory', delayMs: 5 * 60 * 1000 };
     }
 

@@ -133,12 +133,14 @@ export default function DaemonStatusPanel({ onForceRescanAll }: Props) {
                     onClick={() => setShowSettings(false)}
                 >
                     <div
-                        className="bg-white rounded-xl shadow-2xl w-full max-w-md p-6"
+                        className="bg-white text-gray-800 rounded-xl shadow-2xl w-full max-w-md p-6"
                         onClick={(e) => e.stopPropagation()}
                     >
-                        <h3 className="text-lg font-semibold mb-4">Arka Plan Tarama Ayarları</h3>
+                        <h3 className="text-lg font-semibold mb-4 text-gray-900">
+                            Arka Plan Tarama Ayarları
+                        </h3>
                         <div className="space-y-3">
-                            <label className="flex items-center justify-between">
+                            <label className="flex items-center justify-between text-gray-700">
                                 <span className="text-sm">Arka plan tarama aktif</span>
                                 <input
                                     type="checkbox"
@@ -151,7 +153,7 @@ export default function DaemonStatusPanel({ onForceRescanAll }: Props) {
                                     }
                                 />
                             </label>
-                            <label className="flex items-center justify-between">
+                            <label className="flex items-center justify-between text-gray-700">
                                 <span className="text-sm">Bilgisayar açılınca otomatik başlat</span>
                                 <input
                                     type="checkbox"
@@ -164,7 +166,7 @@ export default function DaemonStatusPanel({ onForceRescanAll }: Props) {
                                     }
                                 />
                             </label>
-                            <label className="flex items-center justify-between">
+                            <label className="flex items-center justify-between text-gray-700">
                                 <span className="text-sm">Bildirimler</span>
                                 <input
                                     type="checkbox"
@@ -177,7 +179,7 @@ export default function DaemonStatusPanel({ onForceRescanAll }: Props) {
                                     }
                                 />
                             </label>
-                            <label className="flex items-center justify-between">
+                            <label className="flex items-center justify-between text-gray-700">
                                 <span className="text-sm">Gece saatlerinde hızlı tara (02-06)</span>
                                 <input
                                     type="checkbox"
@@ -190,7 +192,7 @@ export default function DaemonStatusPanel({ onForceRescanAll }: Props) {
                                     }
                                 />
                             </label>
-                            <label className="flex items-center justify-between">
+                            <label className="flex items-center justify-between text-gray-700">
                                 <span className="text-sm">Sadece şarjda çalış (pil tasarrufu)</span>
                                 <input
                                     type="checkbox"
@@ -203,7 +205,7 @@ export default function DaemonStatusPanel({ onForceRescanAll }: Props) {
                                     }
                                 />
                             </label>
-                            <div>
+                            <div className="text-gray-700">
                                 <div className="text-sm mb-1">Tarama sıklığı</div>
                                 <select
                                     value={daemonSettings.intervalMs || 2 * 60 * 1000}
@@ -213,7 +215,7 @@ export default function DaemonStatusPanel({ onForceRescanAll }: Props) {
                                             intervalMs: Number(e.target.value),
                                         })
                                     }
-                                    className="w-full px-3 py-2 border rounded"
+                                    className="w-full px-3 py-2 border border-gray-300 rounded bg-white text-gray-800"
                                 >
                                     <option value={60 * 1000}>Hızlı (1 dakika)</option>
                                     <option value={2 * 60 * 1000}>Normal (2 dakika)</option>
@@ -225,7 +227,7 @@ export default function DaemonStatusPanel({ onForceRescanAll }: Props) {
                         <div className="mt-6 flex justify-end gap-2">
                             <button
                                 onClick={() => setShowSettings(false)}
-                                className="px-4 py-2 text-sm bg-gray-100 rounded hover:bg-gray-200"
+                                className="px-4 py-2 text-sm bg-gray-100 text-gray-700 rounded hover:bg-gray-200"
                             >
                                 İptal
                             </button>
@@ -297,6 +299,27 @@ export default function DaemonStatusPanel({ onForceRescanAll }: Props) {
                                         <span className="text-red-600 font-semibold">
                                             ⛔ GİB IP engeli — 24 saat duraklatıldı
                                         </span>
+                                    ) : a.event === 'skipped' ? (
+                                        <span className="text-amber-600">
+                                            ⏸ Atlandı: {skipReasonLabel(a.data?.reason as string)}
+                                        </span>
+                                    ) : a.event === 'idle' ? (
+                                        <span className="text-gray-500">
+                                            💤 Sırada bekleyen mükellef yok (hepsi yakın zamanda
+                                            tarandı)
+                                        </span>
+                                    ) : a.event === 'scan_start' ? (
+                                        <span className="text-blue-600">🔍 Tarama başladı</span>
+                                    ) : a.event === 'started' ? (
+                                        <span className="text-emerald-600">
+                                            ▶ Daemon başlatıldı
+                                        </span>
+                                    ) : a.event === 'stopped' ? (
+                                        <span className="text-gray-500">■ Daemon durduruldu</span>
+                                    ) : a.event === 'paused' ? (
+                                        <span className="text-amber-600">⏸ Duraklatıldı</span>
+                                    ) : a.event === 'resumed' ? (
+                                        <span className="text-emerald-600">▶ Devam ediyor</span>
                                     ) : (
                                         <span>{a.event}</span>
                                     )}
@@ -319,6 +342,17 @@ export default function DaemonStatusPanel({ onForceRescanAll }: Props) {
             )}
         </div>
     );
+}
+
+function skipReasonLabel(reason: string): string {
+    const labels: Record<string, string> = {
+        offline: 'İnternet bağlantısı yok',
+        disk_full: 'Disk alanı az (<500 MB)',
+        battery_ac_only_mode: 'Pil modunda (AC bağlı değil)',
+        cpu_busy: 'İşlemci yoğun',
+        low_memory: 'Bellek az (RAM <10%)',
+    };
+    return labels[reason] || reason || 'bilinmiyor';
 }
 
 function StatBox({
