@@ -349,8 +349,8 @@ function skipReasonLabel(reason: string): string {
         offline: 'İnternet bağlantısı yok',
         disk_full: 'Disk alanı az (<500 MB)',
         battery_ac_only_mode: 'Pil modunda (AC bağlı değil)',
-        cpu_busy: 'İşlemci yoğun',
-        low_memory: 'Bellek az (RAM <10%)',
+        cpu_busy: 'İşlemci yoğun (%70+)',
+        low_memory: 'RAM kritik seviyede düşük',
     };
     return labels[reason] || reason || 'bilinmiyor';
 }
