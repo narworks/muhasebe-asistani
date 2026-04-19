@@ -197,6 +197,7 @@ if (require('electron-squirrel-startup')) {
 }
 
 let mainWindow;
+let daemonPopupWindow = null;
 let tray = null;
 let isQuitting = false;
 
@@ -307,6 +308,100 @@ const runScanWithUpdates = async () => {
             mainWindow.webContents.send('scan-error', 'Tarama hatası: ' + error.message);
         }
     }
+};
+
+/**
+ * Create the daemon popup window — small, frameless, shown near tray icon.
+ * Hidden by default; toggled by tray click.
+ */
+const createDaemonPopup = () => {
+    daemonPopupWindow = new BrowserWindow({
+        width: 380,
+        height: 540,
+        show: false,
+        frame: false,
+        resizable: false,
+        movable: false,
+        skipTaskbar: true,
+        alwaysOnTop: true,
+        transparent: false,
+        vibrancy: process.platform === 'darwin' ? 'under-window' : undefined,
+        webPreferences: {
+            preload: path.join(__dirname, 'preload.js'),
+            nodeIntegration: false,
+            contextIsolation: true,
+            sandbox: true,
+        },
+    });
+
+    // Load same app but on the /daemon-popup route
+    const devUrl = process.env.VITE_DEV_SERVER_URL;
+    if (devUrl) {
+        daemonPopupWindow.loadURL(`${devUrl}#/daemon-popup`);
+    } else {
+        daemonPopupWindow.loadFile(path.join(__dirname, '..', 'dist', 'index.html'), {
+            hash: '/daemon-popup',
+        });
+    }
+
+    // Close when clicked outside
+    daemonPopupWindow.on('blur', () => {
+        if (daemonPopupWindow && !daemonPopupWindow.isDestroyed()) {
+            daemonPopupWindow.hide();
+        }
+    });
+
+    daemonPopupWindow.on('closed', () => {
+        daemonPopupWindow = null;
+    });
+};
+
+/**
+ * Position popup near tray icon and show it. Hide if already visible.
+ */
+const toggleDaemonPopup = (trayBounds) => {
+    if (!daemonPopupWindow || daemonPopupWindow.isDestroyed()) {
+        createDaemonPopup();
+    }
+
+    if (daemonPopupWindow.isVisible()) {
+        daemonPopupWindow.hide();
+        return;
+    }
+
+    // Position: macOS → below tray icon; Windows/Linux → near taskbar
+    const winBounds = daemonPopupWindow.getBounds();
+    let x, y;
+
+    if (process.platform === 'darwin' && trayBounds) {
+        // macOS menu bar: center popup under tray icon
+        x = Math.round(trayBounds.x + trayBounds.width / 2 - winBounds.width / 2);
+        y = Math.round(trayBounds.y + trayBounds.height + 4);
+    } else if (process.platform === 'win32' && trayBounds) {
+        // Windows taskbar (usually bottom): show above tray
+        x = Math.round(trayBounds.x + trayBounds.width / 2 - winBounds.width / 2);
+        y = Math.round(trayBounds.y - winBounds.height - 4);
+    } else {
+        // Fallback: top-right of primary display
+        const display = screen.getPrimaryDisplay();
+        x = display.workAreaSize.width - winBounds.width - 20;
+        y = 40;
+    }
+
+    // Clamp to screen bounds
+    const display = screen.getDisplayNearestPoint({ x: x + winBounds.width / 2, y });
+    x = Math.max(
+        display.workArea.x + 4,
+        Math.min(x, display.workArea.x + display.workArea.width - winBounds.width - 4)
+    );
+    y = Math.max(
+        display.workArea.y + 4,
+        Math.min(y, display.workArea.y + display.workArea.height - winBounds.height - 4)
+    );
+
+    daemonPopupWindow.setPosition(x, y, false);
+    daemonPopupWindow.show();
+    daemonPopupWindow.focus();
 };
 
 app.whenReady().then(() => {
@@ -432,9 +527,19 @@ app.whenReady().then(() => {
     };
     tray.setToolTip('Muhasebe Asistanı');
     updateTrayMenu();
+
+    // Left-click on tray → toggle popup dashboard
+    tray.on('click', (_event, bounds) => {
+        toggleDaemonPopup(bounds);
+    });
+    // Double-click → open main window
     tray.on('double-click', () => {
         mainWindow.show();
         mainWindow.focus();
+    });
+    // Right-click → native context menu (already set via setContextMenu)
+    tray.on('right-click', () => {
+        tray.popUpContextMenu();
     });
 
     // Start background daemon (only after user login — but module not required for now)
@@ -845,6 +950,28 @@ ipcMain.handle('daemon-pause', async (_event, durationMs) => {
 
 ipcMain.handle('daemon-resume', async () => {
     daemonScheduler.resume();
+    return { ok: true };
+});
+
+// Recent tebligatlar for daemon popup
+ipcMain.handle('get-recent-tebligatlar', async (_event, limit) => {
+    try {
+        return database.getRecentTebligatlar(limit || 5);
+    } catch (err) {
+        logger.debug(`[get-recent-tebligatlar] error: ${err.message}`);
+        return [];
+    }
+});
+
+// Open main window (from daemon popup)
+ipcMain.handle('open-main-window', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.show();
+        mainWindow.focus();
+    }
+    if (daemonPopupWindow && !daemonPopupWindow.isDestroyed()) {
+        daemonPopupWindow.hide();
+    }
     return { ok: true };
 });
 

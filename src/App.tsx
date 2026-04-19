@@ -7,6 +7,7 @@ import Statistics from './pages/dashboard/Statistics';
 import Subscription from './pages/dashboard/Subscription';
 import StatementConverter from './pages/tools/StatementConverter';
 import ETebligat from './pages/tools/ETebligat';
+import DaemonPopup from './pages/DaemonPopup';
 import ProtectedRoute from './components/ProtectedRoute';
 import MainLayout from './components/layout/MainLayout';
 import ErrorBoundary from './components/ErrorBoundary';
@@ -17,6 +18,9 @@ function App() {
         <ErrorBoundary>
             <Toaster position="top-right" richColors closeButton duration={4000} />
             <Routes>
+                {/* Daemon Popup (no auth, no layout, standalone) */}
+                <Route path="/daemon-popup" element={<DaemonPopup />} />
+
                 {/* Public Routes */}
                 <Route path="/login" element={<Login />} />
                 <Route path="/register" element={<Register />} />

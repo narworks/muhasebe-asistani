@@ -299,6 +299,25 @@ function saveTebligatlar(clientId, tebligatlar) {
     return insertMany(tebligatlar);
 }
 
+/**
+ * Get the most recent N tebligat across all clients — for daemon popup feed.
+ * Excludes placeholder "Tebligat yok" entries.
+ */
+function getRecentTebligatlar(limit = 5) {
+    if (!db) init();
+    const stmt = db.prepare(`
+        SELECT t.id, t.sender, t.subject, t.status, t.document_no,
+               t.send_date, t.notification_date, t.created_at,
+               c.firm_name, c.id as client_id
+        FROM tebligatlar t
+        JOIN clients c ON c.id = t.client_id
+        WHERE t.status != 'Tebligat yok'
+        ORDER BY COALESCE(t.notification_date, t.send_date, t.created_at) DESC
+        LIMIT ?
+    `);
+    return stmt.all(limit);
+}
+
 function getTebligatlar(limit = 50000) {
     if (!db) init();
     // Large default limit (50K) — SQLite handles this easily locally.
@@ -628,6 +647,7 @@ module.exports = {
     getClientPassword,
     saveTebligatlar,
     getTebligatlar,
+    getRecentTebligatlar,
     getTebligatById,
     updateTebligatDocument,
     updateTebligatDocumentByPath,

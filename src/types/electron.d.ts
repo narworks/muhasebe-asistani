@@ -206,6 +206,21 @@ export interface IElectronAPI {
         errorMessage?: string;
         durationMs?: number;
     }>;
+    getRecentTebligatlar: (limit?: number) => Promise<
+        Array<{
+            id: number;
+            sender: string;
+            subject: string;
+            status: string;
+            document_no: string | null;
+            send_date: string | null;
+            notification_date: string | null;
+            created_at: string;
+            firm_name: string;
+            client_id: number;
+        }>
+    >;
+    openMainWindow: () => Promise<{ ok: boolean }>;
     estimateScanDuration: (clientCount?: number) => Promise<{
         count: number;
         estimatedMinutes: number;

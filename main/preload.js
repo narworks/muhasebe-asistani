@@ -56,6 +56,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
         return () => ipcRenderer.removeListener('daemon-event', handler);
     },
     scanSingleClient: (clientId) => ipcRenderer.invoke('scan-single-client', clientId),
+    // Daemon popup helpers
+    getRecentTebligatlar: (limit) => ipcRenderer.invoke('get-recent-tebligatlar', limit),
+    openMainWindow: () => ipcRenderer.invoke('open-main-window'),
     estimateScanDuration: (clientCount) =>
         ipcRenderer.invoke('estimate-scan-duration', clientCount),
     startScanWithOptions: (options) => ipcRenderer.send('start-scan-with-options', options),
