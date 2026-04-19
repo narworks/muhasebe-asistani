@@ -240,6 +240,23 @@ const createWindow = () => {
             isQuitting = true;
         }
     });
+
+    // Hide dock / taskbar icon when window is hidden → true menu-bar-app behavior
+    mainWindow.on('hide', () => {
+        if (process.platform === 'darwin' && app.dock) {
+            app.dock.hide();
+        } else if (process.platform === 'win32') {
+            mainWindow.setSkipTaskbar(true);
+        }
+    });
+
+    mainWindow.on('show', () => {
+        if (process.platform === 'darwin' && app.dock) {
+            app.dock.show();
+        } else if (process.platform === 'win32') {
+            mainWindow.setSkipTaskbar(false);
+        }
+    });
 };
 
 // Helper: run scan with status updates
@@ -310,6 +327,20 @@ app.whenReady().then(() => {
     scheduler.init(() => runScanWithUpdates());
 
     createWindow();
+
+    // If launched hidden at login, keep dock hidden
+    try {
+        const wasLaunchedAtLogin =
+            process.platform === 'darwin' &&
+            app.getLoginItemSettings().wasOpenedAtLogin &&
+            app.getLoginItemSettings().wasOpenedAsHidden;
+        if (wasLaunchedAtLogin && mainWindow) {
+            mainWindow.hide();
+            if (app.dock) app.dock.hide();
+        }
+    } catch {
+        /* ignore */
+    }
 
     // Initialize auto-updater
     autoUpdater.init(mainWindow);
