@@ -62,6 +62,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getTodayErrorCount: () => ipcRenderer.invoke('get-today-error-count'),
     getDailyTebligatStats: (days) => ipcRenderer.invoke('get-daily-tebligat-stats', days),
     getUnviewedCounts: () => ipcRenderer.invoke('get-unviewed-counts'),
+    getLastScanTime: () => ipcRenderer.invoke('get-last-scan-time'),
     markTebligatViewed: (tebligatId) => ipcRenderer.invoke('mark-tebligat-viewed', tebligatId),
     markAllTebligatViewed: () => ipcRenderer.invoke('mark-all-tebligat-viewed'),
     openMainWindow: (path) => ipcRenderer.invoke('open-main-window', path),
@@ -101,8 +102,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
     saveScanSettings: (settings) => ipcRenderer.invoke('save-scan-settings', settings),
 
     // Schedule
-    getScheduleStatus: () => ipcRenderer.invoke('get-schedule-status'),
-    setSchedule: (config) => ipcRenderer.invoke('set-schedule', config),
 
     // Credits
     getCredits: () => ipcRenderer.invoke('get-credits'),

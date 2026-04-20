@@ -1,12 +1,11 @@
 import React from 'react';
-import { FileText, Users, Clock, Coins } from 'lucide-react';
+import { FileText, Users, Coins } from 'lucide-react';
 
 interface DashboardCardsProps {
     tebligatCount: number;
     newTebligatCount: number;
     clientCount: number;
     maxClients: number;
-    scheduleEnabled: boolean;
     creditBalance: number | null;
     onTabChange: (tab: string) => void;
 }
@@ -16,14 +15,13 @@ const DashboardCards: React.FC<DashboardCardsProps> = ({
     newTebligatCount,
     clientCount,
     maxClients,
-    scheduleEnabled,
     creditBalance,
     onTabChange,
 }) => {
     const clientPercent = maxClients > 0 ? Math.min((clientCount / maxClients) * 100, 100) : 0;
 
     return (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+        <div className="grid grid-cols-3 gap-3 mb-4">
             {/* Tebligat */}
             <div
                 className="bg-white border border-l-4 border-l-indigo-500 rounded-lg p-3 shadow-sm cursor-pointer hover:shadow-md transition-shadow"
@@ -65,27 +63,6 @@ const DashboardCards: React.FC<DashboardCardsProps> = ({
                         }`}
                         style={{ width: `${clientPercent}%` }}
                     />
-                </div>
-            </div>
-
-            {/* Zamanlama */}
-            <div
-                className="bg-white border border-l-4 border-l-sky-500 rounded-lg p-3 shadow-sm cursor-pointer hover:shadow-md transition-shadow"
-                onClick={() => onTabChange('schedule')}
-            >
-                <div className="flex items-center gap-1.5 mb-1">
-                    <Clock className="w-3.5 h-3.5 text-sky-500" />
-                    <span className="text-sm font-semibold text-gray-500">Zamanlama</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                    <span
-                        className={`inline-block w-2 h-2 rounded-full ${
-                            scheduleEnabled ? 'bg-emerald-500' : 'bg-gray-300'
-                        }`}
-                    />
-                    <span className="text-sm font-medium text-gray-700">
-                        {scheduleEnabled ? 'Aktif' : 'Kapal\u0131'}
-                    </span>
                 </div>
             </div>
 

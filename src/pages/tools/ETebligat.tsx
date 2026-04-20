@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { clientCreateSchema, clientEditSchema, validateForm } from '../../lib/validations';
-import type { ScheduleStatus, Client, Tebligat, ScanUpdate } from '../../types';
+import type { Client, Tebligat, ScanUpdate } from '../../types';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import LegalConsentModal from '../../components/LegalConsentModal';
@@ -19,7 +19,6 @@ import TebligatDetailModal from './e-tebligat/modals/TebligatDetailModal';
 import ScanResultsModal from './e-tebligat/modals/ScanResultsModal';
 import ScanHistoryModal from './e-tebligat/modals/ScanHistoryModal';
 import PreviewModal from './e-tebligat/modals/PreviewModal';
-import SchedulePanel from './e-tebligat/SchedulePanel';
 import LogDrawer from './e-tebligat/LogDrawer';
 import ClientManagement from './e-tebligat/ClientManagement';
 import ScanControls from './e-tebligat/ScanControls';
@@ -31,7 +30,7 @@ import DashboardCards from './e-tebligat/DashboardCards';
 
 const ETebligat: React.FC = () => {
     const { currentUser } = useAuth();
-    const [activeTab, setActiveTab] = useState('scan');
+    const [activeTab, setActiveTab] = useState('results');
     const [scanning, setScanning] = useState(false);
     const [logs, setLogs] = useState<LogEntry[]>([]);
     const logsEndRef = useRef<HTMLDivElement>(null);
@@ -53,6 +52,9 @@ const ETebligat: React.FC = () => {
     const [filterClientId, setFilterClientId] = useState('all');
     const [filterStatus, setFilterStatus] = useState('all');
     const [filterSender, setFilterSender] = useState('all');
+    // 'all' shows everything; 'pending' shows unviewed (all dates); 'new' shows unviewed from today.
+    // Set via ?filter=pending / ?filter=new URL param from the daemon popup.
+    const [viewedFilter, setViewedFilter] = useState<'all' | 'pending' | 'new'>('all');
     const [filterDateRange, setFilterDateRange] = useState<
         'all' | 'today' | 'yesterday' | 'last3' | 'last7' | 'last30' | 'thisYear' | 'custom'
     >('all');
@@ -79,21 +81,6 @@ const ETebligat: React.FC = () => {
         wasCancelled: boolean;
     } | null>(null);
 
-    const [scheduleConfig, setScheduleConfig] = useState<ScheduleStatus>({
-        enabled: false,
-        time: '08:00',
-        finishByTime: '08:00',
-        frequency: 'daily',
-        customDays: [],
-        lastScheduledScanAt: null,
-        nextScheduledScanAt: null,
-        estimatedStartTime: null,
-        estimatedDurationMinutes: 0,
-        clientCount: 0,
-    });
-    const [scheduleLoading, setScheduleLoading] = useState(false);
-    const [scheduleMode, setScheduleMode] = useState<'finish' | 'start'>('finish');
-    const [startAtTime, setStartAtTime] = useState('08:00');
     const [creditBalance, setCreditBalance] = useState<{ totalRemaining: number } | null>(null);
     const [insufficientCredits, setInsufficientCredits] = useState(false);
     const [subscriptionStatus, setSubscriptionStatus] = useState<{
@@ -180,25 +167,36 @@ const ETebligat: React.FC = () => {
     const [expandedClients, setExpandedClients] = useState<Set<number>>(new Set());
     const [expandedScans, setExpandedScans] = useState<Set<string>>(new Set());
 
-    // Deep-link from daemon popup: ?clientId=X expands that client's accordion.
-    // Consumed-once so hitting Back/Forward doesn't re-expand unexpectedly.
+    // Deep-link from daemon popup:
+    //   ?clientId=X → expand that client's accordion and scroll to it
+    //   ?filter=pending → show only unviewed tebligat
+    //   ?filter=new → show only unviewed tebligat from today
+    // Consumed-once: params are cleared after applying so Back/Forward doesn't re-apply.
     useEffect(() => {
+        let changed = false;
         const raw = searchParams.get('clientId');
-        if (!raw) return;
-        const id = Number(raw);
-        if (!Number.isFinite(id) || id <= 0) return;
-        setExpandedClients((prev) => {
-            const next = new Set(prev);
-            next.add(id);
-            return next;
-        });
-        // Scroll to the accordion after a tick (waits for render).
-        setTimeout(() => {
-            const el = document.getElementById(`client-accordion-${id}`);
-            if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        }, 300);
-        // Clear the param so it's one-shot
-        setSearchParams({}, { replace: true });
+        if (raw) {
+            const id = Number(raw);
+            if (Number.isFinite(id) && id > 0) {
+                setExpandedClients((prev) => {
+                    const next = new Set(prev);
+                    next.add(id);
+                    return next;
+                });
+                setTimeout(() => {
+                    const el = document.getElementById(`client-accordion-${id}`);
+                    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }, 300);
+                changed = true;
+            }
+        }
+        const filter = searchParams.get('filter');
+        if (filter === 'pending' || filter === 'new') {
+            setViewedFilter(filter);
+            setActiveTab('results');
+            changed = true;
+        }
+        if (changed) setSearchParams({}, { replace: true });
     }, [searchParams, setSearchParams]);
 
     const fetchTebligatlar = async () => {
@@ -385,28 +383,6 @@ const ETebligat: React.FC = () => {
         return removeCreditsListener;
     }, []);
 
-    // Helper to merge schedule status with defaults
-    const mergeScheduleStatus = (status: ScheduleStatus): ScheduleStatus => ({
-        ...status,
-        time: status.time || '08:00',
-        finishByTime: status.finishByTime || status.time || '08:00',
-        frequency: status.frequency || 'daily',
-        customDays: status.customDays || [],
-    });
-
-    // Load schedule config
-    useEffect(() => {
-        const loadSchedule = async () => {
-            try {
-                const status = await window.electronAPI.getScheduleStatus();
-                setScheduleConfig(mergeScheduleStatus(status));
-            } catch (err) {
-                console.error('Zamanlama durumu alınamadı', err);
-            }
-        };
-        loadSchedule();
-    }, []);
-
     const scrollToBottom = () => {
         logsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     };
@@ -505,151 +481,6 @@ const ETebligat: React.FC = () => {
         setScanning(false);
         setScanProgress(null);
         addLog('Tarama durduruldu.', 'info');
-    };
-
-    const handleScheduleToggle = async () => {
-        setScheduleLoading(true);
-        try {
-            const newEnabled = !scheduleConfig.enabled;
-            await window.electronAPI.setSchedule({
-                enabled: newEnabled,
-                finishByTime:
-                    scheduleMode === 'finish'
-                        ? scheduleConfig.finishByTime || scheduleConfig.time
-                        : undefined,
-                startAtTime: scheduleMode === 'start' ? startAtTime : undefined,
-                frequency: scheduleConfig.frequency,
-                customDays: scheduleConfig.customDays,
-            });
-            const updated = await window.electronAPI.getScheduleStatus();
-            setScheduleConfig(mergeScheduleStatus(updated));
-        } catch (err) {
-            console.error('Zamanlama ayarlanamadı', err);
-        } finally {
-            setScheduleLoading(false);
-        }
-    };
-
-    const handleScheduleTimeChange = async (newTime: string) => {
-        setScheduleConfig((prev) => ({ ...prev, time: newTime, finishByTime: newTime }));
-        if (scheduleConfig.enabled) {
-            try {
-                await window.electronAPI.setSchedule({
-                    enabled: true,
-                    finishByTime: newTime,
-                    frequency: scheduleConfig.frequency,
-                    customDays: scheduleConfig.customDays,
-                });
-                const updated = await window.electronAPI.getScheduleStatus();
-                setScheduleConfig(mergeScheduleStatus(updated));
-            } catch (err) {
-                console.error('Zamanlama güncellenemedi', err);
-            }
-        }
-    };
-
-    const handleFrequencyChange = async (
-        newFrequency: 'daily' | 'weekdays' | 'weekends' | 'custom'
-    ) => {
-        const currentDays = scheduleConfig.customDays ?? [];
-        const newCustomDays =
-            newFrequency === 'custom' && currentDays.length === 0
-                ? [1, 2, 3, 4, 5] // Default to weekdays if switching to custom with no days selected
-                : currentDays;
-
-        setScheduleConfig((prev) => ({
-            ...prev,
-            frequency: newFrequency,
-            customDays: newCustomDays,
-        }));
-
-        if (scheduleConfig.enabled) {
-            try {
-                await window.electronAPI.setSchedule({
-                    enabled: true,
-                    finishByTime: scheduleConfig.finishByTime || scheduleConfig.time,
-                    frequency: newFrequency,
-                    customDays: newCustomDays,
-                });
-                const updated = await window.electronAPI.getScheduleStatus();
-                setScheduleConfig(mergeScheduleStatus(updated));
-            } catch (err) {
-                console.error('Zamanlama güncellenemedi', err);
-            }
-        }
-    };
-
-    const handleCustomDayToggle = async (day: number) => {
-        const days = scheduleConfig.customDays ?? [];
-        const newDays = days.includes(day)
-            ? days.filter((d) => d !== day)
-            : [...days, day].sort((a, b) => a - b);
-
-        // Don't allow empty selection
-        if (newDays.length === 0) return;
-
-        setScheduleConfig((prev) => ({ ...prev, customDays: newDays }));
-
-        if (scheduleConfig.enabled && scheduleConfig.frequency === 'custom') {
-            try {
-                await window.electronAPI.setSchedule({
-                    enabled: true,
-                    finishByTime: scheduleConfig.finishByTime || scheduleConfig.time,
-                    frequency: 'custom',
-                    customDays: newDays,
-                });
-                const updated = await window.electronAPI.getScheduleStatus();
-                setScheduleConfig(mergeScheduleStatus(updated));
-            } catch (err) {
-                console.error('Zamanlama güncellenemedi', err);
-            }
-        }
-    };
-
-    const handleScheduleModeChange = async (mode: 'finish' | 'start') => {
-        setScheduleMode(mode);
-        if (scheduleConfig.enabled) {
-            try {
-                if (mode === 'finish') {
-                    await window.electronAPI.setSchedule({
-                        enabled: true,
-                        finishByTime: scheduleConfig.finishByTime || scheduleConfig.time || '08:00',
-                        frequency: scheduleConfig.frequency,
-                        customDays: scheduleConfig.customDays,
-                    });
-                } else {
-                    await window.electronAPI.setSchedule({
-                        enabled: true,
-                        startAtTime: startAtTime,
-                        frequency: scheduleConfig.frequency,
-                        customDays: scheduleConfig.customDays,
-                    });
-                }
-                const updated = await window.electronAPI.getScheduleStatus();
-                setScheduleConfig(mergeScheduleStatus(updated));
-            } catch (err) {
-                console.error('Mod değiştirilemedi', err);
-            }
-        }
-    };
-
-    const handleStartAtTimeChange = async (newTime: string) => {
-        setStartAtTime(newTime);
-        // If schedule is enabled, push update to backend immediately
-        if (scheduleConfig.enabled && scheduleMode === 'start') {
-            try {
-                await window.electronAPI.setSchedule({
-                    enabled: true,
-                    startAtTime: newTime,
-                    frequency: scheduleConfig.frequency,
-                    customDays: scheduleConfig.customDays,
-                });
-                const updated = await window.electronAPI.getScheduleStatus();
-                setScheduleConfig(mergeScheduleStatus(updated));
-            } catch (err) {
-                console.error('Zamanlama güncellenemedi', err);
-            }
-        }
     };
 
     const handleSaveClient = async (event: React.FormEvent) => {
@@ -1060,6 +891,11 @@ const ETebligat: React.FC = () => {
         return null;
     };
 
+    const startOfTodayMsForFilter = React.useMemo(() => {
+        const d = new Date();
+        d.setHours(0, 0, 0, 0);
+        return d.getTime();
+    }, []);
     const filteredTebligatlar = tebligatlar.filter((row) => {
         if (filterClientId !== 'all' && String(row.client_id) !== filterClientId) return false;
         if (filterStatus !== 'all' && row.status !== filterStatus) return false;
@@ -1069,6 +905,15 @@ const ETebligat: React.FC = () => {
             if (!rowDate) return false;
             if (dateBounds.from && rowDate < dateBounds.from) return false;
             if (dateBounds.to && rowDate > dateBounds.to) return false;
+        }
+        if (viewedFilter === 'pending' || viewedFilter === 'new') {
+            if (row.app_viewed_at) return false;
+            if (viewedFilter === 'new') {
+                const ref = row.notification_date || row.send_date || row.created_at;
+                if (!ref) return false;
+                const ts = new Date(ref).getTime();
+                if (Number.isNaN(ts) || ts < startOfTodayMsForFilter) return false;
+            }
         }
         if (normalizedSearch) {
             const haystack =
@@ -1342,7 +1187,6 @@ const ETebligat: React.FC = () => {
                 )}
                 clientCount={clients.length}
                 maxClients={clientLimit?.maxClients || 200}
-                scheduleEnabled={scheduleConfig.enabled}
                 creditBalance={creditBalance?.totalRemaining ?? null}
                 onTabChange={setActiveTab}
             />
@@ -1403,7 +1247,6 @@ const ETebligat: React.FC = () => {
                     className="flex-1 flex flex-col"
                 >
                     <TabsList className="w-full justify-start bg-gray-100 p-1 mb-2">
-                        <TabsTrigger value="scan">Tarama</TabsTrigger>
                         <TabsTrigger value="results">
                             Sonu&ccedil;lar{' '}
                             <span className="ml-1.5 text-xs bg-indigo-100 text-indigo-600 px-1.5 py-0.5 rounded-full">
@@ -1416,11 +1259,13 @@ const ETebligat: React.FC = () => {
                                 {clients.length}
                             </span>
                         </TabsTrigger>
-                        <TabsTrigger value="schedule">Zamanlama</TabsTrigger>
                     </TabsList>
 
-                    {/* Tarama Tab */}
-                    <TabsContent value="scan" className="flex-1 flex flex-col overflow-y-auto pt-2">
+                    {/* Sonuçlar Tab — includes daemon status + manual scan controls at top */}
+                    <TabsContent
+                        value="results"
+                        className="flex-1 flex flex-col overflow-y-auto pt-2"
+                    >
                         <DaemonStatusPanel />
                         <ScanControls
                             scanning={scanning}
@@ -1507,14 +1352,11 @@ const ETebligat: React.FC = () => {
 
                         {/* LogDrawer — only shown during manual scans (daemon activity is in DaemonStatusPanel) */}
                         {(scanning || logs.length > 0) && (
-                            <div className="mt-4 flex-1">
+                            <div className="mt-4">
                                 <LogDrawer logs={logs} logsEndRef={logsEndRef} />
                             </div>
                         )}
-                    </TabsContent>
 
-                    {/* Sonuçlar Tab */}
-                    <TabsContent value="results" className="flex-1 overflow-y-auto pt-2">
                         <ResultsView
                             tebligatlar={tebligatlar}
                             filteredTebligatlar={filteredTebligatlar}
@@ -1554,22 +1396,6 @@ const ETebligat: React.FC = () => {
                             onExportExcel={handleExportExcel}
                             onRefresh={fetchTebligatlar}
                             onResetFilters={resetFilters}
-                        />
-                    </TabsContent>
-
-                    {/* Zamanlama Tab */}
-                    <TabsContent value="schedule" className="flex-1 overflow-y-auto pt-2">
-                        <SchedulePanel
-                            config={scheduleConfig}
-                            loading={scheduleLoading}
-                            mode={scheduleMode}
-                            startAtTime={startAtTime}
-                            onToggle={handleScheduleToggle}
-                            onTimeChange={handleScheduleTimeChange}
-                            onFrequencyChange={handleFrequencyChange}
-                            onCustomDayToggle={handleCustomDayToggle}
-                            onModeChange={handleScheduleModeChange}
-                            onStartAtTimeChange={handleStartAtTimeChange}
                         />
                     </TabsContent>
 

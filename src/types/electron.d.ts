@@ -5,8 +5,6 @@ import type {
     ScanSettings,
     ScanState,
     ScanStatus,
-    ScheduleConfig,
-    ScheduleStatus,
     Credits,
     Subscription,
     UserInfo,
@@ -226,6 +224,7 @@ export interface IElectronAPI {
     getTodayErrorCount: () => Promise<number>;
     getDailyTebligatStats: (days?: number) => Promise<Array<{ date: string; count: number }>>;
     getUnviewedCounts: () => Promise<{ todayNew: number; pending: number; total: number }>;
+    getLastScanTime: () => Promise<string | null>;
     markTebligatViewed: (
         tebligatId: number
     ) => Promise<{ ok: boolean; changes?: number; error?: string }>;
@@ -266,10 +265,6 @@ export interface IElectronAPI {
     // Scan Settings
     getScanSettings: () => Promise<ScanSettings>;
     saveScanSettings: (settings: ScanSettings) => Promise<ApiResponse>;
-
-    // Schedule
-    getScheduleStatus: () => Promise<ScheduleStatus>;
-    setSchedule: (config: ScheduleConfig) => Promise<ApiResponse>;
 
     // Statement Converter
     convertStatement: (data: StatementConvertRequest) => Promise<string>;

@@ -1091,6 +1091,16 @@ ipcMain.handle('get-today-error-count', async () => {
     }
 });
 
+// Last scan timestamp across all clients (for "SON TARAMA" card)
+ipcMain.handle('get-last-scan-time', async () => {
+    try {
+        return database.getLastScanTime();
+    } catch (err) {
+        logger.debug(`[get-last-scan-time] error: ${err.message}`);
+        return null;
+    }
+});
+
 // Unviewed counters for popup banner + tray badge
 ipcMain.handle('get-unviewed-counts', async () => {
     try {
@@ -1273,36 +1283,6 @@ ipcMain.handle('save-scan-settings', (event, scanSettings) => {
     validation.validateScanSettings(scanSettings);
     settings.updateSettings({ scan: scanSettings });
     return { success: true };
-});
-
-// Schedule Management
-ipcMain.handle('get-schedule-status', () => {
-    return scheduler.getStatus();
-});
-
-ipcMain.handle('set-schedule', (event, config) => {
-    const {
-        enabled,
-        time,
-        finishByTime,
-        startAtTime,
-        frequency = 'daily',
-        customDays = [],
-    } = config;
-    validation.validateScheduleConfig(config);
-    const targetTime = finishByTime || time;
-    if (enabled && (targetTime || startAtTime)) {
-        const success = scheduler.startSchedule(
-            targetTime,
-            frequency,
-            customDays,
-            startAtTime || null
-        );
-        return { success };
-    } else {
-        scheduler.stopSchedule();
-        return { success: true };
-    }
 });
 
 // Credits

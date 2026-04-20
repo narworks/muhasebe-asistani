@@ -39,6 +39,7 @@ export interface Tebligat {
     notification_date?: string;
     read_date?: string;
     created_at?: string;
+    app_viewed_at?: string | null;
 }
 
 export interface TebligatGroup {

@@ -35,13 +35,13 @@ export default function DaemonPopup() {
     const [recent, setRecent] = useState<RecentTebligat[]>([]);
     const [stats, setStats] = useState<DaemonStats | null>(null);
     const [activeClient, setActiveClient] = useState<string | null>(null);
-    const [todayCount, setTodayCount] = useState<number>(0);
     const [todayErrorCount, setTodayErrorCount] = useState<number>(0);
     const [unviewed, setUnviewed] = useState<UnviewedCounts>({
         todayNew: 0,
         pending: 0,
         total: 0,
     });
+    const [lastScanTime, setLastScanTime] = useState<string | null>(null);
     const [weeklyStats, setWeeklyStats] = useState<Array<{ date: string; count: number }>>([]);
     const [page, setPage] = useState(1);
     const [hasNewSinceNav, setHasNewSinceNav] = useState(false);
@@ -57,15 +57,15 @@ export default function DaemonPopup() {
     useEffect(() => {
         const fetchAll = async (markNewBadge = false) => {
             try {
-                const [s, r, rl, d, today, weekly, errs, uv] = await Promise.all([
+                const [s, r, rl, d, weekly, errs, uv, lst] = await Promise.all([
                     window.electronAPI.daemonGetState(),
                     window.electronAPI.getRecentTebligatlar(25),
                     window.electronAPI.getRateLimits(),
                     window.electronAPI.getDiskUsage(),
-                    window.electronAPI.getTodayTebligatCount(),
                     window.electronAPI.getDailyTebligatStats(7),
                     window.electronAPI.getTodayErrorCount(),
                     window.electronAPI.getUnviewedCounts(),
+                    window.electronAPI.getLastScanTime(),
                 ]);
                 setState(s);
                 setRecent((prev) => {
@@ -85,10 +85,10 @@ export default function DaemonPopup() {
                     });
                 }
                 if (d) setDiskUsage(d);
-                if (typeof today === 'number') setTodayCount(today);
                 if (typeof errs === 'number') setTodayErrorCount(errs);
                 if (Array.isArray(weekly)) setWeeklyStats(weekly);
                 if (uv && typeof uv === 'object') setUnviewed(uv as UnviewedCounts);
+                if (lst && typeof lst === 'string') setLastScanTime(lst);
             } catch {
                 /* ignore */
             }
@@ -345,14 +345,19 @@ export default function DaemonPopup() {
                 </div>
             )}
 
-            {/* Stats grid — 'bugün' tabanlı (manuel + daemon dahil, restart-safe) */}
+            {/* Stats grid — 4 kart: son tarama zamanı (daemon aktif göstergesi),
+                yeni tebligat (viewed-aware, banner ile aynı), şu an, bugünkü hata */}
             <div className="px-4 py-3 grid grid-cols-2 gap-2">
-                <MiniStat label="Tarama" value={(stats?.todayScans ?? 0).toString()} hint="bugün" />
+                <MiniStat
+                    label="Son Tarama"
+                    value={lastScanTime ? formatRelativeTime(lastScanTime) : '—'}
+                    hint={lastScanTime ? 'önce' : 'henüz yok'}
+                />
                 <MiniStat
                     label="Yeni Tebligat"
-                    value={todayCount.toString()}
-                    hint="bugün"
-                    tone={todayCount > 0 ? 'good' : 'neutral'}
+                    value={unviewed.todayNew.toString()}
+                    hint="bugün, okunmamış"
+                    tone={unviewed.todayNew > 0 ? 'good' : 'neutral'}
                 />
                 <MiniStat
                     label="Şu an"
@@ -494,7 +499,7 @@ export default function DaemonPopup() {
             {recent.length > 0 && (
                 <div className="px-4 py-1.5 border-t border-slate-800 flex items-center justify-between text-[10px]">
                     <button
-                        onClick={() => handleOpenMain('/tools/e-tebligat')}
+                        onClick={() => handleOpenMain('/tools/e-tebligat?filter=pending')}
                         className="text-indigo-400 hover:text-indigo-300 hover:underline transition-colors"
                     >
                         Tümünü Gör →

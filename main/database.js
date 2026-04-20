@@ -461,6 +461,19 @@ function getUnviewedCounts() {
 }
 
 /**
+ * Most recent successful scan timestamp across all clients. Used for popup's
+ * "SON TARAMA" card so user sees daemon is working even when daily rate counter is 0
+ * (all clients up-to-date, no actual scans needed).
+ */
+function getLastScanTime() {
+    if (!db) init();
+    const row = db
+        .prepare(`SELECT MAX(last_scan_at) as t FROM clients WHERE last_scan_at IS NOT NULL`)
+        .get();
+    return row?.t || null;
+}
+
+/**
  * Sum of error_count from scan_history rows that finished today (local timezone).
  * Used for the popup's "HATA" card so manual + daemon errors both count.
  */
@@ -513,6 +526,7 @@ function getTebligatlar(limit = 50000) {
     if (!db) init();
     // Large default limit (50K) — SQLite handles this easily locally.
     // Previous 200 limit caused last-5-clients-only display bug on large installs.
+    // Order: newest notification_date first (fallback to send_date / created_at).
     const stmt = db.prepare(`
     SELECT t.id,
            t.tebligat_date,
@@ -528,11 +542,12 @@ function getTebligatlar(limit = 50000) {
            t.notification_date,
            t.read_date,
            t.created_at,
+           t.app_viewed_at,
            c.firm_name,
            c.id as client_id
     FROM tebligatlar t
     JOIN clients c ON c.id = t.client_id
-    ORDER BY t.created_at DESC
+    ORDER BY COALESCE(t.notification_date, t.send_date, t.created_at) DESC
     LIMIT ?
   `);
     return stmt.all(limit);
@@ -842,6 +857,7 @@ module.exports = {
     getTodayNewTebligatCount,
     getTodayErrorCount,
     getDailyTebligatStats,
+    getLastScanTime,
     markTebligatViewed,
     markAllTebligatViewed,
     getUnviewedCounts,

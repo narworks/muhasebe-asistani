@@ -65,6 +65,17 @@ interface ResultsViewProps {
     onResetFilters: () => void;
 }
 
+// Determine per-item viewed/pending status. Returns 'new' (today, unviewed),
+// 'pending' (older, unviewed), or null (already viewed by muhasebeci).
+const getViewBadge = (t: Tebligat, startOfTodayMs: number): 'new' | 'pending' | null => {
+    if (t.app_viewed_at) return null;
+    const ref = t.notification_date || t.send_date || t.created_at;
+    if (!ref) return 'pending';
+    const ts = new Date(ref).getTime();
+    if (Number.isNaN(ts)) return 'pending';
+    return ts >= startOfTodayMs ? 'new' : 'pending';
+};
+
 const formatDate = (dateStr?: string | null): string => {
     if (!dateStr) return '-';
     try {
@@ -136,6 +147,13 @@ const ResultsView: React.FC<ResultsViewProps> = ({
     const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
     const [showExportMenu, setShowExportMenu] = useState(false);
     const exportMenuRef = useRef<HTMLDivElement>(null);
+
+    // Computed once per render; used by getViewBadge for per-item "Yeni" vs "Bekleyen" decision.
+    const startOfTodayMs = useMemo(() => {
+        const d = new Date();
+        d.setHours(0, 0, 0, 0);
+        return d.getTime();
+    }, []);
 
     // Close export dropdown when clicking outside
     useEffect(() => {
@@ -211,21 +229,39 @@ const ResultsView: React.FC<ResultsViewProps> = ({
     const renderCard = (t: Tebligat, showClient: boolean) => {
         const clientName = t.firm_name || clientNameMap.get(t.client_id) || 'Bilinmeyen';
         const isNew = allNewTebligatIds.has(t.id);
+        const badge = getViewBadge(t, startOfTodayMs);
+        // Border accent: green for "Yeni", amber for "Bekleyen", subtle for viewed
+        const borderClass =
+            badge === 'new'
+                ? 'border-l-4 border-l-emerald-400 bg-emerald-50/40'
+                : badge === 'pending'
+                  ? 'border-l-4 border-l-amber-400 bg-amber-50/30'
+                  : isNew
+                    ? 'border-l-4 border-l-emerald-400 bg-emerald-50/30'
+                    : 'hover:bg-gray-50/50';
 
         return (
             <div
                 key={t.id}
-                className={`border border-gray-200 rounded-lg p-3 hover:border-indigo-300 hover:shadow-md transition-all cursor-default ${
-                    isNew
-                        ? 'border-l-4 border-l-emerald-400 bg-emerald-50/30'
-                        : 'hover:bg-gray-50/50'
-                }`}
+                className={`border border-gray-200 rounded-lg p-3 hover:border-indigo-300 hover:shadow-md transition-all cursor-default ${borderClass}`}
             >
                 <div className="flex justify-between items-start gap-3">
                     <div className="flex-1 min-w-0">
-                        <p className="font-medium text-sm text-gray-800 truncate">
-                            {t.subject || 'Tebligat'}
-                        </p>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                            {badge === 'new' && (
+                                <span className="text-[10px] font-bold uppercase tracking-wide text-emerald-700 bg-emerald-200/70 px-1.5 py-0.5 rounded">
+                                    Yeni
+                                </span>
+                            )}
+                            {badge === 'pending' && (
+                                <span className="text-[10px] font-bold uppercase tracking-wide text-amber-700 bg-amber-200/70 px-1.5 py-0.5 rounded">
+                                    Bekleyen
+                                </span>
+                            )}
+                            <p className="font-medium text-sm text-gray-800 truncate">
+                                {t.subject || 'Tebligat'}
+                            </p>
+                        </div>
                         <p className="text-xs text-gray-500 mt-0.5">
                             {t.sender || '-'}
                             {showClient && <> &middot; {clientName}</>} &middot;{' '}
