@@ -213,6 +213,7 @@ export interface IElectronAPI {
             subject: string;
             status: string;
             document_no: string | null;
+            document_path: string | null;
             send_date: string | null;
             notification_date: string | null;
             created_at: string;

@@ -301,6 +301,7 @@ function getRecentTebligatlar(limit = 5) {
     const stmt = db.prepare(`
         SELECT t.id, t.sender, t.subject, t.status, t.document_no,
                t.send_date, t.notification_date, t.created_at,
+               t.document_path,
                c.firm_name, c.id as client_id
         FROM tebligatlar t
         JOIN clients c ON c.id = t.client_id

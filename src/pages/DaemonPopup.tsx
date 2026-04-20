@@ -11,6 +11,7 @@ interface RecentTebligat {
     created_at: string;
     status: string;
     client_id: number;
+    document_path: string | null;
 }
 
 interface DaemonStats {
@@ -38,7 +39,7 @@ export default function DaemonPopup() {
             try {
                 const [s, r, rl, d, today, weekly] = await Promise.all([
                     window.electronAPI.daemonGetState(),
-                    window.electronAPI.getRecentTebligatlar(5),
+                    window.electronAPI.getRecentTebligatlar(3),
                     window.electronAPI.getRateLimits(),
                     window.electronAPI.getDiskUsage(),
                     window.electronAPI.getTodayTebligatCount(),
@@ -96,6 +97,16 @@ export default function DaemonPopup() {
 
     const handleOpenMain = () => {
         window.electronAPI.openMainWindow();
+    };
+
+    const handleTebligatClick = async (t: RecentTebligat) => {
+        // Try to open the local PDF directly. If it doesn't exist (not yet downloaded),
+        // fall back to opening the main window so user can trigger the fetch from there.
+        if (t.document_path) {
+            const result = await window.electronAPI.openDocument(t.document_path);
+            if (result?.success) return;
+        }
+        handleOpenMain();
     };
 
     return (
@@ -225,7 +236,7 @@ export default function DaemonPopup() {
             </div>
 
             {/* Recent tebligatlar */}
-            <div className="flex-1 overflow-y-auto px-4">
+            <div className="flex-1 overflow-y-auto no-scrollbar px-4">
                 <div className="text-[11px] uppercase text-slate-500 mb-2 font-semibold tracking-wide">
                     Son Tebligatlar
                 </div>
@@ -238,8 +249,13 @@ export default function DaemonPopup() {
                         {recent.map((t) => (
                             <div
                                 key={t.id}
-                                className="bg-slate-800 rounded-lg px-3 py-2 hover:bg-slate-750 cursor-pointer transition-colors"
-                                onClick={handleOpenMain}
+                                className="bg-slate-800 rounded-lg px-3 py-2 hover:bg-slate-750 cursor-pointer transition-colors group"
+                                onClick={() => handleTebligatClick(t)}
+                                title={
+                                    t.document_path
+                                        ? 'Belgeyi aç'
+                                        : 'Belge henüz indirilmedi — uygulamayı aç'
+                                }
                             >
                                 <div className="flex items-start justify-between gap-2">
                                     <div className="flex-1 min-w-0">
@@ -250,11 +266,23 @@ export default function DaemonPopup() {
                                             {t.subject || t.sender}
                                         </div>
                                     </div>
-                                    <span className="text-[10px] text-slate-500 whitespace-nowrap">
-                                        {formatRelativeTime(
-                                            t.notification_date || t.send_date || t.created_at
-                                        )}
-                                    </span>
+                                    <div className="flex items-center gap-1 flex-shrink-0">
+                                        <span className="text-[10px] text-slate-500 whitespace-nowrap">
+                                            {formatRelativeTime(
+                                                t.notification_date || t.send_date || t.created_at
+                                            )}
+                                        </span>
+                                        <span
+                                            className={`text-[11px] opacity-0 group-hover:opacity-100 transition-opacity ${
+                                                t.document_path
+                                                    ? 'text-emerald-400'
+                                                    : 'text-slate-500'
+                                            }`}
+                                            aria-hidden
+                                        >
+                                            {t.document_path ? '📄' : '↗'}
+                                        </span>
+                                    </div>
                                 </div>
                             </div>
                         ))}
