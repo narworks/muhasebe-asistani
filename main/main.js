@@ -727,6 +727,11 @@ ipcMain.on('start-scan-with-options', async (event, scanOptions) => {
             deductCredit
         );
         settings.updateSettings({ scan: { lastScanAt: new Date().toISOString() } });
+        try {
+            require('./unreadCounter').refreshFromDb();
+        } catch {
+            /* ignore */
+        }
         event.reply('scan-complete', 'Taramalar tamamlandı.');
     } catch (error) {
         logger.error('[start-scan-with-options] error:', error);
@@ -778,6 +783,11 @@ ipcMain.on('start-scan', async (event) => {
         );
 
         settings.updateSettings({ scan: { lastScanAt: new Date().toISOString() } });
+        try {
+            require('./unreadCounter').refreshFromDb();
+        } catch {
+            /* ignore */
+        }
         event.reply('scan-complete', 'Taramalar tamamlandı.');
     } catch (error) {
         console.error('Scan error:', error);
@@ -831,6 +841,11 @@ ipcMain.on('resume-scan', async (event) => {
         );
 
         settings.updateSettings({ scan: { lastScanAt: new Date().toISOString() } });
+        try {
+            require('./unreadCounter').refreshFromDb();
+        } catch {
+            /* ignore */
+        }
         event.reply('scan-complete', 'Taramalar tamamlandı.');
     } catch (error) {
         console.error('Resume scan error:', error);
@@ -1074,6 +1089,48 @@ ipcMain.handle('get-today-error-count', async () => {
     }
 });
 
+// Unviewed counters for popup banner + tray badge
+ipcMain.handle('get-unviewed-counts', async () => {
+    try {
+        return database.getUnviewedCounts();
+    } catch (err) {
+        logger.debug(`[get-unviewed-counts] error: ${err.message}`);
+        return { todayNew: 0, pending: 0, total: 0 };
+    }
+});
+
+// Mark a tebligat as viewed (clicked in popup or opened from main panel)
+ipcMain.handle('mark-tebligat-viewed', async (_event, tebligatId) => {
+    try {
+        const changes = database.markTebligatViewed(tebligatId);
+        try {
+            require('./unreadCounter').refreshFromDb();
+        } catch {
+            /* ignore */
+        }
+        return { ok: true, changes };
+    } catch (err) {
+        logger.debug(`[mark-tebligat-viewed] error: ${err.message}`);
+        return { ok: false, error: err.message };
+    }
+});
+
+// Mark ALL unviewed tebligat as viewed
+ipcMain.handle('mark-all-tebligat-viewed', async () => {
+    try {
+        const changes = database.markAllTebligatViewed();
+        try {
+            require('./unreadCounter').refreshFromDb();
+        } catch {
+            /* ignore */
+        }
+        return { ok: true, changes };
+    } catch (err) {
+        logger.debug(`[mark-all-tebligat-viewed] error: ${err.message}`);
+        return { ok: false, error: err.message };
+    }
+});
+
 // Last 7 days daily stats for popup sparkline
 ipcMain.handle('get-daily-tebligat-stats', async (_event, days) => {
     try {
@@ -1085,10 +1142,18 @@ ipcMain.handle('get-daily-tebligat-stats', async (_event, days) => {
 });
 
 // Open main window (from daemon popup)
-ipcMain.handle('open-main-window', () => {
+ipcMain.handle('open-main-window', (_event, path) => {
     if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.show();
         mainWindow.focus();
+        // Optional deep-link — renderer listens on 'navigate-to' channel.
+        if (path && typeof path === 'string') {
+            try {
+                mainWindow.webContents.send('navigate-to', path);
+            } catch (err) {
+                logger.debug(`[open-main-window] navigate-to error: ${err.message}`);
+            }
+        }
     }
     if (daemonPopupWindow && !daemonPopupWindow.isDestroyed()) {
         daemonPopupWindow.hide();

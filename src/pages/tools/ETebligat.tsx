@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { clientCreateSchema, clientEditSchema, validateForm } from '../../lib/validations';
 import type { ScheduleStatus, Client, Tebligat, ScanUpdate } from '../../types';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import LegalConsentModal from '../../components/LegalConsentModal';
 import LimitReachedModal from '../../components/LimitReachedModal';
@@ -104,6 +104,7 @@ const ETebligat: React.FC = () => {
         plan?: string | null;
     } | null>(null);
     const navigateTo = useNavigate();
+    const [searchParams, setSearchParams] = useSearchParams();
 
     // Rate limits
     const [rateLimits, setRateLimits] = useState({
@@ -178,6 +179,27 @@ const ETebligat: React.FC = () => {
     // Accordion & Pagination state
     const [expandedClients, setExpandedClients] = useState<Set<number>>(new Set());
     const [expandedScans, setExpandedScans] = useState<Set<string>>(new Set());
+
+    // Deep-link from daemon popup: ?clientId=X expands that client's accordion.
+    // Consumed-once so hitting Back/Forward doesn't re-expand unexpectedly.
+    useEffect(() => {
+        const raw = searchParams.get('clientId');
+        if (!raw) return;
+        const id = Number(raw);
+        if (!Number.isFinite(id) || id <= 0) return;
+        setExpandedClients((prev) => {
+            const next = new Set(prev);
+            next.add(id);
+            return next;
+        });
+        // Scroll to the accordion after a tick (waits for render).
+        setTimeout(() => {
+            const el = document.getElementById(`client-accordion-${id}`);
+            if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }, 300);
+        // Clear the param so it's one-shot
+        setSearchParams({}, { replace: true });
+    }, [searchParams, setSearchParams]);
 
     const fetchTebligatlar = async () => {
         setLoadingTebligatlar(true);
@@ -793,11 +815,14 @@ const ETebligat: React.FC = () => {
         return str;
     };
 
-    const handleOpenDocument = async (documentPath: string) => {
+    const handleOpenDocument = async (documentPath: string, tebligatId?: number) => {
         try {
             const result = await window.electronAPI.openDocument(documentPath);
             if (!result.success) {
                 addLog(`Döküman açılamadı: ${result.error}`, 'error');
+            } else if (tebligatId) {
+                // Tray badge / popup banner track app_viewed_at — mark after successful open.
+                window.electronAPI.markTebligatViewed(tebligatId).catch(() => {});
             }
         } catch (err: unknown) {
             addLog(
@@ -812,6 +837,7 @@ const ETebligat: React.FC = () => {
         try {
             const result = await window.electronAPI.fetchTebligatDocument(tebligatId);
             if (result.success) {
+                window.electronAPI.markTebligatViewed(tebligatId).catch(() => {});
                 await fetchTebligatlar();
                 // Update selected tebligat in the modal if it's open
                 setSelectedTebligat((prev: Tebligat | null) =>
@@ -1669,7 +1695,8 @@ const ETebligat: React.FC = () => {
                                                                 <button
                                                                     onClick={() =>
                                                                         handleOpenDocument(
-                                                                            t.document_path!
+                                                                            t.document_path!,
+                                                                            t.id
                                                                         )
                                                                     }
                                                                     className="p-1 text-sky-600 hover:bg-sky-50 rounded"

@@ -219,12 +219,18 @@ export interface IElectronAPI {
             created_at: string;
             firm_name: string;
             client_id: number;
+            app_viewed_at: string | null;
         }>
     >;
     getTodayTebligatCount: () => Promise<number>;
     getTodayErrorCount: () => Promise<number>;
     getDailyTebligatStats: (days?: number) => Promise<Array<{ date: string; count: number }>>;
-    openMainWindow: () => Promise<{ ok: boolean }>;
+    getUnviewedCounts: () => Promise<{ todayNew: number; pending: number; total: number }>;
+    markTebligatViewed: (
+        tebligatId: number
+    ) => Promise<{ ok: boolean; changes?: number; error?: string }>;
+    markAllTebligatViewed: () => Promise<{ ok: boolean; changes?: number; error?: string }>;
+    openMainWindow: (path?: string) => Promise<{ ok: boolean }>;
     getDiskUsage: (forceRefresh?: boolean) => Promise<{
         totalMB: number | null;
         fileCount: number | null;

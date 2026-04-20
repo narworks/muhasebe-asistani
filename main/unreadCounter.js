@@ -1,9 +1,10 @@
 /**
- * Tracks unread new tebligat count for dock/taskbar badge + tray title.
- * Increments when daemon detects new tebligat; clears when user views.
+ * Tracks unviewed tebligat count for dock/taskbar badge + tray title.
+ * Reads from `tebligatlar.app_viewed_at IS NULL` rows — badge reflects
+ * real state, not ephemeral session counter.
  */
 
-const { app, Tray } = require('electron');
+const { app } = require('electron');
 const logger = require('./logger');
 
 let unreadCount = 0;
@@ -14,7 +15,7 @@ let tray = null;
  */
 function setTray(trayInstance) {
     tray = trayInstance;
-    updateBadges();
+    refreshFromDb();
 }
 
 function getCount() {
@@ -22,20 +23,36 @@ function getCount() {
 }
 
 /**
- * Increment the counter by N (called when daemon finds new tebligat).
+ * Read current unviewed count from the database and update badges.
+ * Call this after any operation that changes viewed state (new tebligat saved,
+ * user marked viewed, etc). Safe to call frequently — a single indexed COUNT
+ * query is cheap.
  */
-function increment(n = 1) {
-    unreadCount += n;
+function refreshFromDb() {
+    try {
+        const database = require('./database');
+        const counts = database.getUnviewedCounts();
+        unreadCount = counts.total;
+    } catch (err) {
+        logger.debug(`[UnreadCounter] refreshFromDb error: ${err.message}`);
+    }
     updateBadges();
 }
 
 /**
- * Clear the counter (called when user opens main window or views results).
+ * Legacy API — still called from a few places. Now just refreshes from DB
+ * (argument ignored since truth lives in the DB).
+ */
+function increment() {
+    refreshFromDb();
+}
+
+/**
+ * Legacy API — clearing the counter doesn't reset DB. Kept for backward compat
+ * but triggers a refresh so badge matches real state.
  */
 function clear() {
-    if (unreadCount === 0) return;
-    unreadCount = 0;
-    updateBadges();
+    refreshFromDb();
 }
 
 /**
@@ -71,4 +88,4 @@ function updateBadges() {
     }
 }
 
-module.exports = { setTray, increment, clear, getCount, updateBadges };
+module.exports = { setTray, increment, clear, getCount, updateBadges, refreshFromDb };

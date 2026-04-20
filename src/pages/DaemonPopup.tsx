@@ -12,6 +12,13 @@ interface RecentTebligat {
     status: string;
     client_id: number;
     document_path: string | null;
+    app_viewed_at: string | null;
+}
+
+interface UnviewedCounts {
+    todayNew: number;
+    pending: number;
+    total: number;
 }
 
 interface DaemonStats {
@@ -30,6 +37,11 @@ export default function DaemonPopup() {
     const [activeClient, setActiveClient] = useState<string | null>(null);
     const [todayCount, setTodayCount] = useState<number>(0);
     const [todayErrorCount, setTodayErrorCount] = useState<number>(0);
+    const [unviewed, setUnviewed] = useState<UnviewedCounts>({
+        todayNew: 0,
+        pending: 0,
+        total: 0,
+    });
     const [weeklyStats, setWeeklyStats] = useState<Array<{ date: string; count: number }>>([]);
     const [page, setPage] = useState(1);
     const [hasNewSinceNav, setHasNewSinceNav] = useState(false);
@@ -42,7 +54,7 @@ export default function DaemonPopup() {
     useEffect(() => {
         const fetchAll = async (markNewBadge = false) => {
             try {
-                const [s, r, rl, d, today, weekly, errs] = await Promise.all([
+                const [s, r, rl, d, today, weekly, errs, uv] = await Promise.all([
                     window.electronAPI.daemonGetState(),
                     window.electronAPI.getRecentTebligatlar(25),
                     window.electronAPI.getRateLimits(),
@@ -50,6 +62,7 @@ export default function DaemonPopup() {
                     window.electronAPI.getTodayTebligatCount(),
                     window.electronAPI.getDailyTebligatStats(7),
                     window.electronAPI.getTodayErrorCount(),
+                    window.electronAPI.getUnviewedCounts(),
                 ]);
                 setState(s);
                 setRecent((prev) => {
@@ -72,6 +85,7 @@ export default function DaemonPopup() {
                 if (typeof today === 'number') setTodayCount(today);
                 if (typeof errs === 'number') setTodayErrorCount(errs);
                 if (Array.isArray(weekly)) setWeeklyStats(weekly);
+                if (uv && typeof uv === 'object') setUnviewed(uv as UnviewedCounts);
             } catch {
                 /* ignore */
             }
@@ -128,11 +142,13 @@ export default function DaemonPopup() {
         d.setHours(0, 0, 0, 0);
         return d.getTime();
     })();
-    const isNewToday = (t: RecentTebligat) => {
-        // "Yeni" = GİB tarafından bugün tebliğ edilmiş (insertion değil).
-        // Müşteri ilk kurulumda eski tebligatları toplu indirince hepsini "yeni" göstermesin.
+    // Badge for each item: 'new' = bugün tebliğ + viewed değil; 'pending' = eski + viewed
+    // değil; null = muhasebeci zaten açmış.
+    const getItemBadge = (t: RecentTebligat): 'new' | 'pending' | null => {
+        if (t.app_viewed_at) return null;
         const d = parseAnyDate(t.notification_date || t.send_date || t.created_at);
-        return d ? d.getTime() >= startOfToday : false;
+        if (!d) return 'pending';
+        return d.getTime() >= startOfToday ? 'new' : 'pending';
     };
 
     const goToPage = (p: number) => {
@@ -146,11 +162,17 @@ export default function DaemonPopup() {
         else await window.electronAPI.daemonStart();
     };
 
-    const handleOpenMain = () => {
-        window.electronAPI.openMainWindow();
+    const handleOpenMain = (path?: string) => {
+        window.electronAPI.openMainWindow(path);
     };
 
     const handleTebligatClick = async (t: RecentTebligat) => {
+        // Mark as viewed immediately so banner/badge update on next tick.
+        try {
+            await window.electronAPI.markTebligatViewed(t.id);
+        } catch {
+            /* non-fatal */
+        }
         // Try to open the local PDF directly. If it doesn't exist (not yet downloaded),
         // fall back to opening the main window so user can trigger the fetch from there.
         if (t.document_path) {
@@ -158,6 +180,19 @@ export default function DaemonPopup() {
             if (result?.success) return;
         }
         handleOpenMain();
+    };
+
+    const handleOpenClientPanel = (e: React.MouseEvent, clientId: number) => {
+        e.stopPropagation();
+        handleOpenMain(`/tools/e-tebligat?clientId=${clientId}`);
+    };
+
+    const handleMarkAllViewed = async () => {
+        try {
+            await window.electronAPI.markAllTebligatViewed();
+        } catch {
+            /* ignore */
+        }
     };
 
     return (
@@ -184,45 +219,64 @@ export default function DaemonPopup() {
                     <span className="text-sm font-semibold">Muhasebe Asistanı</span>
                 </div>
                 <button
-                    onClick={handleOpenMain}
+                    onClick={() => handleOpenMain()}
                     className="text-[11px] text-indigo-400 hover:text-indigo-300"
                 >
                     Tam Panel →
                 </button>
             </div>
 
-            {/* Today's new tebligat banner — clickable: jumps to page 1 where newest items live */}
+            {/* Hybrid status banner — clickable: jumps to page 1 */}
             <div className="px-4 pt-3">
                 <button
                     type="button"
-                    onClick={() => todayCount > 0 && goToPage(1)}
-                    disabled={todayCount === 0}
+                    onClick={() => unviewed.total > 0 && goToPage(1)}
+                    disabled={unviewed.total === 0}
                     className={`w-full text-left rounded-lg px-3 py-2 flex items-center justify-between transition-colors ${
-                        todayCount > 0
+                        unviewed.total > 0
                             ? 'bg-gradient-to-r from-emerald-900/60 to-emerald-800/40 border border-emerald-700/50 hover:from-emerald-800/70 hover:to-emerald-700/50 cursor-pointer'
                             : 'bg-slate-800/60 border border-slate-700/50 cursor-default'
                     }`}
                 >
                     <div className="flex items-center gap-2">
-                        <span className="text-base">{todayCount > 0 ? '📬' : '✓'}</span>
+                        <span className="text-base">
+                            {unviewed.total === 0 ? '✓' : unviewed.todayNew > 0 ? '📬' : '⏳'}
+                        </span>
                         <div>
                             <div className="text-[10px] uppercase tracking-wide text-slate-400">
-                                Bugün gelen
+                                {unviewed.total === 0 ? 'Tümü güncel' : 'Durum'}
                             </div>
                             <div
-                                className={`text-base font-bold tabular-nums leading-tight ${
-                                    todayCount > 0 ? 'text-emerald-300' : 'text-slate-300'
+                                className={`text-sm font-bold leading-tight ${
+                                    unviewed.total > 0 ? 'text-emerald-300' : 'text-slate-300'
                                 }`}
                             >
-                                {todayCount} yeni tebligat
+                                {unviewed.total === 0 ? (
+                                    <span>İncelenecek tebligat yok</span>
+                                ) : unviewed.todayNew > 0 && unviewed.pending > 0 ? (
+                                    <span>
+                                        <span className="tabular-nums">{unviewed.todayNew}</span>{' '}
+                                        yeni +{' '}
+                                        <span className="tabular-nums">{unviewed.pending}</span>{' '}
+                                        bekleyen
+                                    </span>
+                                ) : unviewed.todayNew > 0 ? (
+                                    <span>
+                                        <span className="tabular-nums">{unviewed.todayNew}</span>{' '}
+                                        yeni tebligat
+                                    </span>
+                                ) : (
+                                    <span>
+                                        <span className="tabular-nums">{unviewed.pending}</span>{' '}
+                                        tebligat bekliyor
+                                    </span>
+                                )}
                             </div>
                         </div>
                     </div>
-                    {todayCount > 0 ? (
+                    {unviewed.total > 0 ? (
                         <span className="text-[10px] text-emerald-400">Göster ↓</span>
-                    ) : (
-                        <span className="text-[10px] text-slate-500">Henüz yok</span>
-                    )}
+                    ) : null}
                 </button>
             </div>
 
@@ -308,33 +362,47 @@ export default function DaemonPopup() {
                 ) : (
                     <div className="space-y-1.5 pb-2">
                         {pageItems.map((t) => {
-                            const isNew = isNewToday(t);
+                            const badge = getItemBadge(t);
+                            const rowClass =
+                                badge === 'new'
+                                    ? 'bg-emerald-900/30 hover:bg-emerald-900/50 border-l-2 border-emerald-400'
+                                    : badge === 'pending'
+                                      ? 'bg-amber-900/20 hover:bg-amber-900/40 border-l-2 border-amber-500/70'
+                                      : 'bg-slate-800 hover:bg-slate-750';
                             return (
                                 <div
                                     key={t.id}
-                                    className={`rounded-lg px-3 py-2 cursor-pointer transition-colors group ${
-                                        isNew
-                                            ? 'bg-emerald-900/30 hover:bg-emerald-900/50 border-l-2 border-emerald-400'
-                                            : 'bg-slate-800 hover:bg-slate-750'
-                                    }`}
+                                    className={`rounded-lg px-3 py-2 cursor-pointer transition-colors group ${rowClass}`}
                                     onClick={() => handleTebligatClick(t)}
                                     title={
                                         t.document_path
-                                            ? 'Belgeyi aç'
+                                            ? 'Belgeyi aç (mükellef adına tıklarsan o mükellefin sayfasına gider)'
                                             : 'Belge henüz indirilmedi — uygulamayı aç'
                                     }
                                 >
                                     <div className="flex items-start justify-between gap-2">
                                         <div className="flex-1 min-w-0">
                                             <div className="flex items-center gap-1.5">
-                                                {isNew && (
+                                                {badge === 'new' && (
                                                     <span className="text-[9px] font-bold uppercase tracking-wide text-emerald-300 bg-emerald-500/20 px-1 rounded">
                                                         Yeni
                                                     </span>
                                                 )}
-                                                <div className="text-xs font-medium text-slate-100 truncate">
+                                                {badge === 'pending' && (
+                                                    <span className="text-[9px] font-bold uppercase tracking-wide text-amber-300 bg-amber-500/20 px-1 rounded">
+                                                        Bekleyen
+                                                    </span>
+                                                )}
+                                                <button
+                                                    type="button"
+                                                    onClick={(e) =>
+                                                        handleOpenClientPanel(e, t.client_id)
+                                                    }
+                                                    className="text-xs font-medium text-slate-100 truncate hover:text-indigo-300 hover:underline text-left"
+                                                    title="Bu mükellefin tebligat sayfasına git"
+                                                >
                                                     {t.firm_name || t.sender}
-                                                </div>
+                                                </button>
                                             </div>
                                             <div className="text-[11px] text-slate-400 truncate">
                                                 {t.subject || t.sender}
@@ -394,6 +462,27 @@ export default function DaemonPopup() {
                 </div>
             )}
 
+            {/* Action links row — always shown when there's data */}
+            {recent.length > 0 && (
+                <div className="px-4 py-1.5 border-t border-slate-800 flex items-center justify-between text-[10px]">
+                    <button
+                        onClick={() => handleOpenMain('/tools/e-tebligat')}
+                        className="text-indigo-400 hover:text-indigo-300 hover:underline transition-colors"
+                    >
+                        Tümünü Gör →
+                    </button>
+                    {unviewed.total > 0 && (
+                        <button
+                            onClick={handleMarkAllViewed}
+                            className="text-slate-400 hover:text-slate-200 hover:underline transition-colors"
+                            title={`${unviewed.total} tebligatı okundu olarak işaretle`}
+                        >
+                            ✓ Tümünü Okundu İşaretle
+                        </button>
+                    )}
+                </div>
+            )}
+
             {/* Disk usage row — detailed (3 columns: belgeler / dosya / boş) */}
             {diskUsage.totalMB !== null && (
                 <div className="px-4 py-2 border-t border-slate-800 grid grid-cols-3 gap-2 text-[10px]">
@@ -449,7 +538,7 @@ export default function DaemonPopup() {
                     {state?.running ? '⏸ Duraklat' : '▶ Başlat'}
                 </button>
                 <button
-                    onClick={handleOpenMain}
+                    onClick={() => handleOpenMain()}
                     className="flex-1 text-xs py-2 rounded bg-slate-700 hover:bg-slate-600 text-slate-100 font-medium"
                 >
                     📋 Aç

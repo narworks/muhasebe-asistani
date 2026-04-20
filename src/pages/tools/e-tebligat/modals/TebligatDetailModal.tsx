@@ -6,7 +6,7 @@ interface Props {
     onClose: () => void;
     fetchingDocumentId: number | null;
     onFetchDocument: (id: number) => void;
-    onOpenDocument: (path: string) => void;
+    onOpenDocument: (path: string, tebligatId?: number) => void;
     onShareDocument: (path: string) => void;
 }
 
@@ -88,7 +88,9 @@ const TebligatDetailModal: React.FC<Props> = ({
                         {tebligat.document_path ? (
                             <div className="flex gap-3">
                                 <button
-                                    onClick={() => onOpenDocument(tebligat.document_path!)}
+                                    onClick={() =>
+                                        onOpenDocument(tebligat.document_path!, tebligat.id)
+                                    }
                                     className="flex items-center gap-2 px-3 py-2 bg-sky-50 text-sky-700 rounded-lg hover:bg-sky-100 transition-colors"
                                 >
                                     <svg

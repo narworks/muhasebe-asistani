@@ -61,7 +61,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getTodayTebligatCount: () => ipcRenderer.invoke('get-today-tebligat-count'),
     getTodayErrorCount: () => ipcRenderer.invoke('get-today-error-count'),
     getDailyTebligatStats: (days) => ipcRenderer.invoke('get-daily-tebligat-stats', days),
-    openMainWindow: () => ipcRenderer.invoke('open-main-window'),
+    getUnviewedCounts: () => ipcRenderer.invoke('get-unviewed-counts'),
+    markTebligatViewed: (tebligatId) => ipcRenderer.invoke('mark-tebligat-viewed', tebligatId),
+    markAllTebligatViewed: () => ipcRenderer.invoke('mark-all-tebligat-viewed'),
+    openMainWindow: (path) => ipcRenderer.invoke('open-main-window', path),
     getDiskUsage: (forceRefresh) => ipcRenderer.invoke('get-disk-usage', forceRefresh),
     getUnreadCount: () => ipcRenderer.invoke('get-unread-count'),
     onNavigateTo: (callback) => {

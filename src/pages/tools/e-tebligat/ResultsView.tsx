@@ -50,7 +50,7 @@ interface ResultsViewProps {
     // Actions
     onSelectTebligat: (t: Tebligat) => void;
     onFetchDocument: (id: number) => void;
-    onOpenDocument: (path: string) => void;
+    onOpenDocument: (path: string, tebligatId?: number) => void;
     onShareDocument: (path: string) => void;
     fetchingDocumentId: number | null;
     // Documents folder
@@ -249,7 +249,7 @@ const ResultsView: React.FC<ResultsViewProps> = ({
                     {t.document_path ? (
                         <>
                             <button
-                                onClick={() => onOpenDocument(t.document_path!)}
+                                onClick={() => onOpenDocument(t.document_path!, t.id)}
                                 className="text-sm font-medium px-4 py-1.5 rounded-md bg-indigo-600 text-white hover:bg-indigo-700 transition-colors"
                             >
                                 A&ccedil;
@@ -535,7 +535,8 @@ const ResultsView: React.FC<ResultsViewProps> = ({
                                     return (
                                         <div
                                             key={cg.client_id}
-                                            className="mb-2 border border-gray-200 rounded-lg overflow-hidden"
+                                            id={`client-accordion-${cg.client_id}`}
+                                            className="mb-2 border border-gray-200 rounded-lg overflow-hidden scroll-mt-4"
                                         >
                                             {/* Client header */}
                                             <button

@@ -117,6 +117,10 @@ function init() {
     addColumnIfMissing('tebligatlar', 'skip_download', 'INTEGER DEFAULT 0');
     addColumnIfMissing('clients', 'last_scan_at', 'TEXT');
     addColumnIfMissing('clients', 'recent_tebligat_count', 'INTEGER DEFAULT 0');
+    // Tracks when the muhasebeci viewed the tebligat in OUR app (distinct from GİB's
+    // 'Okunmuş' status, which tracks whether the mükellef opened it on GİB portal).
+    // Used to compute "Bekleyen" (pending/unviewed) counters for popup banner and tray badge.
+    addColumnIfMissing('tebligatlar', 'app_viewed_at', 'TEXT');
 
     // One-time migration: legacy Turkish-format dates (DD.MM.YYYY or DD/MM/YYYY) → ISO 8601.
     // Earlier versions stored raw GIB strings; JS Date() can't parse them so UI shows "NaN gün"
@@ -366,7 +370,7 @@ function getRecentTebligatlar(limit = 5) {
     const stmt = db.prepare(`
         SELECT t.id, t.sender, t.subject, t.status, t.document_no,
                t.send_date, t.notification_date, t.created_at,
-               t.document_path,
+               t.document_path, t.app_viewed_at,
                c.firm_name, c.id as client_id
         FROM tebligatlar t
         JOIN clients c ON c.id = t.client_id
@@ -395,6 +399,65 @@ function getTodayNewTebligatCount() {
         )
         .get(iso);
     return row?.c || 0;
+}
+
+/**
+ * Mark a single tebligat as "viewed in our app". Called when the muhasebeci opens
+ * the PDF or clicks the tebligat in popup/main panel. Idempotent — won't overwrite
+ * an existing timestamp.
+ */
+function markTebligatViewed(id) {
+    if (!db) init();
+    const stmt = db.prepare(
+        `UPDATE tebligatlar SET app_viewed_at = ?
+         WHERE id = ? AND app_viewed_at IS NULL`
+    );
+    return stmt.run(new Date().toISOString(), id).changes;
+}
+
+/**
+ * Mark all currently unviewed tebligat as viewed. Called when user clicks
+ * "Tümünü Okundu İşaretle". Returns number of rows affected.
+ */
+function markAllTebligatViewed() {
+    if (!db) init();
+    const stmt = db.prepare(
+        `UPDATE tebligatlar SET app_viewed_at = ?
+         WHERE app_viewed_at IS NULL AND status != 'Tebligat yok'`
+    );
+    return stmt.run(new Date().toISOString()).changes;
+}
+
+/**
+ * Get three counters used by popup banner + tray badge:
+ * - todayNew: notification_date bugün + app_viewed_at NULL
+ * - pending: notification_date geçmiş + app_viewed_at NULL
+ * - total: ikisinin toplamı
+ * All exclude "Tebligat yok" placeholder rows.
+ */
+function getUnviewedCounts() {
+    if (!db) init();
+    const startOfDay = new Date();
+    startOfDay.setHours(0, 0, 0, 0);
+    const iso = startOfDay.toISOString();
+    const base = `FROM tebligatlar
+                  WHERE status != 'Tebligat yok'
+                  AND app_viewed_at IS NULL`;
+    const today = db
+        .prepare(
+            `SELECT COUNT(*) as c ${base}
+             AND COALESCE(notification_date, send_date, created_at) >= ?`
+        )
+        .get(iso);
+    const pending = db
+        .prepare(
+            `SELECT COUNT(*) as c ${base}
+             AND COALESCE(notification_date, send_date, created_at) < ?`
+        )
+        .get(iso);
+    const todayNew = today?.c || 0;
+    const pendingOld = pending?.c || 0;
+    return { todayNew, pending: pendingOld, total: todayNew + pendingOld };
 }
 
 /**
@@ -779,6 +842,9 @@ module.exports = {
     getTodayNewTebligatCount,
     getTodayErrorCount,
     getDailyTebligatStats,
+    markTebligatViewed,
+    markAllTebligatViewed,
+    getUnviewedCounts,
     getTebligatById,
     updateTebligatDocument,
     updateTebligatDocumentByPath,
