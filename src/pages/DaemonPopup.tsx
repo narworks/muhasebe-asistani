@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { DaemonState, DaemonEvent } from '../types/electron';
 
 interface RecentTebligat {
@@ -50,6 +50,9 @@ export default function DaemonPopup() {
         fileCount: number | null;
         freeDiskMB: number | null;
     }>({ totalMB: null, fileCount: null, freeDiskMB: null });
+
+    const rootRef = useRef<HTMLDivElement>(null);
+    const lastSentHeight = useRef<number>(0);
 
     useEffect(() => {
         const fetchAll = async (markNewBadge = false) => {
@@ -112,23 +115,27 @@ export default function DaemonPopup() {
         };
     }, []);
 
-    // Dynamically resize the popup window to fit the visible item count. The list area
-    // is always exactly as tall as the items it renders — no more wasted whitespace, no
-    // premature scrolling. Constants below sum the non-list sections + per-item height.
-    useEffect(() => {
-        if (!window.electronAPI?.resizeDaemonPopup) return;
-        const BASE = 510; // header + banner + daily + sparkline + stats + "Son Tebligatlar" label + action-links + disk + action-bar
-        const ITEM = 54; // item height (~48) + space-y-1.5 gap (~6)
-        const EMPTY_PLACEHOLDER = 56; // "Henüz yeni tebligat yok" text
-        const PAGINATION = 30;
-        const visibleItems = Math.min(recent.length, PAGE_SIZE);
-        const listHeight = visibleItems === 0 ? EMPTY_PLACEHOLDER : visibleItems * ITEM;
-        const paginationHeight = recent.length > PAGE_SIZE ? PAGINATION : 0;
-        const target = BASE + listHeight + paginationHeight;
-        window.electronAPI.resizeDaemonPopup(target).catch(() => {
-            /* non-fatal */
-        });
-    }, [recent.length]);
+    // Dynamically resize the popup to match actual rendered content height. ResizeObserver
+    // watches the root div — which flows naturally (no h-screen / flex-1) so its scrollHeight
+    // reflects the real content size. This is more robust than hardcoded constants which
+    // drifted whenever a section changed.
+    useLayoutEffect(() => {
+        if (!window.electronAPI?.resizeDaemonPopup || !rootRef.current) return;
+        const el = rootRef.current;
+        const sendResize = () => {
+            const h = Math.ceil(el.scrollHeight);
+            if (h <= 0) return;
+            if (Math.abs(h - lastSentHeight.current) < 2) return;
+            lastSentHeight.current = h;
+            window.electronAPI.resizeDaemonPopup(h).catch(() => {
+                /* non-fatal */
+            });
+        };
+        sendResize();
+        const observer = new ResizeObserver(sendResize);
+        observer.observe(el);
+        return () => observer.disconnect();
+    }, []);
 
     // Keyboard pagination (← →)
     useEffect(() => {
@@ -214,7 +221,10 @@ export default function DaemonPopup() {
     };
 
     return (
-        <div className="w-full h-screen bg-slate-900 text-slate-100 flex flex-col overflow-hidden select-none">
+        <div
+            ref={rootRef}
+            className="w-full bg-slate-900 text-slate-100 flex flex-col overflow-hidden select-none"
+        >
             {/* Header */}
             <div className="px-4 py-3 border-b border-slate-800 flex items-center justify-between">
                 <div className="flex items-center gap-2">
@@ -357,8 +367,8 @@ export default function DaemonPopup() {
                 />
             </div>
 
-            {/* Recent tebligatlar */}
-            <div className="flex-1 overflow-y-auto no-scrollbar px-4">
+            {/* Recent tebligatlar — natural height since pagination limits to 5 items */}
+            <div className="px-4 py-3">
                 <div className="flex items-center justify-between mb-2">
                     <div className="text-[11px] uppercase text-slate-500 font-semibold tracking-wide">
                         Son Tebligatlar
