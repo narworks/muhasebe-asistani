@@ -1479,10 +1479,12 @@ const ETebligat: React.FC = () => {
                             newClientsCount={clients.filter((c) => !c.last_full_scan_at).length}
                         />
 
-                        {/* LogDrawer — fills remaining space */}
-                        <div className="mt-4 flex-1">
-                            <LogDrawer logs={logs} logsEndRef={logsEndRef} />
-                        </div>
+                        {/* LogDrawer — only shown during manual scans (daemon activity is in DaemonStatusPanel) */}
+                        {(scanning || logs.length > 0) && (
+                            <div className="mt-4 flex-1">
+                                <LogDrawer logs={logs} logsEndRef={logsEndRef} />
+                            </div>
+                        )}
                     </TabsContent>
 
                     {/* Sonuçlar Tab */}
