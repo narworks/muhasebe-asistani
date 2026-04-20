@@ -16,6 +16,12 @@ const settings = require('./settings');
 const systemMonitor = require('./systemMonitor');
 const gibScraper = require('./automation/gibScraper');
 const notifications = require('./notifications');
+let Sentry;
+try {
+    Sentry = require('@sentry/electron/main');
+} catch {
+    Sentry = null;
+}
 
 const DEFAULT_INTERVAL_MS = 2 * 60 * 1000; // 2 minutes
 const MIN_INTERVAL_MS = 60 * 1000; // Never go below 1 minute
@@ -129,7 +135,7 @@ async function tick() {
 
     // Scan single client
     state.lastTickAt = Date.now();
-    emit('scan_start', { clientId: client.id });
+    emit('scan_start', { clientId: client.id, firmName: client.firm_name });
 
     try {
         const apiKey = process.env.GEMINI_API_KEY;
@@ -147,6 +153,9 @@ async function tick() {
             state.stats.successes++;
             state.consecutiveCaptchaFailures = 0;
             state.consecutiveIpBlocks = 0;
+            if (state.consecutiveFailuresForClient) {
+                delete state.consecutiveFailuresForClient[client.id];
+            }
 
             if (result.newTebligatCount > 0) {
                 state.stats.newTebligatFound += result.newTebligatCount;
@@ -162,6 +171,7 @@ async function tick() {
 
             emit('scan_success', {
                 clientId: client.id,
+                firmName: client.firm_name,
                 newTebligatCount: result.newTebligatCount,
                 durationMs: result.durationMs,
             });
@@ -192,6 +202,12 @@ async function tick() {
                     state.pauseUntil = Date.now() + CAPTCHA_STREAK_PAUSE_MS;
                     state.paused = true;
                     logger.debug('[Daemon] 3+ CAPTCHA failures, pausing 30min');
+                    if (Sentry) {
+                        Sentry.captureMessage('daemon.captcha_streak', {
+                            level: 'warning',
+                            tags: { component: 'daemon', errorType: 'captcha_streak' },
+                        });
+                    }
                     state.consecutiveCaptchaFailures = 0;
                     emit('captcha_streak', {});
                     scheduleNextTick(CAPTCHA_STREAK_PAUSE_MS);
@@ -199,8 +215,33 @@ async function tick() {
                 }
             }
 
+            // Track consecutive failures per-client (e.g., same mükellef always failing)
+            state.lastFailedClientId = client.id;
+            state.consecutiveFailuresForClient = state.consecutiveFailuresForClient || {};
+            state.consecutiveFailuresForClient[client.id] =
+                (state.consecutiveFailuresForClient[client.id] || 0) + 1;
+
+            // If same client fails 3+ times in a row, report to Sentry (not PII — just client_id)
+            if (state.consecutiveFailuresForClient[client.id] === 3) {
+                if (Sentry) {
+                    Sentry.captureMessage(`daemon.client_repeat_failure`, {
+                        level: 'warning',
+                        tags: {
+                            component: 'daemon',
+                            errorType: result.errorType,
+                        },
+                        extra: {
+                            clientId: client.id,
+                            errorType: result.errorType,
+                            consecutiveFailures: 3,
+                        },
+                    });
+                }
+            }
+
             emit('scan_failure', {
                 clientId: client.id,
+                firmName: client.firm_name,
                 errorType: result.errorType,
                 errorMessage: result.errorMessage,
             });

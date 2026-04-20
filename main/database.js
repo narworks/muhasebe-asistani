@@ -71,12 +71,20 @@ function init() {
         db.exec('ALTER TABLE tebligatlar ADD COLUMN read_date TEXT');
     }
 
+    // Helper: idempotent column add — survives PRAGMA cache quirks in better-sqlite3
+    const addColumnIfMissing = (table, column, definition) => {
+        try {
+            const cols = db.pragma(`table_info(${table})`).map((c) => c.name);
+            if (cols.includes(column)) return;
+            db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+        } catch (err) {
+            // Idempotent: ignore "duplicate column" races
+            if (!/duplicate column/i.test(err.message)) throw err;
+        }
+    };
+
     // Migration: Add last_full_scan_at to clients
-    const clientInfo = db.pragma('table_info(clients)');
-    const clientCols = clientInfo.map((col) => col.name);
-    if (!clientCols.includes('last_full_scan_at')) {
-        db.exec('ALTER TABLE clients ADD COLUMN last_full_scan_at TEXT');
-    }
+    addColumnIfMissing('clients', 'last_full_scan_at', 'TEXT');
 
     // Migration: Unique constraint on gib_user_code (prevent duplicate clients)
     db.exec(`
@@ -104,26 +112,11 @@ function init() {
         ON scan_history(started_at DESC)
     `);
 
-    // Migration: scan_date_filter on clients (keşif tarih filtresi)
-    if (!clientCols.includes('scan_date_filter')) {
-        db.exec('ALTER TABLE clients ADD COLUMN scan_date_filter TEXT');
-    }
-
-    // Migration: skip_download on tebligatlar (keşifte bilinçli atlama)
-    const tebCols = db.pragma('table_info(tebligatlar)').map((col) => col.name);
-    if (!tebCols.includes('skip_download')) {
-        db.exec('ALTER TABLE tebligatlar ADD COLUMN skip_download INTEGER DEFAULT 0');
-    }
-
-    // Migration: last_scan_at (daemon sürekli tarama son zamanı)
-    if (!clientCols.includes('last_scan_at')) {
-        db.exec('ALTER TABLE clients ADD COLUMN last_scan_at TEXT');
-    }
-
-    // Migration: recent_tebligat_count (son 7 gün priority için)
-    if (!clientCols.includes('recent_tebligat_count')) {
-        db.exec('ALTER TABLE clients ADD COLUMN recent_tebligat_count INTEGER DEFAULT 0');
-    }
+    // All subsequent migrations use the idempotent helper
+    addColumnIfMissing('clients', 'scan_date_filter', 'TEXT');
+    addColumnIfMissing('tebligatlar', 'skip_download', 'INTEGER DEFAULT 0');
+    addColumnIfMissing('clients', 'last_scan_at', 'TEXT');
+    addColumnIfMissing('clients', 'recent_tebligat_count', 'INTEGER DEFAULT 0');
 }
 
 function saveClient(clientData) {

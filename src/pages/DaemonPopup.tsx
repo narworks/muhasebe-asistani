@@ -61,7 +61,8 @@ export default function DaemonPopup() {
         const unsub = window.electronAPI.onDaemonEvent((evt: DaemonEvent) => {
             setState(evt.state);
             if (evt.event === 'scan_start') {
-                setActiveClient((evt.data?.firmName as string) || 'Taranıyor...');
+                const name = evt.data?.firmName as string | undefined;
+                setActiveClient(name || 'Taranıyor...');
             } else if (evt.event === 'scan_success' || evt.event === 'scan_failure') {
                 setActiveClient(null);
                 fetchAll();
