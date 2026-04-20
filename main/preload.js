@@ -59,6 +59,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     // Daemon popup helpers
     getRecentTebligatlar: (limit) => ipcRenderer.invoke('get-recent-tebligatlar', limit),
     openMainWindow: () => ipcRenderer.invoke('open-main-window'),
+    getDiskUsage: (forceRefresh) => ipcRenderer.invoke('get-disk-usage', forceRefresh),
     estimateScanDuration: (clientCount) =>
         ipcRenderer.invoke('estimate-scan-duration', clientCount),
     startScanWithOptions: (options) => ipcRenderer.send('start-scan-with-options', options),

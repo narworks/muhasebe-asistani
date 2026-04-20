@@ -25,14 +25,20 @@ export default function DaemonPopup() {
     const [recent, setRecent] = useState<RecentTebligat[]>([]);
     const [stats, setStats] = useState<DaemonStats | null>(null);
     const [activeClient, setActiveClient] = useState<string | null>(null);
+    const [diskUsage, setDiskUsage] = useState<{
+        totalMB: number | null;
+        fileCount: number | null;
+        freeDiskMB: number | null;
+    }>({ totalMB: null, fileCount: null, freeDiskMB: null });
 
     useEffect(() => {
         const fetchAll = async () => {
             try {
-                const [s, r, rl] = await Promise.all([
+                const [s, r, rl, d] = await Promise.all([
                     window.electronAPI.daemonGetState(),
                     window.electronAPI.getRecentTebligatlar(5),
                     window.electronAPI.getRateLimits(),
+                    window.electronAPI.getDiskUsage(),
                 ]);
                 setState(s);
                 setRecent((r as RecentTebligat[]) || []);
@@ -44,6 +50,7 @@ export default function DaemonPopup() {
                         hourlyLimit: (rl as { hourlyLimit?: number }).hourlyLimit || 200,
                     });
                 }
+                if (d) setDiskUsage(d);
             } catch {
                 /* ignore */
             }
@@ -205,6 +212,42 @@ export default function DaemonPopup() {
                 )}
             </div>
 
+            {/* Disk usage row */}
+            {diskUsage.totalMB !== null && (
+                <div className="px-4 py-2 border-t border-slate-800 flex items-center justify-between text-[11px]">
+                    <div className="text-slate-400">
+                        Belgeler:{' '}
+                        <span
+                            className={
+                                diskUsage.totalMB > 10240
+                                    ? 'text-red-400 font-medium'
+                                    : diskUsage.totalMB > 5120
+                                      ? 'text-amber-400 font-medium'
+                                      : 'text-slate-200'
+                            }
+                        >
+                            {formatMB(diskUsage.totalMB)}
+                        </span>
+                    </div>
+                    {diskUsage.freeDiskMB !== null && (
+                        <div className="text-slate-400">
+                            Boş:{' '}
+                            <span
+                                className={
+                                    diskUsage.freeDiskMB < 1024
+                                        ? 'text-red-400'
+                                        : diskUsage.freeDiskMB < 5120
+                                          ? 'text-amber-400'
+                                          : 'text-slate-200'
+                                }
+                            >
+                                {formatMB(diskUsage.freeDiskMB)}
+                            </span>
+                        </div>
+                    )}
+                </div>
+            )}
+
             {/* Action bar */}
             <div className="px-4 py-3 border-t border-slate-800 flex gap-2">
                 <button
@@ -252,6 +295,11 @@ function MiniStat({
             {hint && <div className="text-[10px] text-slate-500 truncate">{hint}</div>}
         </div>
     );
+}
+
+function formatMB(mb: number): string {
+    if (mb < 1024) return `${mb} MB`;
+    return `${(mb / 1024).toFixed(1)} GB`;
 }
 
 function formatDuration(ms: number): string {

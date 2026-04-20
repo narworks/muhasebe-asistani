@@ -418,6 +418,13 @@ app.whenReady().then(() => {
     licenseManager.init();
     licenseManager.checkLicense();
 
+    // Schedule disk usage background refresh
+    try {
+        require('./diskUsage').scheduleBackgroundRefresh();
+    } catch (err) {
+        logger.debug(`[diskUsage] init error: ${err.message}`);
+    }
+
     // Initialize scheduler
     scheduler.init(() => runScanWithUpdates());
 
@@ -523,23 +530,25 @@ app.whenReady().then(() => {
                 },
             },
         ]);
-        tray.setContextMenu(trayMenu);
+        // Store menu reference for manual popup on right-click — avoids
+        // setContextMenu() which conflicts with our click handler on macOS.
+        tray._contextMenu = trayMenu;
     };
     tray.setToolTip('Muhasebe Asistanı');
     updateTrayMenu();
 
-    // Left-click on tray → toggle popup dashboard
+    // Left-click: toggle popup dashboard
     tray.on('click', (_event, bounds) => {
         toggleDaemonPopup(bounds);
     });
-    // Double-click → open main window
+    // Double-click: open main window
     tray.on('double-click', () => {
         mainWindow.show();
         mainWindow.focus();
     });
-    // Right-click → native context menu (already set via setContextMenu)
+    // Right-click: context menu (manual popup; avoids conflict with setContextMenu)
     tray.on('right-click', () => {
-        tray.popUpContextMenu();
+        if (tray._contextMenu) tray.popUpContextMenu(tray._contextMenu);
     });
 
     // Start background daemon (only after user login — but module not required for now)
@@ -951,6 +960,17 @@ ipcMain.handle('daemon-pause', async (_event, durationMs) => {
 ipcMain.handle('daemon-resume', async () => {
     daemonScheduler.resume();
     return { ok: true };
+});
+
+// Disk usage for documents folder
+ipcMain.handle('get-disk-usage', async (_event, forceRefresh) => {
+    try {
+        const diskUsage = require('./diskUsage');
+        return diskUsage.getDiskUsage(forceRefresh === true);
+    } catch (err) {
+        logger.debug(`[get-disk-usage] error: ${err.message}`);
+        return { totalMB: null, fileCount: null, freeDiskMB: null };
+    }
 });
 
 // Recent tebligatlar for daemon popup

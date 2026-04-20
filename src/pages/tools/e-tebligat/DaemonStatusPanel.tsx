@@ -22,6 +22,11 @@ export default function DaemonStatusPanel({ onForceRescanAll }: Props) {
     >([]);
     const [showSettings, setShowSettings] = useState(false);
     const [daemonSettings, setDaemonSettings] = useState<DaemonSettings>({});
+    const [diskUsage, setDiskUsage] = useState<{
+        totalMB: number | null;
+        fileCount: number | null;
+        freeDiskMB: number | null;
+    }>({ totalMB: null, fileCount: null, freeDiskMB: null });
     const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
     useEffect(() => {
@@ -38,6 +43,11 @@ export default function DaemonStatusPanel({ onForceRescanAll }: Props) {
 
         // Load daemon settings
         window.electronAPI.daemonGetSettings().then((s) => setDaemonSettings(s || {}));
+
+        // Load disk usage (cached on main side, cheap to fetch)
+        const fetchDisk = () => window.electronAPI.getDiskUsage().then((d) => setDiskUsage(d));
+        fetchDisk();
+        const diskInterval = setInterval(fetchDisk, 60 * 1000); // refresh every minute
 
         const unsubscribe = window.electronAPI.onDaemonEvent((evt: DaemonEvent) => {
             setState(evt.state);
@@ -63,6 +73,7 @@ export default function DaemonStatusPanel({ onForceRescanAll }: Props) {
 
         return () => {
             if (pollingRef.current) clearInterval(pollingRef.current);
+            clearInterval(diskInterval);
             unsubscribe();
         };
     }, []);
@@ -273,6 +284,54 @@ export default function DaemonStatusPanel({ onForceRescanAll }: Props) {
                 />
             </div>
 
+            {/* Disk usage row */}
+            {diskUsage.totalMB !== null && (
+                <div className="mt-3 pt-3 border-t border-gray-100 flex items-center justify-between text-xs">
+                    <div className="flex items-center gap-3">
+                        <span className="text-gray-500">Belgeler:</span>
+                        <span
+                            className={`font-medium ${
+                                diskUsage.totalMB > 5120
+                                    ? 'text-amber-600'
+                                    : diskUsage.totalMB > 10240
+                                      ? 'text-red-600'
+                                      : 'text-gray-700'
+                            }`}
+                        >
+                            {formatMB(diskUsage.totalMB)}
+                            {diskUsage.fileCount !== null && (
+                                <span className="text-gray-400 ml-1 font-normal">
+                                    ({diskUsage.fileCount.toLocaleString('tr-TR')} dosya)
+                                </span>
+                            )}
+                        </span>
+                    </div>
+                    {diskUsage.freeDiskMB !== null && (
+                        <div className="text-gray-500">
+                            Boş disk:{' '}
+                            <span
+                                className={`font-medium ${
+                                    diskUsage.freeDiskMB < 1024
+                                        ? 'text-red-600'
+                                        : diskUsage.freeDiskMB < 5120
+                                          ? 'text-amber-600'
+                                          : 'text-gray-700'
+                                }`}
+                            >
+                                {formatMB(diskUsage.freeDiskMB)}
+                            </span>
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {diskUsage.totalMB !== null && diskUsage.totalMB > 5120 && (
+                <div className="mt-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded text-xs text-amber-800">
+                    ⚠ Belgeleriniz {(diskUsage.totalMB / 1024).toFixed(1)} GB&apos;ı aştı. Yedekleme
+                    veya eski belgelerin arşivlenmesi önerilir.
+                </div>
+            )}
+
             {recentActivity.length > 0 && (
                 <div className="mt-4 pt-3 border-t border-gray-100">
                     <div className="text-xs text-gray-500 mb-2">Son aktivite</div>
@@ -342,6 +401,11 @@ export default function DaemonStatusPanel({ onForceRescanAll }: Props) {
             )}
         </div>
     );
+}
+
+function formatMB(mb: number): string {
+    if (mb < 1024) return `${mb} MB`;
+    return `${(mb / 1024).toFixed(1)} GB`;
 }
 
 function skipReasonLabel(reason: string): string {

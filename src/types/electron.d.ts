@@ -221,6 +221,13 @@ export interface IElectronAPI {
         }>
     >;
     openMainWindow: () => Promise<{ ok: boolean }>;
+    getDiskUsage: (forceRefresh?: boolean) => Promise<{
+        totalMB: number | null;
+        fileCount: number | null;
+        freeDiskMB: number | null;
+        documentsPath?: string;
+        computedAt?: number;
+    }>;
     estimateScanDuration: (clientCount?: number) => Promise<{
         count: number;
         estimatedMinutes: number;
