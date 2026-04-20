@@ -245,13 +245,36 @@ const ScanControls: React.FC<ScanControlsProps> = ({
                         <p className="text-sm font-semibold text-emerald-800 mb-1">
                             &#304;lk kurulum &mdash; Ke&#351;if ile ba&#351;lay&#305;n
                         </p>
-                        <p className="text-xs text-emerald-700 mb-3">
-                            {newClientsCount} yeni m&uuml;kellef eklendi. &Ouml;nce ke&#351;if
-                            yaparak G&#304;B&apos;deki tebligatlar&#305;
-                            g&ouml;r&uuml;nt&uuml;leyin, sonra indirmek istediklerinizi
-                            se&ccedil;in. B&ouml;ylece saatlerce beklemek yerine sadece
-                            ihtiyac&#305;n&#305;z olanlar&#305; indirirsiniz.
+                        <p className="text-xs text-emerald-700 mb-2">
+                            <strong>{newClientsCount} yeni m&uuml;kellef</strong> eklendi. &#304;lk
+                            tarama, ge&ccedil;mi&#351; tebligatlar&#305;n t&uuml;m&uuml;n&uuml;
+                            indirdi&#287;i i&ccedil;in uzun s&uuml;rebilir. Bu nedenle &ouml;nce
+                            ke&#351;if yapman&#305;z&#305; &ouml;neririz:
                         </p>
+                        <div className="grid grid-cols-2 gap-2 mb-3 text-[11px]">
+                            <div className="bg-white rounded-md px-2 py-1.5 border border-emerald-100">
+                                <div className="font-semibold text-emerald-800">
+                                    Ke&#351;if (&ouml;nerilen)
+                                </div>
+                                <div className="text-emerald-700">
+                                    ~{Math.max(1, Math.ceil(newClientsCount / 15))} dakika
+                                </div>
+                                <div className="text-gray-500 mt-0.5">
+                                    Belgeleri g&ouml;r, se&ccedil;erek indir
+                                </div>
+                            </div>
+                            <div className="bg-white rounded-md px-2 py-1.5 border border-amber-100">
+                                <div className="font-semibold text-amber-800">
+                                    Tam tarama (hi&ccedil; se&ccedil;im yok)
+                                </div>
+                                <div className="text-amber-700">
+                                    ~{Math.ceil((newClientsCount * 50) / 60)} dakika
+                                </div>
+                                <div className="text-gray-500 mt-0.5">
+                                    T&uuml;m ge&ccedil;mi&#351; iner
+                                </div>
+                            </div>
+                        </div>
                         <button
                             onClick={() => setConfirmAction('preview')}
                             disabled={previewRunning}
@@ -312,6 +335,27 @@ const ScanControls: React.FC<ScanControlsProps> = ({
                 {/* Rich Progress Card - replaces buttons when scanning */}
                 {scanning && scanProgress && (
                     <div className="mb-4 p-5 bg-white border border-gray-200 rounded-xl shadow-sm text-left">
+                        {/* First-scan reassurance banner */}
+                        {hasNewClients && (
+                            <div className="mb-4 -mx-1 px-3 py-2 bg-emerald-50 border border-emerald-200 rounded-lg">
+                                <div className="flex items-start gap-2">
+                                    <span className="text-base leading-none mt-0.5">&#9889;</span>
+                                    <div className="flex-1">
+                                        <div className="text-xs font-bold text-emerald-800">
+                                            &#304;lk kurulum yap&#305;l&#305;yor &mdash; bu bir
+                                            kereliktir
+                                        </div>
+                                        <div className="text-[11px] text-emerald-700 mt-0.5">
+                                            Sonraki taramalar &ccedil;ok daha h&#305;zl&#305;
+                                            (sadece yeni gelen tebligatlar).
+                                            Bilgisayar&#305;n&#305;z&#305; a&ccedil;&#305;k
+                                            tutman&#305;z yeterli.
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
                         {/* Progress bar + counts */}
                         <div className="flex justify-between text-sm text-gray-700 mb-2">
                             <span className="font-semibold">
