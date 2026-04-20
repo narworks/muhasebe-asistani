@@ -3,6 +3,9 @@ import type { DaemonState, DaemonEvent } from '../../../types/electron';
 
 interface Props {
     onForceRescanAll?: () => void;
+    // Compact mode renders only the single-line status strip (status dot + label + actions).
+    // Used inside Sonuçlar tab so the list gets the vertical space it needs.
+    compact?: boolean;
 }
 
 type DaemonSettings = {
@@ -14,7 +17,7 @@ type DaemonSettings = {
     autoLaunch?: boolean;
 };
 
-export default function DaemonStatusPanel({ onForceRescanAll }: Props) {
+export default function DaemonStatusPanel({ onForceRescanAll, compact = false }: Props) {
     const [state, setState] = useState<DaemonState | null>(null);
     const [currentScanningFirm, setCurrentScanningFirm] = useState<string | null>(null);
     const [recentActivity, setRecentActivity] = useState<
@@ -256,148 +259,164 @@ export default function DaemonStatusPanel({ onForceRescanAll }: Props) {
                 </div>
             )}
 
-            <div className="grid grid-cols-4 gap-3 text-sm">
-                <StatBox
-                    label="Bu Oturum"
-                    value={`${state.stats.successes}/${state.stats.totalScans}`}
-                    hint="başarılı / toplam"
-                />
-                <StatBox
-                    label="Yeni Tebligat"
-                    value={state.stats.newTebligatFound.toString()}
-                    tone={state.stats.newTebligatFound > 0 ? 'good' : 'neutral'}
-                />
-                <StatBox
-                    label="Hata"
-                    value={state.stats.failures.toString()}
-                    tone={state.stats.failures > 0 ? 'warn' : 'neutral'}
-                />
-                <StatBox
-                    label={state.running ? 'Sıradaki Tarama' : 'Durum'}
-                    value={
-                        state.paused
-                            ? 'Durdu'
-                            : state.running
-                              ? currentScanningFirm || `${nextTickMins} dk sonra`
-                              : '-'
-                    }
-                />
-            </div>
-
-            {/* Disk usage row */}
-            {diskUsage.totalMB !== null && (
-                <div className="mt-3 pt-3 border-t border-gray-100 flex items-center justify-between text-xs">
-                    <div className="flex items-center gap-3">
-                        <span className="text-gray-500">Belgeler:</span>
-                        <span
-                            className={`font-medium ${
-                                diskUsage.totalMB > 5120
-                                    ? 'text-amber-600'
-                                    : diskUsage.totalMB > 10240
-                                      ? 'text-red-600'
-                                      : 'text-gray-700'
-                            }`}
-                        >
-                            {formatMB(diskUsage.totalMB)}
-                            {diskUsage.fileCount !== null && (
-                                <span className="text-gray-400 ml-1 font-normal">
-                                    ({diskUsage.fileCount.toLocaleString('tr-TR')} dosya)
-                                </span>
-                            )}
-                        </span>
+            {!compact && (
+                <>
+                    <div className="grid grid-cols-4 gap-3 text-sm">
+                        <StatBox
+                            label="Bu Oturum"
+                            value={`${state.stats.successes}/${state.stats.totalScans}`}
+                            hint="başarılı / toplam"
+                        />
+                        <StatBox
+                            label="Yeni Tebligat"
+                            value={state.stats.newTebligatFound.toString()}
+                            tone={state.stats.newTebligatFound > 0 ? 'good' : 'neutral'}
+                        />
+                        <StatBox
+                            label="Hata"
+                            value={state.stats.failures.toString()}
+                            tone={state.stats.failures > 0 ? 'warn' : 'neutral'}
+                        />
+                        <StatBox
+                            label={state.running ? 'Sıradaki Tarama' : 'Durum'}
+                            value={
+                                state.paused
+                                    ? 'Durdu'
+                                    : state.running
+                                      ? currentScanningFirm || `${nextTickMins} dk sonra`
+                                      : '-'
+                            }
+                        />
                     </div>
-                    {diskUsage.freeDiskMB !== null && (
-                        <div className="text-gray-500">
-                            Boş disk:{' '}
-                            <span
-                                className={`font-medium ${
-                                    diskUsage.freeDiskMB < 1024
-                                        ? 'text-red-600'
-                                        : diskUsage.freeDiskMB < 5120
-                                          ? 'text-amber-600'
-                                          : 'text-gray-700'
-                                }`}
-                            >
-                                {formatMB(diskUsage.freeDiskMB)}
-                            </span>
-                        </div>
-                    )}
-                </div>
-            )}
 
-            {diskUsage.totalMB !== null && diskUsage.totalMB > 5120 && (
-                <div className="mt-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded text-xs text-amber-800">
-                    ⚠ Belgeleriniz {(diskUsage.totalMB / 1024).toFixed(1)} GB&apos;ı aştı. Yedekleme
-                    veya eski belgelerin arşivlenmesi önerilir.
-                </div>
-            )}
-
-            {recentActivity.length > 0 && (
-                <div className="mt-4 pt-3 border-t border-gray-100">
-                    <div className="text-xs text-gray-500 mb-2">Son aktivite</div>
-                    <div className="space-y-1 max-h-24 overflow-y-auto">
-                        {recentActivity.slice(0, 5).map((a, i) => (
-                            <div key={i} className="text-xs flex items-center gap-2 text-gray-600">
-                                <span className="text-gray-400 tabular-nums">
-                                    {new Date(a.time).toLocaleTimeString('tr-TR')}
-                                </span>
-                                <span>
-                                    {a.event === 'new_tebligat' ? (
-                                        <span className="text-emerald-600 font-medium">
-                                            🔔 {a.firmName}: {(a.data?.count as number) || ''} yeni
-                                            tebligat
+                    {/* Disk usage row */}
+                    {diskUsage.totalMB !== null && (
+                        <div className="mt-3 pt-3 border-t border-gray-100 flex items-center justify-between text-xs">
+                            <div className="flex items-center gap-3">
+                                <span className="text-gray-500">Belgeler:</span>
+                                <span
+                                    className={`font-medium ${
+                                        diskUsage.totalMB > 5120
+                                            ? 'text-amber-600'
+                                            : diskUsage.totalMB > 10240
+                                              ? 'text-red-600'
+                                              : 'text-gray-700'
+                                    }`}
+                                >
+                                    {formatMB(diskUsage.totalMB)}
+                                    {diskUsage.fileCount !== null && (
+                                        <span className="text-gray-400 ml-1 font-normal">
+                                            ({diskUsage.fileCount.toLocaleString('tr-TR')} dosya)
                                         </span>
-                                    ) : a.event === 'scan_success' ? (
-                                        <span>✓ {a.firmName || 'Tarama'} tamamlandı</span>
-                                    ) : a.event === 'scan_failure' ? (
-                                        <span className="text-red-600">
-                                            ✗ {a.firmName || 'Tarama'}:{' '}
-                                            {a.data?.errorType as string}
-                                        </span>
-                                    ) : a.event === 'ip_blocked' ? (
-                                        <span className="text-red-600 font-semibold">
-                                            ⛔ GİB IP engeli — 24 saat duraklatıldı
-                                        </span>
-                                    ) : a.event === 'skipped' ? (
-                                        <span className="text-amber-600">
-                                            ⏸ Atlandı: {skipReasonLabel(a.data?.reason as string)}
-                                        </span>
-                                    ) : a.event === 'idle' ? (
-                                        <span className="text-gray-500">
-                                            💤 Sırada bekleyen mükellef yok (hepsi yakın zamanda
-                                            tarandı)
-                                        </span>
-                                    ) : a.event === 'scan_start' ? (
-                                        <span className="text-blue-600">🔍 Tarama başladı</span>
-                                    ) : a.event === 'started' ? (
-                                        <span className="text-emerald-600">
-                                            ▶ Daemon başlatıldı
-                                        </span>
-                                    ) : a.event === 'stopped' ? (
-                                        <span className="text-gray-500">■ Daemon durduruldu</span>
-                                    ) : a.event === 'paused' ? (
-                                        <span className="text-amber-600">⏸ Duraklatıldı</span>
-                                    ) : a.event === 'resumed' ? (
-                                        <span className="text-emerald-600">▶ Devam ediyor</span>
-                                    ) : (
-                                        <span>{a.event}</span>
                                     )}
                                 </span>
                             </div>
-                        ))}
-                    </div>
-                </div>
-            )}
+                            {diskUsage.freeDiskMB !== null && (
+                                <div className="text-gray-500">
+                                    Boş disk:{' '}
+                                    <span
+                                        className={`font-medium ${
+                                            diskUsage.freeDiskMB < 1024
+                                                ? 'text-red-600'
+                                                : diskUsage.freeDiskMB < 5120
+                                                  ? 'text-amber-600'
+                                                  : 'text-gray-700'
+                                        }`}
+                                    >
+                                        {formatMB(diskUsage.freeDiskMB)}
+                                    </span>
+                                </div>
+                            )}
+                        </div>
+                    )}
 
-            {onForceRescanAll && (
-                <div className="mt-3 pt-3 border-t border-gray-100">
-                    <button
-                        onClick={onForceRescanAll}
-                        className="text-xs text-indigo-600 hover:text-indigo-800 underline"
-                    >
-                        Tüm mükellefleri şimdi tara (uzun sürer)
-                    </button>
-                </div>
+                    {diskUsage.totalMB !== null && diskUsage.totalMB > 5120 && (
+                        <div className="mt-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded text-xs text-amber-800">
+                            ⚠ Belgeleriniz {(diskUsage.totalMB / 1024).toFixed(1)} GB&apos;ı aştı.
+                            Yedekleme veya eski belgelerin arşivlenmesi önerilir.
+                        </div>
+                    )}
+
+                    {recentActivity.length > 0 && (
+                        <div className="mt-4 pt-3 border-t border-gray-100">
+                            <div className="text-xs text-gray-500 mb-2">Son aktivite</div>
+                            <div className="space-y-1 max-h-24 overflow-y-auto">
+                                {recentActivity.slice(0, 5).map((a, i) => (
+                                    <div
+                                        key={i}
+                                        className="text-xs flex items-center gap-2 text-gray-600"
+                                    >
+                                        <span className="text-gray-400 tabular-nums">
+                                            {new Date(a.time).toLocaleTimeString('tr-TR')}
+                                        </span>
+                                        <span>
+                                            {a.event === 'new_tebligat' ? (
+                                                <span className="text-emerald-600 font-medium">
+                                                    🔔 {a.firmName}:{' '}
+                                                    {(a.data?.count as number) || ''} yeni tebligat
+                                                </span>
+                                            ) : a.event === 'scan_success' ? (
+                                                <span>✓ {a.firmName || 'Tarama'} tamamlandı</span>
+                                            ) : a.event === 'scan_failure' ? (
+                                                <span className="text-red-600">
+                                                    ✗ {a.firmName || 'Tarama'}:{' '}
+                                                    {a.data?.errorType as string}
+                                                </span>
+                                            ) : a.event === 'ip_blocked' ? (
+                                                <span className="text-red-600 font-semibold">
+                                                    ⛔ GİB IP engeli — 24 saat duraklatıldı
+                                                </span>
+                                            ) : a.event === 'skipped' ? (
+                                                <span className="text-amber-600">
+                                                    ⏸ Atlandı:{' '}
+                                                    {skipReasonLabel(a.data?.reason as string)}
+                                                </span>
+                                            ) : a.event === 'idle' ? (
+                                                <span className="text-gray-500">
+                                                    💤 Sırada bekleyen mükellef yok (hepsi yakın
+                                                    zamanda tarandı)
+                                                </span>
+                                            ) : a.event === 'scan_start' ? (
+                                                <span className="text-blue-600">
+                                                    🔍 Tarama başladı
+                                                </span>
+                                            ) : a.event === 'started' ? (
+                                                <span className="text-emerald-600">
+                                                    ▶ Daemon başlatıldı
+                                                </span>
+                                            ) : a.event === 'stopped' ? (
+                                                <span className="text-gray-500">
+                                                    ■ Daemon durduruldu
+                                                </span>
+                                            ) : a.event === 'paused' ? (
+                                                <span className="text-amber-600">
+                                                    ⏸ Duraklatıldı
+                                                </span>
+                                            ) : a.event === 'resumed' ? (
+                                                <span className="text-emerald-600">
+                                                    ▶ Devam ediyor
+                                                </span>
+                                            ) : (
+                                                <span>{a.event}</span>
+                                            )}
+                                        </span>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                    {onForceRescanAll && (
+                        <div className="mt-3 pt-3 border-t border-gray-100">
+                            <button
+                                onClick={onForceRescanAll}
+                                className="text-xs text-indigo-600 hover:text-indigo-800 underline"
+                            >
+                                Tüm mükellefleri şimdi tara (uzun sürer)
+                            </button>
+                        </div>
+                    )}
+                </>
             )}
         </div>
     );

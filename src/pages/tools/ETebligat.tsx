@@ -1261,142 +1261,152 @@ const ETebligat: React.FC = () => {
                         </TabsTrigger>
                     </TabsList>
 
-                    {/* Sonuçlar Tab — includes daemon status + manual scan controls at top */}
+                    {/* Sonuçlar Tab — daemon strip (compact) + scan controls stay at top;
+                        ResultsView scrolls independently so the list is always usable */}
                     <TabsContent
                         value="results"
-                        className="flex-1 flex flex-col overflow-y-auto pt-2"
+                        className="flex-1 flex flex-col overflow-hidden pt-2"
                     >
-                        <DaemonStatusPanel />
-                        <ScanControls
-                            scanning={scanning}
-                            scanProgress={scanProgress}
-                            scanState={scanState}
-                            rateLimits={rateLimits}
-                            scanEstimate={scanEstimate}
-                            insufficientCredits={insufficientCredits}
-                            lastFailedIds={lastFailedIds}
-                            progressPercent={progressPercent}
-                            clientCount={clients.length}
-                            onStartScan={handleStartScan}
-                            onStopScan={handleStopScan}
-                            onResumeScan={handleResumeScan}
-                            onPurchaseCredits={() => window.electronAPI.purchaseCredits()}
-                            onRetryFailed={() => {
-                                setScanning(true);
-                                setLogs([]);
-                                setScanProgress(null);
-                                addLog(
-                                    `${lastFailedIds.length} ba\u015Far\u0131s\u0131z m\u00FCkellef yeniden taran\u0131yor...`,
-                                    'info'
-                                );
-                                window.electronAPI.startScanWithOptions({
-                                    clientIds: lastFailedIds,
-                                    scanType: 'retry_failed',
-                                });
-                            }}
-                            onOpenHistory={async () => {
-                                try {
-                                    const history = await window.electronAPI.getScanHistory(20);
-                                    setScanHistoryModal(history as ScanHistoryItem[]);
-                                } catch {
-                                    /* ignore */
-                                }
-                            }}
-                            onStartPreview={async () => {
-                                setPreviewRunning(true);
-                                setPreviewResults(null);
-                                setPreviewSelections({});
-                                setScanProgress(null);
-                                addLog(
-                                    'Ke\u015fif ba\u015flat\u0131l\u0131yor (belge indirme yok)...',
-                                    'info'
-                                );
-                                try {
-                                    const result = await window.electronAPI.previewScan();
-                                    if (result.ok && result.results) {
-                                        setPreviewResults(result.results);
-                                        const defaults: Record<number, PreviewSelectionMode> = {};
-                                        result.results.forEach((r) => {
-                                            if (r.ok && (r.count || 0) > 0) {
-                                                defaults[r.clientId] = 'last30';
-                                            } else {
-                                                defaults[r.clientId] = 'skip';
-                                            }
-                                        });
-                                        setPreviewSelections(defaults);
-                                        toast.info(
-                                            `Keşif tamamlandı: ${result.results.length} mükellef tarandı`
-                                        );
-                                    } else {
+                        <div className="shrink-0">
+                            <DaemonStatusPanel compact />
+                        </div>
+                        <div className="shrink-0">
+                            <ScanControls
+                                scanning={scanning}
+                                scanProgress={scanProgress}
+                                scanState={scanState}
+                                rateLimits={rateLimits}
+                                scanEstimate={scanEstimate}
+                                insufficientCredits={insufficientCredits}
+                                lastFailedIds={lastFailedIds}
+                                progressPercent={progressPercent}
+                                clientCount={clients.length}
+                                onStartScan={handleStartScan}
+                                onStopScan={handleStopScan}
+                                onResumeScan={handleResumeScan}
+                                onPurchaseCredits={() => window.electronAPI.purchaseCredits()}
+                                onRetryFailed={() => {
+                                    setScanning(true);
+                                    setLogs([]);
+                                    setScanProgress(null);
+                                    addLog(
+                                        `${lastFailedIds.length} ba\u015Far\u0131s\u0131z m\u00FCkellef yeniden taran\u0131yor...`,
+                                        'info'
+                                    );
+                                    window.electronAPI.startScanWithOptions({
+                                        clientIds: lastFailedIds,
+                                        scanType: 'retry_failed',
+                                    });
+                                }}
+                                onOpenHistory={async () => {
+                                    try {
+                                        const history = await window.electronAPI.getScanHistory(20);
+                                        setScanHistoryModal(history as ScanHistoryItem[]);
+                                    } catch {
+                                        /* ignore */
+                                    }
+                                }}
+                                onStartPreview={async () => {
+                                    setPreviewRunning(true);
+                                    setPreviewResults(null);
+                                    setPreviewSelections({});
+                                    setScanProgress(null);
+                                    addLog(
+                                        'Ke\u015fif ba\u015flat\u0131l\u0131yor (belge indirme yok)...',
+                                        'info'
+                                    );
+                                    try {
+                                        const result = await window.electronAPI.previewScan();
+                                        if (result.ok && result.results) {
+                                            setPreviewResults(result.results);
+                                            const defaults: Record<number, PreviewSelectionMode> =
+                                                {};
+                                            result.results.forEach((r) => {
+                                                if (r.ok && (r.count || 0) > 0) {
+                                                    defaults[r.clientId] = 'last30';
+                                                } else {
+                                                    defaults[r.clientId] = 'skip';
+                                                }
+                                            });
+                                            setPreviewSelections(defaults);
+                                            toast.info(
+                                                `Keşif tamamlandı: ${result.results.length} mükellef tarandı`
+                                            );
+                                        } else {
+                                            addLog(
+                                                `Ke\u015fif hatas\u0131: ${result.error || 'Bilinmeyen hata'}`,
+                                                'error'
+                                            );
+                                        }
+                                    } catch (err) {
                                         addLog(
-                                            `Ke\u015fif hatas\u0131: ${result.error || 'Bilinmeyen hata'}`,
+                                            `Ke\u015fif hatas\u0131: ${(err as Error).message}`,
                                             'error'
                                         );
+                                    } finally {
+                                        setPreviewRunning(false);
+                                        // Preview doesn't go through handleComplete/handleError,
+                                        // so reset scanProgress here — otherwise buttons stay hidden.
+                                        setScanProgress(null);
                                     }
-                                } catch (err) {
-                                    addLog(
-                                        `Ke\u015fif hatas\u0131: ${(err as Error).message}`,
-                                        'error'
-                                    );
-                                } finally {
-                                    setPreviewRunning(false);
-                                    // Preview doesn't go through handleComplete/handleError,
-                                    // so reset scanProgress here — otherwise buttons stay hidden.
-                                    setScanProgress(null);
+                                }}
+                                previewRunning={previewRunning}
+                                hasNewClients={
+                                    clients.filter((c) => !c.last_full_scan_at).length > 0
                                 }
-                            }}
-                            previewRunning={previewRunning}
-                            hasNewClients={clients.filter((c) => !c.last_full_scan_at).length > 0}
-                            newClientsCount={clients.filter((c) => !c.last_full_scan_at).length}
-                        />
+                                newClientsCount={clients.filter((c) => !c.last_full_scan_at).length}
+                            />
+                        </div>
 
                         {/* LogDrawer — only shown during manual scans (daemon activity is in DaemonStatusPanel) */}
                         {(scanning || logs.length > 0) && (
-                            <div className="mt-4">
+                            <div className="mt-4 shrink-0">
                                 <LogDrawer logs={logs} logsEndRef={logsEndRef} />
                             </div>
                         )}
 
-                        <ResultsView
-                            tebligatlar={tebligatlar}
-                            filteredTebligatlar={filteredTebligatlar}
-                            clientGroups={clientGroups}
-                            clients={clients}
-                            allNewTebligatIds={allNewTebligatIds}
-                            loadingTebligatlar={loadingTebligatlar}
-                            filterDateRange={filterDateRange}
-                            filterDateFrom={filterDateFrom}
-                            filterDateTo={filterDateTo}
-                            filterClientId={filterClientId}
-                            filterStatus={filterStatus}
-                            filterSender={filterSender}
-                            searchTerm={searchTerm}
-                            onFilterDateRange={setFilterDateRange}
-                            onFilterDateFrom={setFilterDateFrom}
-                            onFilterDateTo={setFilterDateTo}
-                            onFilterClientId={setFilterClientId}
-                            onFilterStatus={setFilterStatus}
-                            onFilterSender={setFilterSender}
-                            onSearchTerm={setSearchTerm}
-                            statusOptions={statusOptions}
-                            uniqueSenders={uniqueSenders}
-                            expandedClients={expandedClients}
-                            expandedScans={expandedScans}
-                            onToggleClient={toggleClientAccordion}
-                            onToggleScan={toggleScanAccordion}
-                            onSelectTebligat={setSelectedTebligat}
-                            onFetchDocument={handleFetchDocument}
-                            onOpenDocument={handleOpenDocument}
-                            onShareDocument={handleShareDocument}
-                            fetchingDocumentId={fetchingDocumentId}
-                            documentsFolder={documentsFolder}
-                            onOpenDocumentsFolder={handleOpenDocumentsFolder}
-                            onSelectDocumentsFolder={handleSelectDocumentsFolder}
-                            onExportCsv={handleExportCsv}
-                            onExportExcel={handleExportExcel}
-                            onRefresh={fetchTebligatlar}
-                            onResetFilters={resetFilters}
-                        />
+                        <div className="flex-1 overflow-y-auto mt-2">
+                            <ResultsView
+                                tebligatlar={tebligatlar}
+                                filteredTebligatlar={filteredTebligatlar}
+                                clientGroups={clientGroups}
+                                clients={clients}
+                                allNewTebligatIds={allNewTebligatIds}
+                                loadingTebligatlar={loadingTebligatlar}
+                                filterDateRange={filterDateRange}
+                                filterDateFrom={filterDateFrom}
+                                filterDateTo={filterDateTo}
+                                filterClientId={filterClientId}
+                                filterStatus={filterStatus}
+                                filterSender={filterSender}
+                                searchTerm={searchTerm}
+                                onFilterDateRange={setFilterDateRange}
+                                onFilterDateFrom={setFilterDateFrom}
+                                onFilterDateTo={setFilterDateTo}
+                                onFilterClientId={setFilterClientId}
+                                onFilterStatus={setFilterStatus}
+                                onFilterSender={setFilterSender}
+                                onSearchTerm={setSearchTerm}
+                                statusOptions={statusOptions}
+                                uniqueSenders={uniqueSenders}
+                                expandedClients={expandedClients}
+                                expandedScans={expandedScans}
+                                onToggleClient={toggleClientAccordion}
+                                onToggleScan={toggleScanAccordion}
+                                onSelectTebligat={setSelectedTebligat}
+                                onFetchDocument={handleFetchDocument}
+                                onOpenDocument={handleOpenDocument}
+                                onShareDocument={handleShareDocument}
+                                fetchingDocumentId={fetchingDocumentId}
+                                documentsFolder={documentsFolder}
+                                onOpenDocumentsFolder={handleOpenDocumentsFolder}
+                                onSelectDocumentsFolder={handleSelectDocumentsFolder}
+                                onExportCsv={handleExportCsv}
+                                onExportExcel={handleExportExcel}
+                                onRefresh={fetchTebligatlar}
+                                onResetFilters={resetFilters}
+                            />
+                        </div>
                     </TabsContent>
 
                     {/* Mükellefler Tab */}
