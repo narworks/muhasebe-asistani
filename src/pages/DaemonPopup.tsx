@@ -129,7 +129,9 @@ export default function DaemonPopup() {
         return d.getTime();
     })();
     const isNewToday = (t: RecentTebligat) => {
-        const d = parseAnyDate(t.created_at);
+        // "Yeni" = GİB tarafından bugün tebliğ edilmiş (insertion değil).
+        // Müşteri ilk kurulumda eski tebligatları toplu indirince hepsini "yeni" göstermesin.
+        const d = parseAnyDate(t.notification_date || t.send_date || t.created_at);
         return d ? d.getTime() >= startOfToday : false;
     };
 

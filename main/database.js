@@ -378,8 +378,9 @@ function getRecentTebligatlar(limit = 5) {
 }
 
 /**
- * Count tebligat created today (local timezone).
- * Used for "Bugün gelen" counter in popup.
+ * Count tebligat issued today by GİB (by notification_date, not insertion time).
+ * Used for "Bugün gelen" counter in popup. Falls back to send_date, then created_at
+ * for older rows that may have null notification_date.
  */
 function getTodayNewTebligatCount() {
     if (!db) init();
@@ -389,7 +390,8 @@ function getTodayNewTebligatCount() {
     const row = db
         .prepare(
             `SELECT COUNT(*) as c FROM tebligatlar
-             WHERE status != 'Tebligat yok' AND created_at >= ?`
+             WHERE status != 'Tebligat yok'
+             AND COALESCE(notification_date, send_date, created_at) >= ?`
         )
         .get(iso);
     return row?.c || 0;
@@ -432,7 +434,8 @@ function getDailyTebligatStats(days = 7) {
             .prepare(
                 `SELECT COUNT(*) as c FROM tebligatlar
                  WHERE status != 'Tebligat yok'
-                 AND created_at >= ? AND created_at <= ?`
+                 AND COALESCE(notification_date, send_date, created_at) >= ?
+                 AND COALESCE(notification_date, send_date, created_at) <= ?`
             )
             .get(start.toISOString(), end.toISOString());
         const yyyy = start.getFullYear();
