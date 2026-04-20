@@ -462,6 +462,15 @@ app.whenReady().then(() => {
     // Initialize auto-updater
     autoUpdater.init(mainWindow);
 
+    // When update is downloaded (background), refresh tray menu to show install option
+    autoUpdater.setOnUpdateReady(() => {
+        try {
+            if (typeof updateTrayMenu === 'function') updateTrayMenu();
+        } catch {
+            /* updateTrayMenu defined later in scope */
+        }
+    });
+
     // IPC: start downloading update
     ipcMain.handle('start-update-download', () => {
         autoUpdater.startDownload();
@@ -499,7 +508,7 @@ app.whenReady().then(() => {
     tray = new Tray(trayIcon);
     const updateTrayMenu = () => {
         const daemonState = daemonScheduler.getState();
-        const trayMenu = Menu.buildFromTemplate([
+        const items = [
             {
                 label: 'Aç',
                 click: () => {
@@ -535,6 +544,22 @@ app.whenReady().then(() => {
                     updateTrayMenu();
                 },
             },
+        ];
+
+        // Dynamic: show update install option if update is ready
+        if (autoUpdater.isUpdateReady && autoUpdater.isUpdateReady()) {
+            items.push(
+                { type: 'separator' },
+                {
+                    label: '✨ Güncellemeyi Yükle ve Yeniden Başlat',
+                    click: () => {
+                        autoUpdater.quitAndInstall();
+                    },
+                }
+            );
+        }
+
+        items.push(
             { type: 'separator' },
             {
                 label: 'Çıkış',
@@ -543,8 +568,10 @@ app.whenReady().then(() => {
                     daemonScheduler.stop();
                     app.quit();
                 },
-            },
-        ]);
+            }
+        );
+
+        const trayMenu = Menu.buildFromTemplate(items);
         // Store menu reference for manual popup on right-click — avoids
         // setContextMenu() which conflicts with our click handler on macOS.
         tray._contextMenu = trayMenu;

@@ -4,6 +4,16 @@ const logger = require('./logger');
 
 let mainWindow = null;
 let userInitiatedDownload = false;
+let updateReady = false; // true when update is downloaded and waiting for restart
+let onUpdateReadyCallback = null;
+
+function setOnUpdateReady(callback) {
+    onUpdateReadyCallback = callback;
+}
+
+function isUpdateReady() {
+    return updateReady;
+}
 
 /**
  * Initialize auto-updater
@@ -19,7 +29,9 @@ function init(win) {
     }
 
     // Configure auto-updater
-    autoUpdater.autoDownload = false;
+    // autoDownload: true — silently download updates in background. Critical for
+    // users who keep the app running continuously in tray (daemon mode).
+    autoUpdater.autoDownload = true;
     autoUpdater.autoInstallOnAppQuit = true;
 
     // Event handlers
@@ -83,7 +95,32 @@ function init(win) {
 
     autoUpdater.on('update-downloaded', (info) => {
         logger.debug('[AutoUpdater] Update downloaded:', info.version);
+        updateReady = true;
         sendStatusToWindow('update-downloaded', info);
+
+        // Show native notification so user notices even if main window is closed (tray-only mode)
+        try {
+            const notifications = require('./notifications');
+            notifications.show({
+                title: '✨ Güncelleme Hazır',
+                body: `Muhasebe Asistanı v${info.version} indirildi. Yüklemek için tıklayın (uygulama yeniden başlatılacak).`,
+                urgency: 'normal',
+                onClick: () => {
+                    quitAndInstall();
+                },
+            });
+        } catch (err) {
+            logger.debug(`[AutoUpdater] notification error: ${err.message}`);
+        }
+
+        // Notify main.js so it can update tray menu
+        if (onUpdateReadyCallback) {
+            try {
+                onUpdateReadyCallback(info);
+            } catch (err) {
+                logger.debug(`[AutoUpdater] callback error: ${err.message}`);
+            }
+        }
     });
 
     // Check for updates after app is ready (delay 5 seconds)
@@ -151,4 +188,6 @@ module.exports = {
     checkForUpdates,
     startDownload,
     quitAndInstall,
+    isUpdateReady,
+    setOnUpdateReady,
 };
