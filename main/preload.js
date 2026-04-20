@@ -60,6 +60,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getRecentTebligatlar: (limit) => ipcRenderer.invoke('get-recent-tebligatlar', limit),
     openMainWindow: () => ipcRenderer.invoke('open-main-window'),
     getDiskUsage: (forceRefresh) => ipcRenderer.invoke('get-disk-usage', forceRefresh),
+    getUnreadCount: () => ipcRenderer.invoke('get-unread-count'),
+    onNavigateTo: (callback) => {
+        const handler = (_event, path) => callback(path);
+        ipcRenderer.on('navigate-to', handler);
+        return () => ipcRenderer.removeListener('navigate-to', handler);
+    },
     estimateScanDuration: (clientCount) =>
         ipcRenderer.invoke('estimate-scan-duration', clientCount),
     startScanWithOptions: (options) => ipcRenderer.send('start-scan-with-options', options),

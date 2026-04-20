@@ -1,4 +1,5 @@
-import { Routes, Route } from 'react-router-dom';
+import { useEffect } from 'react';
+import { Routes, Route, useNavigate } from 'react-router-dom';
 import Login from './pages/auth/Login';
 import Register from './pages/auth/Register';
 import DashboardHome from './pages/dashboard/DashboardHome';
@@ -14,6 +15,17 @@ import ErrorBoundary from './components/ErrorBoundary';
 import { Toaster } from 'sonner';
 
 function App() {
+    const navigate = useNavigate();
+
+    // Listen for navigate-to events from main process (notification click, etc.)
+    useEffect(() => {
+        if (!window.electronAPI?.onNavigateTo) return;
+        const unsubscribe = window.electronAPI.onNavigateTo((path) => {
+            if (path && typeof path === 'string') navigate(path);
+        });
+        return unsubscribe;
+    }, [navigate]);
+
     return (
         <ErrorBoundary>
             <Toaster position="top-right" richColors closeButton duration={4000} />

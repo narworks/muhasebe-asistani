@@ -228,6 +228,8 @@ export interface IElectronAPI {
         documentsPath?: string;
         computedAt?: number;
     }>;
+    getUnreadCount: () => Promise<number>;
+    onNavigateTo: (callback: (path: string) => void) => () => void;
     estimateScanDuration: (clientCount?: number) => Promise<{
         count: number;
         estimatedMinutes: number;

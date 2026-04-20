@@ -257,6 +257,21 @@ const createWindow = () => {
         } else if (process.platform === 'win32') {
             mainWindow.setSkipTaskbar(false);
         }
+        // Clear unread counter when user opens the main window
+        try {
+            require('./unreadCounter').clear();
+        } catch {
+            /* ignore */
+        }
+    });
+
+    // Also clear on focus (e.g., user Alt+Tab'd to existing window)
+    mainWindow.on('focus', () => {
+        try {
+            require('./unreadCounter').clear();
+        } catch {
+            /* ignore */
+        }
     });
 };
 
@@ -536,6 +551,26 @@ app.whenReady().then(() => {
     };
     tray.setToolTip('Muhasebe Asistanı');
     updateTrayMenu();
+
+    // Register tray with unread counter for badge updates
+    try {
+        require('./unreadCounter').setTray(tray);
+    } catch (err) {
+        logger.debug(`[UnreadCounter] setTray error: ${err.message}`);
+    }
+
+    // Register callback for notification click → opens main window
+    try {
+        require('./notifications').setOpenMainWindowCallback(() => {
+            if (mainWindow && !mainWindow.isDestroyed()) {
+                mainWindow.show();
+                mainWindow.focus();
+                mainWindow.webContents.send('navigate-to', '/tools/e-tebligat');
+            }
+        });
+    } catch (err) {
+        logger.debug(`[Notifications] callback setup error: ${err.message}`);
+    }
 
     // Left-click: toggle popup dashboard
     tray.on('click', (_event, bounds) => {
@@ -960,6 +995,15 @@ ipcMain.handle('daemon-pause', async (_event, durationMs) => {
 ipcMain.handle('daemon-resume', async () => {
     daemonScheduler.resume();
     return { ok: true };
+});
+
+// Unread tebligat count (daemon-tracked, cleared on window focus)
+ipcMain.handle('get-unread-count', () => {
+    try {
+        return require('./unreadCounter').getCount();
+    } catch {
+        return 0;
+    }
 });
 
 // Disk usage for documents folder

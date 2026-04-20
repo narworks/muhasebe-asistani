@@ -34,7 +34,14 @@ function areNotificationsAllowed() {
     return Notification.isSupported();
 }
 
-function show({ title, body, silent = false, urgency = 'normal' }) {
+// Callback for opening main window — set from main.js
+let openMainWindowCallback = null;
+
+function setOpenMainWindowCallback(fn) {
+    openMainWindowCallback = fn;
+}
+
+function show({ title, body, silent = false, urgency = 'normal', onClick = null }) {
     if (!areNotificationsAllowed()) return;
     try {
         const icon = getIcon();
@@ -42,8 +49,17 @@ function show({ title, body, silent = false, urgency = 'normal' }) {
             title,
             body,
             silent,
-            urgency, // 'low' | 'normal' | 'critical'
+            urgency,
             ...(icon ? { icon } : {}),
+        });
+        // Click handler: opens main window + optionally runs extra callback
+        n.on('click', () => {
+            try {
+                if (openMainWindowCallback) openMainWindowCallback();
+                if (onClick) onClick();
+            } catch (err) {
+                logger.debug(`[Notifications] click handler error: ${err.message}`);
+            }
         });
         n.show();
     } catch (err) {
@@ -53,7 +69,7 @@ function show({ title, body, silent = false, urgency = 'normal' }) {
 
 function notifyNewTebligat(firmName, count) {
     const title = count === 1 ? '🔔 Yeni Tebligat' : `🔔 ${count} Yeni Tebligat`;
-    const body = `${firmName} için yeni tebligat bildirimleri var.`;
+    const body = `${firmName} için yeni tebligat bildirimleri var. Görmek için tıklayın.`;
     show({ title, body, urgency: 'normal' });
 }
 
@@ -71,4 +87,5 @@ module.exports = {
     notifyCritical,
     notifyInfo,
     areNotificationsAllowed,
+    setOpenMainWindowCallback,
 };

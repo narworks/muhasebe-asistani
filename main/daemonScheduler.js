@@ -16,6 +16,7 @@ const settings = require('./settings');
 const systemMonitor = require('./systemMonitor');
 const gibScraper = require('./automation/gibScraper');
 const notifications = require('./notifications');
+const unreadCounter = require('./unreadCounter');
 let Sentry;
 try {
     Sentry = require('@sentry/electron/main');
@@ -159,6 +160,7 @@ async function tick() {
 
             if (result.newTebligatCount > 0) {
                 state.stats.newTebligatFound += result.newTebligatCount;
+                unreadCounter.increment(result.newTebligatCount);
                 if (ds.notificationsEnabled) {
                     notifications.notifyNewTebligat(client.firm_name, result.newTebligatCount);
                 }
