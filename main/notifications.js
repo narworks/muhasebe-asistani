@@ -41,8 +41,22 @@ function setOpenMainWindowCallback(fn) {
     openMainWindowCallback = fn;
 }
 
-function show({ title, body, silent = false, urgency = 'normal', onClick = null }) {
-    if (!areNotificationsAllowed()) return;
+function show({
+    title,
+    body,
+    silent = false,
+    urgency = 'normal',
+    onClick = null,
+    bypassSettings = false,
+    skipOpenWindow = false,
+}) {
+    // bypassSettings skips the daemon.notifications toggle — use for critical/system events
+    // (update ready, disk full) that the user should see regardless of scan-notification prefs.
+    if (bypassSettings) {
+        if (!Notification.isSupported()) return;
+    } else if (!areNotificationsAllowed()) {
+        return;
+    }
     try {
         const icon = getIcon();
         // timeoutType 'never' on Windows keeps the notification visible until the user
@@ -56,18 +70,19 @@ function show({ title, body, silent = false, urgency = 'normal', onClick = null 
             ...(process.platform === 'win32' ? { timeoutType: 'never' } : {}),
             ...(icon ? { icon } : {}),
         });
-        // Click handler: opens main window + optionally runs extra callback
+        // Click handler: opens main window (unless skipOpenWindow) + runs onClick
         n.on('click', () => {
             try {
-                if (openMainWindowCallback) openMainWindowCallback();
+                if (!skipOpenWindow && openMainWindowCallback) openMainWindowCallback();
                 if (onClick) onClick();
             } catch (err) {
-                logger.debug(`[Notifications] click handler error: ${err.message}`);
+                // Info-level so support/Sentry can see silent failures in user logs.
+                logger.info(`[Notifications] click handler error: ${err.message}`);
             }
         });
         n.show();
     } catch (err) {
-        logger.debug(`[Notifications] show error: ${err.message}`);
+        logger.info(`[Notifications] show error: ${err.message}`);
     }
 }
 
@@ -78,7 +93,9 @@ function notifyNewTebligat(firmName, count) {
 }
 
 function notifyCritical(title, body) {
-    show({ title: `⚠️ ${title}`, body, urgency: 'critical' });
+    // Critical notifications bypass the daemon-notifications toggle so users with
+    // scan-notifications muted still see disk-full warnings etc.
+    show({ title: `⚠️ ${title}`, body, urgency: 'critical', bypassSettings: true });
 }
 
 function notifyInfo(title, body) {

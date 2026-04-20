@@ -6,6 +6,7 @@ let mainWindow = null;
 let userInitiatedDownload = false;
 let updateReady = false; // true when update is downloaded and waiting for restart
 let onUpdateReadyCallback = null;
+let installInProgress = false; // re-entrancy guard for quitAndInstall
 
 function setOnUpdateReady(callback) {
     onUpdateReadyCallback = callback;
@@ -98,19 +99,24 @@ function init(win) {
         updateReady = true;
         sendStatusToWindow('update-downloaded', info);
 
-        // Show native notification so user notices even if main window is closed (tray-only mode)
+        // Show native notification so user notices even if main window is closed (tray-only mode).
+        // bypassSettings: ignore daemon.notifications toggle (updates must reach the user even if
+        // they muted scan notifications). skipOpenWindow: don't flash the main window before quit.
         try {
             const notifications = require('./notifications');
             notifications.show({
                 title: '✨ Güncelleme Hazır',
                 body: `Muhasebe Asistanı v${info.version} indirildi. Yüklemek için tıklayın (uygulama yeniden başlatılacak).`,
                 urgency: 'normal',
+                bypassSettings: true,
+                skipOpenWindow: true,
                 onClick: () => {
+                    logger.info('[AutoUpdater] Update notification clicked by user');
                     quitAndInstall();
                 },
             });
         } catch (err) {
-            logger.debug(`[AutoUpdater] notification error: ${err.message}`);
+            logger.info(`[AutoUpdater] notification error: ${err.message}`);
         }
 
         // Notify main.js so it can update tray menu
@@ -174,13 +180,48 @@ function startDownload() {
 }
 
 function quitAndInstall() {
+    if (installInProgress) {
+        logger.info('[AutoUpdater] quitAndInstall already in progress, ignoring duplicate call');
+        return;
+    }
+    installInProgress = true;
+    logger.info('[AutoUpdater] quitAndInstall called — restarting to apply update');
+
     // On macOS, Squirrel's ShipIt needs the app to be fully exited
     // before it can replace the bundle. app.quit() is too slow —
     // ShipIt sees the app still running and aborts.
     // Use autoUpdater.quitAndInstall with isSilent=true to force quit,
     // then app.exit as fallback.
-    autoUpdater.quitAndInstall(true, true);
-    setTimeout(() => app.exit(0), 1000);
+    try {
+        autoUpdater.quitAndInstall(true, true);
+        logger.info('[AutoUpdater] quitAndInstall() returned, waiting for quit signal...');
+    } catch (err) {
+        logger.info(`[AutoUpdater] quitAndInstall threw: ${err.message}`);
+    }
+
+    setTimeout(() => {
+        logger.info('[AutoUpdater] Fallback app.exit(0) triggered after 1s');
+        app.exit(0);
+    }, 1000);
+
+    // If after 3s we're still running, the quit failed — surface a dialog so the user
+    // knows they need to restart manually instead of thinking the click did nothing.
+    setTimeout(() => {
+        logger.info('[AutoUpdater] Still running after 3s — showing manual-restart dialog');
+        try {
+            const { dialog } = require('electron');
+            dialog.showMessageBox({
+                type: 'warning',
+                title: 'Güncelleme başlatılamadı',
+                message: 'Uygulama otomatik olarak yeniden başlatılamadı.',
+                detail: "Muhasebe Asistanı'nı elle kapatıp yeniden açarak güncellemeyi tamamlayabilirsiniz. Güncelleme dosyası indirildi ve hazır.",
+                buttons: ['Tamam'],
+            });
+        } catch (err) {
+            logger.info(`[AutoUpdater] Fallback dialog error: ${err.message}`);
+        }
+        installInProgress = false; // allow retry
+    }, 3000);
 }
 
 module.exports = {
