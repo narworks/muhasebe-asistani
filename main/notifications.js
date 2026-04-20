@@ -45,11 +45,15 @@ function show({ title, body, silent = false, urgency = 'normal', onClick = null 
     if (!areNotificationsAllowed()) return;
     try {
         const icon = getIcon();
+        // timeoutType 'never' on Windows keeps the notification visible until the user
+        // dismisses it manually (default is ~7s auto-dismiss). macOS notifications already
+        // persist in Notification Center by default.
         const n = new Notification({
             title,
             body,
             silent,
             urgency,
+            ...(process.platform === 'win32' ? { timeoutType: 'never' } : {}),
             ...(icon ? { icon } : {}),
         });
         // Click handler: opens main window + optionally runs extra callback

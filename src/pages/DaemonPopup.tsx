@@ -121,6 +121,18 @@ export default function DaemonPopup() {
     const safePage = Math.min(page, totalPages);
     const pageItems = recent.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
 
+    // An item is "new" if it was inserted today (local midnight). Used to highlight
+    // freshly arrived tebligat with a green accent so the user can spot them at a glance.
+    const startOfToday = (() => {
+        const d = new Date();
+        d.setHours(0, 0, 0, 0);
+        return d.getTime();
+    })();
+    const isNewToday = (t: RecentTebligat) => {
+        const d = parseAnyDate(t.created_at);
+        return d ? d.getTime() >= startOfToday : false;
+    };
+
     const goToPage = (p: number) => {
         const next = Math.min(totalPages, Math.max(1, p));
         setPage(next);
@@ -177,13 +189,16 @@ export default function DaemonPopup() {
                 </button>
             </div>
 
-            {/* Today's new tebligat banner */}
+            {/* Today's new tebligat banner — clickable: jumps to page 1 where newest items live */}
             <div className="px-4 pt-3">
-                <div
-                    className={`rounded-lg px-3 py-2 flex items-center justify-between ${
+                <button
+                    type="button"
+                    onClick={() => todayCount > 0 && goToPage(1)}
+                    disabled={todayCount === 0}
+                    className={`w-full text-left rounded-lg px-3 py-2 flex items-center justify-between transition-colors ${
                         todayCount > 0
-                            ? 'bg-gradient-to-r from-emerald-900/60 to-emerald-800/40 border border-emerald-700/50'
-                            : 'bg-slate-800/60 border border-slate-700/50'
+                            ? 'bg-gradient-to-r from-emerald-900/60 to-emerald-800/40 border border-emerald-700/50 hover:from-emerald-800/70 hover:to-emerald-700/50 cursor-pointer'
+                            : 'bg-slate-800/60 border border-slate-700/50 cursor-default'
                     }`}
                 >
                     <div className="flex items-center gap-2">
@@ -201,10 +216,12 @@ export default function DaemonPopup() {
                             </div>
                         </div>
                     </div>
-                    {todayCount === 0 && (
+                    {todayCount > 0 ? (
+                        <span className="text-[10px] text-emerald-400">Göster ↓</span>
+                    ) : (
                         <span className="text-[10px] text-slate-500">Henüz yok</span>
                     )}
-                </div>
+                </button>
             </div>
 
             {/* Daily progress */}
@@ -288,46 +305,62 @@ export default function DaemonPopup() {
                     </div>
                 ) : (
                     <div className="space-y-1.5 pb-2">
-                        {pageItems.map((t) => (
-                            <div
-                                key={t.id}
-                                className="bg-slate-800 rounded-lg px-3 py-2 hover:bg-slate-750 cursor-pointer transition-colors group"
-                                onClick={() => handleTebligatClick(t)}
-                                title={
-                                    t.document_path
-                                        ? 'Belgeyi aç'
-                                        : 'Belge henüz indirilmedi — uygulamayı aç'
-                                }
-                            >
-                                <div className="flex items-start justify-between gap-2">
-                                    <div className="flex-1 min-w-0">
-                                        <div className="text-xs font-medium text-slate-100 truncate">
-                                            {t.firm_name || t.sender}
+                        {pageItems.map((t) => {
+                            const isNew = isNewToday(t);
+                            return (
+                                <div
+                                    key={t.id}
+                                    className={`rounded-lg px-3 py-2 cursor-pointer transition-colors group ${
+                                        isNew
+                                            ? 'bg-emerald-900/30 hover:bg-emerald-900/50 border-l-2 border-emerald-400'
+                                            : 'bg-slate-800 hover:bg-slate-750'
+                                    }`}
+                                    onClick={() => handleTebligatClick(t)}
+                                    title={
+                                        t.document_path
+                                            ? 'Belgeyi aç'
+                                            : 'Belge henüz indirilmedi — uygulamayı aç'
+                                    }
+                                >
+                                    <div className="flex items-start justify-between gap-2">
+                                        <div className="flex-1 min-w-0">
+                                            <div className="flex items-center gap-1.5">
+                                                {isNew && (
+                                                    <span className="text-[9px] font-bold uppercase tracking-wide text-emerald-300 bg-emerald-500/20 px-1 rounded">
+                                                        Yeni
+                                                    </span>
+                                                )}
+                                                <div className="text-xs font-medium text-slate-100 truncate">
+                                                    {t.firm_name || t.sender}
+                                                </div>
+                                            </div>
+                                            <div className="text-[11px] text-slate-400 truncate">
+                                                {t.subject || t.sender}
+                                            </div>
                                         </div>
-                                        <div className="text-[11px] text-slate-400 truncate">
-                                            {t.subject || t.sender}
+                                        <div className="flex items-center gap-1 flex-shrink-0">
+                                            <span className="text-[10px] text-slate-500 whitespace-nowrap">
+                                                {formatRelativeTime(
+                                                    t.notification_date ||
+                                                        t.send_date ||
+                                                        t.created_at
+                                                )}
+                                            </span>
+                                            <span
+                                                className={`text-[11px] opacity-0 group-hover:opacity-100 transition-opacity ${
+                                                    t.document_path
+                                                        ? 'text-emerald-400'
+                                                        : 'text-slate-500'
+                                                }`}
+                                                aria-hidden
+                                            >
+                                                {t.document_path ? '📄' : '↗'}
+                                            </span>
                                         </div>
-                                    </div>
-                                    <div className="flex items-center gap-1 flex-shrink-0">
-                                        <span className="text-[10px] text-slate-500 whitespace-nowrap">
-                                            {formatRelativeTime(
-                                                t.notification_date || t.send_date || t.created_at
-                                            )}
-                                        </span>
-                                        <span
-                                            className={`text-[11px] opacity-0 group-hover:opacity-100 transition-opacity ${
-                                                t.document_path
-                                                    ? 'text-emerald-400'
-                                                    : 'text-slate-500'
-                                            }`}
-                                            aria-hidden
-                                        >
-                                            {t.document_path ? '📄' : '↗'}
-                                        </span>
                                     </div>
                                 </div>
-                            </div>
-                        ))}
+                            );
+                        })}
                     </div>
                 )}
             </div>
@@ -505,9 +538,29 @@ function formatDuration(ms: number): string {
     return `${Math.floor(mins / 60)} sa ${mins % 60} dk`;
 }
 
-function formatRelativeTime(iso: string): string {
-    if (!iso) return '';
-    const diff = Date.now() - new Date(iso).getTime();
+function parseAnyDate(s: string | null | undefined): Date | null {
+    if (!s) return null;
+    // Try ISO first
+    const iso = new Date(s);
+    if (!Number.isNaN(iso.getTime())) return iso;
+    // Fallback: DD.MM.YYYY or DD/MM/YYYY (optionally with HH:MM)
+    const m = String(s).match(/^(\d{2})[./](\d{2})[./](\d{4})(?:[\sT](\d{1,2}):(\d{2}))?/);
+    if (m) {
+        return new Date(
+            Number(m[3]),
+            Number(m[2]) - 1,
+            Number(m[1]),
+            Number(m[4] || 0),
+            Number(m[5] || 0)
+        );
+    }
+    return null;
+}
+
+function formatRelativeTime(raw: string): string {
+    const d = parseAnyDate(raw);
+    if (!d) return '';
+    const diff = Date.now() - d.getTime();
     if (diff < 60000) return 'şimdi';
     if (diff < 3600000) return `${Math.floor(diff / 60000)} dk`;
     if (diff < 86400000) return `${Math.floor(diff / 3600000)} sa`;

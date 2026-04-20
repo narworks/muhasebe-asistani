@@ -44,13 +44,14 @@ async function listTebligatlar(apiClient, { pageNo = 1, pageSize = 100, arsivDur
 /**
  * Parse GIB date string to timestamp. Supports:
  * - DD/MM/YYYY (HH:MM)
+ * - DD.MM.YYYY (HH:MM)
  * - ISO 8601
  * Returns null if unparseable.
  */
 function parseGibDate(dateStr) {
     if (!dateStr) return null;
     const s = String(dateStr).trim();
-    const m = s.match(/^(\d{2})\/(\d{2})\/(\d{4})(?:\s+(\d{1,2}):(\d{2}))?/);
+    const m = s.match(/^(\d{2})[./](\d{2})[./](\d{4})(?:[\sT](\d{1,2}):(\d{2}))?/);
     if (m) {
         return new Date(
             Number(m[3]),
@@ -62,6 +63,17 @@ function parseGibDate(dateStr) {
     }
     const t = new Date(s).getTime();
     return Number.isNaN(t) ? null : t;
+}
+
+/**
+ * Convert a GIB-format date string to ISO 8601 for DB storage.
+ * Returns empty string if input is falsy or unparseable — callers expect empty string, not null.
+ */
+function toIsoFromGib(dateStr) {
+    if (!dateStr) return '';
+    const t = parseGibDate(dateStr);
+    if (t === null) return '';
+    return new Date(t).toISOString();
 }
 
 /**
@@ -223,10 +235,10 @@ function mapTebligatDto(dto) {
         subject: `${dto.belgeTuruAciklama || ''} - ${dto.altKurum || ''}`.trim() || 'Tebligat',
         documentNo: dto.belgeNo || '',
         status: dto.mukellefOkumaZamani ? 'Okunmuş' : 'Okunmamış',
-        date: dto.tebligZamani || dto.gonderimZamani || '',
-        sendDate: dto.gonderimZamani || '',
-        notificationDate: dto.tebligZamani || '',
-        readDate: dto.mukellefOkumaZamani || '',
+        date: toIsoFromGib(dto.tebligZamani || dto.gonderimZamani),
+        sendDate: toIsoFromGib(dto.gonderimZamani),
+        notificationDate: toIsoFromGib(dto.tebligZamani),
+        readDate: toIsoFromGib(dto.mukellefOkumaZamani),
         documentUrl: null,
         documentPath: null,
         // GİB identifiers for document download chain
@@ -247,4 +259,6 @@ module.exports = {
     downloadDocument,
     extractPdfFromImz,
     mapTebligatDto,
+    parseGibDate,
+    toIsoFromGib,
 };

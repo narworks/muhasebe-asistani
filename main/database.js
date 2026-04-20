@@ -117,6 +117,71 @@ function init() {
     addColumnIfMissing('tebligatlar', 'skip_download', 'INTEGER DEFAULT 0');
     addColumnIfMissing('clients', 'last_scan_at', 'TEXT');
     addColumnIfMissing('clients', 'recent_tebligat_count', 'INTEGER DEFAULT 0');
+
+    // One-time migration: legacy Turkish-format dates (DD.MM.YYYY or DD/MM/YYYY) → ISO 8601.
+    // Earlier versions stored raw GIB strings; JS Date() can't parse them so UI shows "NaN gün"
+    // and lexicographic ORDER BY sorts them wrong chronologically.
+    migrateLegacyDates();
+}
+
+/**
+ * Parse "DD.MM.YYYY HH:MM", "DD/MM/YYYY HH:MM", or ISO strings to ISO 8601.
+ * Returns the original string if it's already a valid ISO date.
+ * Returns null if unparseable.
+ */
+function normalizeDate(s) {
+    if (!s) return null;
+    const str = String(s).trim();
+    if (!str) return null;
+    const m = str.match(/^(\d{2})[./](\d{2})[./](\d{4})(?:[\sT](\d{1,2}):(\d{2}))?/);
+    if (m) {
+        const d = new Date(
+            Number(m[3]),
+            Number(m[2]) - 1,
+            Number(m[1]),
+            Number(m[4] || 0),
+            Number(m[5] || 0)
+        );
+        return d.toISOString();
+    }
+    const t = new Date(str).getTime();
+    return Number.isNaN(t) ? null : new Date(t).toISOString();
+}
+
+function migrateLegacyDates() {
+    try {
+        const rows = db
+            .prepare(
+                `SELECT id, tebligat_date, send_date, notification_date, read_date
+                 FROM tebligatlar
+                 WHERE tebligat_date GLOB '[0-9][0-9][./][0-9][0-9][./][0-9][0-9][0-9][0-9]*'
+                    OR send_date GLOB '[0-9][0-9][./][0-9][0-9][./][0-9][0-9][0-9][0-9]*'
+                    OR notification_date GLOB '[0-9][0-9][./][0-9][0-9][./][0-9][0-9][0-9][0-9]*'
+                    OR read_date GLOB '[0-9][0-9][./][0-9][0-9][./][0-9][0-9][0-9][0-9]*'`
+            )
+            .all();
+        if (rows.length === 0) return;
+        const update = db.prepare(
+            `UPDATE tebligatlar
+             SET tebligat_date = ?, send_date = ?, notification_date = ?, read_date = ?
+             WHERE id = ?`
+        );
+        const tx = db.transaction((items) => {
+            for (const r of items) {
+                update.run(
+                    normalizeDate(r.tebligat_date),
+                    normalizeDate(r.send_date),
+                    normalizeDate(r.notification_date),
+                    normalizeDate(r.read_date),
+                    r.id
+                );
+            }
+        });
+        tx(rows);
+        logger.info(`[Migration] Normalized ${rows.length} tebligat date rows to ISO 8601`);
+    } catch (err) {
+        logger.error(`[Migration] Date normalization failed: ${err.message}`);
+    }
 }
 
 function saveClient(clientData) {
@@ -259,7 +324,7 @@ function saveTebligatlar(clientId, tebligatlar) {
         for (const item of items) {
             const result = insert.run({
                 client_id: clientId,
-                tebligat_date: item.date || null,
+                tebligat_date: normalizeDate(item.date),
                 sender: item.sender || null,
                 subject: item.subject || null,
                 status: item.status || null,
@@ -268,9 +333,9 @@ function saveTebligatlar(clientId, tebligatlar) {
                 document_path: item.documentPath || null,
                 sub_unit: item.subUnit || null,
                 document_type: item.documentType || null,
-                send_date: item.sendDate || null,
-                notification_date: item.notificationDate || null,
-                read_date: item.readDate || null,
+                send_date: normalizeDate(item.sendDate),
+                notification_date: normalizeDate(item.notificationDate),
+                read_date: normalizeDate(item.readDate),
             });
             if (result.changes > 0) {
                 inserted++;
