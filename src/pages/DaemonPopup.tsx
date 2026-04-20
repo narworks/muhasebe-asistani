@@ -29,6 +29,7 @@ export default function DaemonPopup() {
     const [stats, setStats] = useState<DaemonStats | null>(null);
     const [activeClient, setActiveClient] = useState<string | null>(null);
     const [todayCount, setTodayCount] = useState<number>(0);
+    const [todayErrorCount, setTodayErrorCount] = useState<number>(0);
     const [weeklyStats, setWeeklyStats] = useState<Array<{ date: string; count: number }>>([]);
     const [page, setPage] = useState(1);
     const [hasNewSinceNav, setHasNewSinceNav] = useState(false);
@@ -41,13 +42,14 @@ export default function DaemonPopup() {
     useEffect(() => {
         const fetchAll = async (markNewBadge = false) => {
             try {
-                const [s, r, rl, d, today, weekly] = await Promise.all([
+                const [s, r, rl, d, today, weekly, errs] = await Promise.all([
                     window.electronAPI.daemonGetState(),
                     window.electronAPI.getRecentTebligatlar(25),
                     window.electronAPI.getRateLimits(),
                     window.electronAPI.getDiskUsage(),
                     window.electronAPI.getTodayTebligatCount(),
                     window.electronAPI.getDailyTebligatStats(7),
+                    window.electronAPI.getTodayErrorCount(),
                 ]);
                 setState(s);
                 setRecent((prev) => {
@@ -68,6 +70,7 @@ export default function DaemonPopup() {
                 }
                 if (d) setDiskUsage(d);
                 if (typeof today === 'number') setTodayCount(today);
+                if (typeof errs === 'number') setTodayErrorCount(errs);
                 if (Array.isArray(weekly)) setWeeklyStats(weekly);
             } catch {
                 /* ignore */
@@ -156,14 +159,15 @@ export default function DaemonPopup() {
                                   ? 'bg-amber-500'
                                   : 'bg-gray-500'
                         }`}
+                        title={
+                            isActive
+                                ? 'Aktif'
+                                : state?.running && state?.paused
+                                  ? 'Duraklatıldı'
+                                  : 'Kapalı'
+                        }
                     />
-                    <span className="text-sm font-medium">
-                        {isActive
-                            ? 'Arka Plan Tarama'
-                            : state?.running && state?.paused
-                              ? 'Duraklatıldı'
-                              : 'Kapalı'}
-                    </span>
+                    <span className="text-sm font-semibold">Muhasebe Asistanı</span>
                 </div>
                 <button
                     onClick={handleOpenMain}
@@ -240,22 +244,14 @@ export default function DaemonPopup() {
                 </div>
             )}
 
-            {/* Stats grid */}
+            {/* Stats grid — 'bugün' tabanlı (manuel + daemon dahil, restart-safe) */}
             <div className="px-4 py-3 grid grid-cols-2 gap-2">
-                <MiniStat
-                    label="Tarama"
-                    value={state?.stats.totalScans.toString() || '0'}
-                    hint="bu oturum"
-                />
+                <MiniStat label="Tarama" value={(stats?.todayScans ?? 0).toString()} hint="bugün" />
                 <MiniStat
                     label="Yeni Tebligat"
-                    value={state?.stats.newTebligatFound.toString() || '0'}
-                    hint="bu oturum"
-                    tone={
-                        state?.stats.newTebligatFound && state.stats.newTebligatFound > 0
-                            ? 'good'
-                            : 'neutral'
-                    }
+                    value={todayCount.toString()}
+                    hint="bugün"
+                    tone={todayCount > 0 ? 'good' : 'neutral'}
                 />
                 <MiniStat
                     label="Şu an"
@@ -264,8 +260,9 @@ export default function DaemonPopup() {
                 />
                 <MiniStat
                     label="Hata"
-                    value={state?.stats.failures.toString() || '0'}
-                    tone={state?.stats.failures && state.stats.failures > 0 ? 'warn' : 'neutral'}
+                    value={todayErrorCount.toString()}
+                    hint="bugün"
+                    tone={todayErrorCount > 0 ? 'warn' : 'neutral'}
                 />
             </div>
 

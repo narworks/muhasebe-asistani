@@ -1064,6 +1064,16 @@ ipcMain.handle('get-today-tebligat-count', async () => {
     }
 });
 
+// Today's error count from scan_history (for popup HATA card)
+ipcMain.handle('get-today-error-count', async () => {
+    try {
+        return database.getTodayErrorCount();
+    } catch (err) {
+        logger.debug(`[get-today-error-count] error: ${err.message}`);
+        return 0;
+    }
+});
+
 // Last 7 days daily stats for popup sparkline
 ipcMain.handle('get-daily-tebligat-stats', async (_event, days) => {
     try {

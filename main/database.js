@@ -331,6 +331,24 @@ function getTodayNewTebligatCount() {
 }
 
 /**
+ * Sum of error_count from scan_history rows that finished today (local timezone).
+ * Used for the popup's "HATA" card so manual + daemon errors both count.
+ */
+function getTodayErrorCount() {
+    if (!db) init();
+    const startOfDay = new Date();
+    startOfDay.setHours(0, 0, 0, 0);
+    const row = db
+        .prepare(
+            `SELECT COALESCE(SUM(error_count), 0) as c
+             FROM scan_history
+             WHERE finished_at >= ?`
+        )
+        .get(startOfDay.toISOString());
+    return row?.c || 0;
+}
+
+/**
  * Get per-day new tebligat counts for last N days (default 7).
  * Returns array oldest→newest: [{date: 'YYYY-MM-DD', count: N}, ...]
  * Used for sparkline chart.
@@ -691,6 +709,7 @@ module.exports = {
     getTebligatlar,
     getRecentTebligatlar,
     getTodayNewTebligatCount,
+    getTodayErrorCount,
     getDailyTebligatStats,
     getTebligatById,
     updateTebligatDocument,

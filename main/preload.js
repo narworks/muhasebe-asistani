@@ -59,6 +59,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     // Daemon popup helpers
     getRecentTebligatlar: (limit) => ipcRenderer.invoke('get-recent-tebligatlar', limit),
     getTodayTebligatCount: () => ipcRenderer.invoke('get-today-tebligat-count'),
+    getTodayErrorCount: () => ipcRenderer.invoke('get-today-error-count'),
     getDailyTebligatStats: (days) => ipcRenderer.invoke('get-daily-tebligat-stats', days),
     openMainWindow: () => ipcRenderer.invoke('open-main-window'),
     getDiskUsage: (forceRefresh) => ipcRenderer.invoke('get-disk-usage', forceRefresh),
