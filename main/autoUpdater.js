@@ -3,6 +3,7 @@ const { app } = require('electron');
 const logger = require('./logger');
 
 let mainWindow = null;
+let userInitiatedDownload = false;
 
 /**
  * Initialize auto-updater
@@ -47,6 +48,25 @@ function init(win) {
             'Version:',
             app.getVersion()
         );
+
+        // Filter transient network errors — don't show in UI, they're recoverable.
+        // Only surface errors that occurred during user-initiated download.
+        const msg = err.message || '';
+        const isTransient =
+            msg.includes('HttpError') ||
+            msg.includes('ECONNRESET') ||
+            msg.includes('ETIMEDOUT') ||
+            msg.includes('ENOTFOUND') ||
+            msg.includes('ECONNREFUSED') ||
+            msg.includes('EAI_AGAIN') ||
+            /: 5\d{2}/.test(msg) || // 5xx HTTP errors
+            /: 429/.test(msg); // Rate limit
+
+        if (isTransient && !userInitiatedDownload) {
+            logger.debug('[AutoUpdater] Transient error, not shown to user');
+            return;
+        }
+
         sendStatusToWindow('update-error', { message: err.message });
     });
 
@@ -112,6 +132,7 @@ function sendStatusToWindow(status, data = {}) {
 }
 
 function startDownload() {
+    userInitiatedDownload = true;
     autoUpdater.downloadUpdate();
 }
 
