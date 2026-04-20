@@ -311,6 +311,54 @@ function getRecentTebligatlar(limit = 5) {
     return stmt.all(limit);
 }
 
+/**
+ * Count tebligat created today (local timezone).
+ * Used for "Bugün gelen" counter in popup.
+ */
+function getTodayNewTebligatCount() {
+    if (!db) init();
+    const startOfDay = new Date();
+    startOfDay.setHours(0, 0, 0, 0);
+    const iso = startOfDay.toISOString();
+    const row = db
+        .prepare(
+            `SELECT COUNT(*) as c FROM tebligatlar
+             WHERE status != 'Tebligat yok' AND created_at >= ?`
+        )
+        .get(iso);
+    return row?.c || 0;
+}
+
+/**
+ * Get per-day new tebligat counts for last N days (default 7).
+ * Returns array oldest→newest: [{date: 'YYYY-MM-DD', count: N}, ...]
+ * Used for sparkline chart.
+ */
+function getDailyTebligatStats(days = 7) {
+    if (!db) init();
+    const result = [];
+    const now = new Date();
+    for (let i = days - 1; i >= 0; i--) {
+        const start = new Date(now);
+        start.setDate(start.getDate() - i);
+        start.setHours(0, 0, 0, 0);
+        const end = new Date(start);
+        end.setHours(23, 59, 59, 999);
+        const row = db
+            .prepare(
+                `SELECT COUNT(*) as c FROM tebligatlar
+                 WHERE status != 'Tebligat yok'
+                 AND created_at >= ? AND created_at <= ?`
+            )
+            .get(start.toISOString(), end.toISOString());
+        const yyyy = start.getFullYear();
+        const mm = String(start.getMonth() + 1).padStart(2, '0');
+        const dd = String(start.getDate()).padStart(2, '0');
+        result.push({ date: `${yyyy}-${mm}-${dd}`, count: row?.c || 0 });
+    }
+    return result;
+}
+
 function getTebligatlar(limit = 50000) {
     if (!db) init();
     // Large default limit (50K) — SQLite handles this easily locally.
@@ -641,6 +689,8 @@ module.exports = {
     saveTebligatlar,
     getTebligatlar,
     getRecentTebligatlar,
+    getTodayNewTebligatCount,
+    getDailyTebligatStats,
     getTebligatById,
     updateTebligatDocument,
     updateTebligatDocumentByPath,

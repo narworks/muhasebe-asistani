@@ -58,6 +58,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     scanSingleClient: (clientId) => ipcRenderer.invoke('scan-single-client', clientId),
     // Daemon popup helpers
     getRecentTebligatlar: (limit) => ipcRenderer.invoke('get-recent-tebligatlar', limit),
+    getTodayTebligatCount: () => ipcRenderer.invoke('get-today-tebligat-count'),
+    getDailyTebligatStats: (days) => ipcRenderer.invoke('get-daily-tebligat-stats', days),
     openMainWindow: () => ipcRenderer.invoke('open-main-window'),
     getDiskUsage: (forceRefresh) => ipcRenderer.invoke('get-disk-usage', forceRefresh),
     getUnreadCount: () => ipcRenderer.invoke('get-unread-count'),

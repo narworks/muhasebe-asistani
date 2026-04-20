@@ -220,6 +220,8 @@ export interface IElectronAPI {
             client_id: number;
         }>
     >;
+    getTodayTebligatCount: () => Promise<number>;
+    getDailyTebligatStats: (days?: number) => Promise<Array<{ date: string; count: number }>>;
     openMainWindow: () => Promise<{ ok: boolean }>;
     getDiskUsage: (forceRefresh?: boolean) => Promise<{
         totalMB: number | null;

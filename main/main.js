@@ -1054,6 +1054,26 @@ ipcMain.handle('get-recent-tebligatlar', async (_event, limit) => {
     }
 });
 
+// Today's new tebligat count for popup banner
+ipcMain.handle('get-today-tebligat-count', async () => {
+    try {
+        return database.getTodayNewTebligatCount();
+    } catch (err) {
+        logger.debug(`[get-today-tebligat-count] error: ${err.message}`);
+        return 0;
+    }
+});
+
+// Last 7 days daily stats for popup sparkline
+ipcMain.handle('get-daily-tebligat-stats', async (_event, days) => {
+    try {
+        return database.getDailyTebligatStats(days || 7);
+    } catch (err) {
+        logger.debug(`[get-daily-tebligat-stats] error: ${err.message}`);
+        return [];
+    }
+});
+
 // Open main window (from daemon popup)
 ipcMain.handle('open-main-window', () => {
     if (mainWindow && !mainWindow.isDestroyed()) {
