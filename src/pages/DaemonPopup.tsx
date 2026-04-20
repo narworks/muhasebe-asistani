@@ -21,6 +21,8 @@ interface DaemonStats {
     hourlyLimit: number;
 }
 
+const PAGE_SIZE = 5;
+
 export default function DaemonPopup() {
     const [state, setState] = useState<DaemonState | null>(null);
     const [recent, setRecent] = useState<RecentTebligat[]>([]);
@@ -28,6 +30,8 @@ export default function DaemonPopup() {
     const [activeClient, setActiveClient] = useState<string | null>(null);
     const [todayCount, setTodayCount] = useState<number>(0);
     const [weeklyStats, setWeeklyStats] = useState<Array<{ date: string; count: number }>>([]);
+    const [page, setPage] = useState(1);
+    const [hasNewSinceNav, setHasNewSinceNav] = useState(false);
     const [diskUsage, setDiskUsage] = useState<{
         totalMB: number | null;
         fileCount: number | null;
@@ -35,18 +39,25 @@ export default function DaemonPopup() {
     }>({ totalMB: null, fileCount: null, freeDiskMB: null });
 
     useEffect(() => {
-        const fetchAll = async () => {
+        const fetchAll = async (markNewBadge = false) => {
             try {
                 const [s, r, rl, d, today, weekly] = await Promise.all([
                     window.electronAPI.daemonGetState(),
-                    window.electronAPI.getRecentTebligatlar(3),
+                    window.electronAPI.getRecentTebligatlar(25),
                     window.electronAPI.getRateLimits(),
                     window.electronAPI.getDiskUsage(),
                     window.electronAPI.getTodayTebligatCount(),
                     window.electronAPI.getDailyTebligatStats(7),
                 ]);
                 setState(s);
-                setRecent((r as RecentTebligat[]) || []);
+                setRecent((prev) => {
+                    const next = (r as RecentTebligat[]) || [];
+                    // Detect newly arrived tebligat (top item id changed and not on page 1)
+                    if (markNewBadge && prev.length && next.length && prev[0]?.id !== next[0]?.id) {
+                        setHasNewSinceNav(true);
+                    }
+                    return next;
+                });
                 if (rl) {
                     setStats({
                         todayScans: (rl as { dailyUsed?: number }).dailyUsed || 0,
@@ -63,7 +74,7 @@ export default function DaemonPopup() {
             }
         };
         fetchAll();
-        const intv = setInterval(fetchAll, 3000);
+        const intv = setInterval(() => fetchAll(true), 3000);
 
         const unsub = window.electronAPI.onDaemonEvent((evt: DaemonEvent) => {
             setState(evt.state);
@@ -72,9 +83,9 @@ export default function DaemonPopup() {
                 setActiveClient(name || 'Taranıyor...');
             } else if (evt.event === 'scan_success' || evt.event === 'scan_failure') {
                 setActiveClient(null);
-                fetchAll();
+                fetchAll(true);
             } else if (evt.event === 'new_tebligat') {
-                fetchAll();
+                fetchAll(true);
             }
         });
 
@@ -84,11 +95,34 @@ export default function DaemonPopup() {
         };
     }, []);
 
+    // Keyboard pagination (← →)
+    useEffect(() => {
+        const handler = (e: KeyboardEvent) => {
+            if (e.key === 'ArrowLeft') setPage((p) => Math.max(1, p - 1));
+            else if (e.key === 'ArrowRight') {
+                const totalPages = Math.max(1, Math.ceil(recent.length / PAGE_SIZE));
+                setPage((p) => Math.min(totalPages, p + 1));
+            }
+        };
+        window.addEventListener('keydown', handler);
+        return () => window.removeEventListener('keydown', handler);
+    }, [recent.length]);
+
     const isActive = state?.running && !state?.paused;
     const nextTickIn =
         state?.nextTickAt && state.nextTickAt > Date.now() ? state.nextTickAt - Date.now() : 0;
     const nextTickLabel = formatDuration(nextTickIn);
     const dailyPercent = stats ? Math.round((stats.todayScans / stats.todayLimit) * 100) : 0;
+
+    const totalPages = Math.max(1, Math.ceil(recent.length / PAGE_SIZE));
+    const safePage = Math.min(page, totalPages);
+    const pageItems = recent.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+
+    const goToPage = (p: number) => {
+        const next = Math.min(totalPages, Math.max(1, p));
+        setPage(next);
+        if (next === 1) setHasNewSinceNav(false); // user saw the latest
+    };
 
     const handleToggle = async () => {
         if (state?.running) await window.electronAPI.daemonPause(60 * 60 * 1000);
@@ -237,8 +271,19 @@ export default function DaemonPopup() {
 
             {/* Recent tebligatlar */}
             <div className="flex-1 overflow-y-auto no-scrollbar px-4">
-                <div className="text-[11px] uppercase text-slate-500 mb-2 font-semibold tracking-wide">
-                    Son Tebligatlar
+                <div className="flex items-center justify-between mb-2">
+                    <div className="text-[11px] uppercase text-slate-500 font-semibold tracking-wide">
+                        Son Tebligatlar
+                    </div>
+                    {hasNewSinceNav && safePage > 1 && (
+                        <button
+                            onClick={() => goToPage(1)}
+                            className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30 transition-colors"
+                            title="Yeni gelenleri gör"
+                        >
+                            ↑ Yeni
+                        </button>
+                    )}
                 </div>
                 {recent.length === 0 ? (
                     <div className="text-center text-sm text-slate-500 py-8">
@@ -246,7 +291,7 @@ export default function DaemonPopup() {
                     </div>
                 ) : (
                     <div className="space-y-1.5 pb-2">
-                        {recent.map((t) => (
+                        {pageItems.map((t) => (
                             <div
                                 key={t.id}
                                 className="bg-slate-800 rounded-lg px-3 py-2 hover:bg-slate-750 cursor-pointer transition-colors group"
@@ -289,6 +334,33 @@ export default function DaemonPopup() {
                     </div>
                 )}
             </div>
+
+            {/* Pagination row — only when more than 1 page */}
+            {totalPages > 1 && (
+                <div className="px-4 py-1.5 border-t border-slate-800 flex items-center justify-between text-[11px]">
+                    <button
+                        onClick={() => goToPage(safePage - 1)}
+                        disabled={safePage === 1}
+                        className="px-2 py-1 rounded text-slate-300 hover:bg-slate-800 disabled:opacity-30 disabled:hover:bg-transparent disabled:cursor-not-allowed transition-colors"
+                        aria-label="Önceki sayfa"
+                    >
+                        ◀
+                    </button>
+                    <span className="text-slate-400 tabular-nums">
+                        Sayfa <span className="text-slate-200 font-semibold">{safePage}</span> /{' '}
+                        {totalPages}
+                        <span className="text-slate-500 ml-1.5">({recent.length} tebligat)</span>
+                    </span>
+                    <button
+                        onClick={() => goToPage(safePage + 1)}
+                        disabled={safePage >= totalPages}
+                        className="px-2 py-1 rounded text-slate-300 hover:bg-slate-800 disabled:opacity-30 disabled:hover:bg-transparent disabled:cursor-not-allowed transition-colors"
+                        aria-label="Sonraki sayfa"
+                    >
+                        ▶
+                    </button>
+                </div>
+            )}
 
             {/* Disk usage row — detailed (3 columns: belgeler / dosya / boş) */}
             {diskUsage.totalMB !== null && (

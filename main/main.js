@@ -332,7 +332,7 @@ const runScanWithUpdates = async () => {
 const createDaemonPopup = () => {
     daemonPopupWindow = new BrowserWindow({
         width: 380,
-        height: 540,
+        height: 600,
         show: false,
         frame: false,
         resizable: false,
