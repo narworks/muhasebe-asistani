@@ -332,7 +332,8 @@ const runScanWithUpdates = async () => {
 const createDaemonPopup = () => {
     daemonPopupWindow = new BrowserWindow({
         width: 380,
-        height: 680,
+        // Initial height for empty state — renderer dynamically resizes on content load.
+        height: 580,
         show: false,
         frame: false,
         resizable: false,
@@ -1143,6 +1144,40 @@ ipcMain.handle('get-daily-tebligat-stats', async (_event, days) => {
 });
 
 // Open main window (from daemon popup)
+// Resize the daemon popup window based on content (item count). Keeps popup
+// anchored to the tray edge when visible: on macOS (tray at top) the top edge
+// stays fixed, on Windows/Linux (tray at bottom) the bottom edge stays fixed.
+// Hidden windows just resize — position is recomputed on next show anyway.
+ipcMain.handle('resize-daemon-popup', (_event, targetHeight) => {
+    if (!daemonPopupWindow || daemonPopupWindow.isDestroyed()) return { ok: false };
+    const height = Math.max(300, Math.min(900, Math.round(Number(targetHeight) || 0)));
+    const bounds = daemonPopupWindow.getBounds();
+    if (bounds.height === height) return { ok: true };
+
+    try {
+        if (!daemonPopupWindow.isVisible() || process.platform === 'darwin') {
+            // macOS: tray at top → top-anchored, only extend down. Hidden: no position change.
+            daemonPopupWindow.setSize(bounds.width, height, false);
+        } else {
+            // Windows/Linux visible: tray at bottom → keep bottom edge fixed.
+            const bottom = bounds.y + bounds.height;
+            let newY = bottom - height;
+            const display = screen.getDisplayNearestPoint({
+                x: bounds.x + bounds.width / 2,
+                y: bounds.y,
+            });
+            newY = Math.max(display.workArea.y + 4, newY);
+            daemonPopupWindow.setBounds(
+                { x: bounds.x, y: newY, width: bounds.width, height },
+                false
+            );
+        }
+    } catch (err) {
+        logger.debug(`[resize-daemon-popup] error: ${err.message}`);
+    }
+    return { ok: true };
+});
+
 ipcMain.handle('open-main-window', (_event, path) => {
     if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.show();

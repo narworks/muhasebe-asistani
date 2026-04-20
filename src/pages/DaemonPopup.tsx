@@ -112,6 +112,24 @@ export default function DaemonPopup() {
         };
     }, []);
 
+    // Dynamically resize the popup window to fit the visible item count. The list area
+    // is always exactly as tall as the items it renders — no more wasted whitespace, no
+    // premature scrolling. Constants below sum the non-list sections + per-item height.
+    useEffect(() => {
+        if (!window.electronAPI?.resizeDaemonPopup) return;
+        const BASE = 510; // header + banner + daily + sparkline + stats + "Son Tebligatlar" label + action-links + disk + action-bar
+        const ITEM = 54; // item height (~48) + space-y-1.5 gap (~6)
+        const EMPTY_PLACEHOLDER = 56; // "Henüz yeni tebligat yok" text
+        const PAGINATION = 30;
+        const visibleItems = Math.min(recent.length, PAGE_SIZE);
+        const listHeight = visibleItems === 0 ? EMPTY_PLACEHOLDER : visibleItems * ITEM;
+        const paginationHeight = recent.length > PAGE_SIZE ? PAGINATION : 0;
+        const target = BASE + listHeight + paginationHeight;
+        window.electronAPI.resizeDaemonPopup(target).catch(() => {
+            /* non-fatal */
+        });
+    }, [recent.length]);
+
     // Keyboard pagination (← →)
     useEffect(() => {
         const handler = (e: KeyboardEvent) => {

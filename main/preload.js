@@ -65,6 +65,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     markTebligatViewed: (tebligatId) => ipcRenderer.invoke('mark-tebligat-viewed', tebligatId),
     markAllTebligatViewed: () => ipcRenderer.invoke('mark-all-tebligat-viewed'),
     openMainWindow: (path) => ipcRenderer.invoke('open-main-window', path),
+    resizeDaemonPopup: (height) => ipcRenderer.invoke('resize-daemon-popup', height),
     getDiskUsage: (forceRefresh) => ipcRenderer.invoke('get-disk-usage', forceRefresh),
     getUnreadCount: () => ipcRenderer.invoke('get-unread-count'),
     onNavigateTo: (callback) => {

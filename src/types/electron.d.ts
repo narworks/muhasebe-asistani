@@ -231,6 +231,7 @@ export interface IElectronAPI {
     ) => Promise<{ ok: boolean; changes?: number; error?: string }>;
     markAllTebligatViewed: () => Promise<{ ok: boolean; changes?: number; error?: string }>;
     openMainWindow: (path?: string) => Promise<{ ok: boolean }>;
+    resizeDaemonPopup: (height: number) => Promise<{ ok: boolean }>;
     getDiskUsage: (forceRefresh?: boolean) => Promise<{
         totalMB: number | null;
         fileCount: number | null;
