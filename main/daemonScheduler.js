@@ -223,7 +223,9 @@ async function tick() {
             state.consecutiveFailuresForClient[client.id] =
                 (state.consecutiveFailuresForClient[client.id] || 0) + 1;
 
-            // If same client fails 3+ times in a row, report to Sentry (not PII — just client_id)
+            // If same client fails 3+ times in a row, report to Sentry (not PII — just client_id).
+            // errorMessage (truncated 300 chars) is included so "unknown" errorType cases are
+            // diagnosable — without it we only see errorType:"unknown" with no context.
             if (state.consecutiveFailuresForClient[client.id] === 3) {
                 if (Sentry) {
                     Sentry.captureMessage(`daemon.client_repeat_failure`, {
@@ -235,6 +237,10 @@ async function tick() {
                         extra: {
                             clientId: client.id,
                             errorType: result.errorType,
+                            errorMessage:
+                                typeof result.errorMessage === 'string'
+                                    ? result.errorMessage.substring(0, 300)
+                                    : 'N/A',
                             consecutiveFailures: 3,
                         },
                     });
