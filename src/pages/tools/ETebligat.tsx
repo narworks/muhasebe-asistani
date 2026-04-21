@@ -166,9 +166,13 @@ const ETebligat: React.FC = () => {
     // Accordion & Pagination state
     const [expandedClients, setExpandedClients] = useState<Set<number>>(new Set());
     const [expandedScans, setExpandedScans] = useState<Set<string>>(new Set());
+    // Pending tebligat deep-link from tray popup — processed once `tebligatlar`
+    // is loaded so we can locate the parent client + scan group and scroll to the row.
+    const [pendingTebligatId, setPendingTebligatId] = useState<number | null>(null);
 
     // Deep-link from daemon popup:
     //   ?clientId=X → expand that client's accordion and scroll to it
+    //   ?tebligatId=X → expand parent client + scan group, scroll to and highlight that row
     //   ?filter=pending → show only unviewed tebligat
     //   ?filter=new → show only unviewed tebligat from today
     // Consumed-once: params are cleared after applying so Back/Forward doesn't re-apply.
@@ -187,6 +191,15 @@ const ETebligat: React.FC = () => {
                     const el = document.getElementById(`client-accordion-${id}`);
                     if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
                 }, 300);
+                changed = true;
+            }
+        }
+        const tebligatRaw = searchParams.get('tebligatId');
+        if (tebligatRaw) {
+            const id = Number(tebligatRaw);
+            if (Number.isFinite(id) && id > 0) {
+                setActiveTab('results');
+                setPendingTebligatId(id);
                 changed = true;
             }
         }
@@ -980,6 +993,54 @@ const ETebligat: React.FC = () => {
         (a, b) => (a.firm_name || '').localeCompare(b.firm_name || '', 'tr')
     );
 
+    // Process pending tebligatId deep-link once tebligat data is loaded:
+    // expand the parent client accordion + scan group, scroll the row into view,
+    // and flash an outline so the user spots it. Clears the pending id on completion.
+    useEffect(() => {
+        if (pendingTebligatId == null) return;
+        if (!tebligatlar.length) return;
+        const target = tebligatlar.find((x) => x.id === pendingTebligatId);
+        if (!target) {
+            setPendingTebligatId(null);
+            return;
+        }
+        setExpandedClients((prev) => {
+            const next = new Set(prev);
+            next.add(target.client_id);
+            return next;
+        });
+        const parentGroup = clientGroups.find((cg) => cg.client_id === target.client_id);
+        const parentScan = parentGroup?.scanGroups.find((sg) =>
+            sg.tebligatlar.some((x) => x.id === pendingTebligatId)
+        );
+        if (parentScan) {
+            const scanKey = `${target.client_id}-${parentScan.scanDate}`;
+            setExpandedScans((prev) => {
+                const next = new Set(prev);
+                next.add(scanKey);
+                return next;
+            });
+        }
+        // Delay scroll so accordion expansion has rendered; 450ms covers slow machines.
+        const id = pendingTebligatId;
+        setTimeout(() => {
+            const el = document.getElementById(`tebligat-row-${id}`);
+            if (el) {
+                el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                el.classList.add('ring-2', 'ring-indigo-500', 'ring-offset-2', 'transition-shadow');
+                setTimeout(() => {
+                    el.classList.remove(
+                        'ring-2',
+                        'ring-indigo-500',
+                        'ring-offset-2',
+                        'transition-shadow'
+                    );
+                }, 2500);
+            }
+        }, 450);
+        setPendingTebligatId(null);
+    }, [pendingTebligatId, tebligatlar, clientGroups]);
+
     // Flat set of all new tebligat IDs from last scan (for highlighting)
     const allNewTebligatIds = new Set(newTebligatPanel.items.flatMap((g) => g.tebligatIds));
 
@@ -1240,11 +1301,11 @@ const ETebligat: React.FC = () => {
                 />
             )}
 
-            <div className="bg-white p-6 rounded-lg shadow-md flex-1 flex flex-col overflow-hidden">
+            <div className="bg-white p-6 rounded-lg shadow-md flex-1 flex flex-col overflow-hidden min-h-0">
                 <Tabs
                     value={activeTab}
                     onValueChange={setActiveTab}
-                    className="flex-1 flex flex-col"
+                    className="flex-1 flex flex-col min-h-0"
                 >
                     <TabsList className="w-full justify-start bg-gray-100 p-1 mb-2">
                         <TabsTrigger value="results">
@@ -1265,7 +1326,7 @@ const ETebligat: React.FC = () => {
                         only ResultsView scrolls so long lists remain usable */}
                     <TabsContent
                         value="results"
-                        className="flex-1 flex flex-col overflow-hidden pt-2"
+                        className="flex-1 flex flex-col overflow-hidden pt-2 min-h-0"
                     >
                         <div className="shrink-0">
                             <DaemonStatusPanel compact />

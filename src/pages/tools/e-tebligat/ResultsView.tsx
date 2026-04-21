@@ -243,7 +243,8 @@ const ResultsView: React.FC<ResultsViewProps> = ({
         return (
             <div
                 key={t.id}
-                className={`border border-gray-200 rounded-lg p-3 hover:border-indigo-300 hover:shadow-md transition-all cursor-default ${borderClass}`}
+                id={`tebligat-row-${t.id}`}
+                className={`border border-gray-200 rounded-lg p-3 hover:border-indigo-300 hover:shadow-md transition-all cursor-default scroll-mt-4 ${borderClass}`}
             >
                 <div className="flex justify-between items-start gap-3">
                     <div className="flex-1 min-w-0">
@@ -303,7 +304,7 @@ const ResultsView: React.FC<ResultsViewProps> = ({
                             disabled={fetchingDocumentId === t.id}
                             className="text-sm font-medium px-4 py-1.5 rounded-md bg-emerald-600 text-white hover:bg-emerald-700 transition-colors disabled:opacity-50"
                         >
-                            {fetchingDocumentId === t.id ? '&#304;ndiriliyor...' : '&#304;ndir'}
+                            {fetchingDocumentId === t.id ? 'İndiriliyor...' : 'İndir'}
                         </button>
                     )}
                     <button

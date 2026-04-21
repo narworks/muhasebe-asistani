@@ -200,12 +200,13 @@ export default function DaemonPopup() {
             /* non-fatal */
         }
         // Try to open the local PDF directly. If it doesn't exist (not yet downloaded),
-        // fall back to opening the main window so user can trigger the fetch from there.
+        // fall back to opening the main window deep-linked to this specific tebligat so
+        // the user lands on the correct row instead of a generic page.
         if (t.document_path) {
             const result = await window.electronAPI.openDocument(t.document_path);
             if (result?.success) return;
         }
-        handleOpenMain();
+        handleOpenMain(`/tools/e-tebligat?tebligatId=${t.id}`);
     };
 
     const handleOpenClientPanel = (e: React.MouseEvent, clientId: number) => {
