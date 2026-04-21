@@ -102,8 +102,10 @@ export default function DaemonStatusPanel({ onForceRescanAll, compact = false }:
     };
 
     return (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 mb-4">
-            <div className="flex items-center justify-between mb-3">
+        <div
+            className={`bg-white rounded-xl shadow-sm border border-gray-200 ${compact ? 'px-3 py-2 mb-2' : 'p-4 mb-4'}`}
+        >
+            <div className={`flex items-center justify-between ${compact ? '' : 'mb-3'}`}>
                 <div className="flex items-center gap-3">
                     <div
                         className={`w-3 h-3 rounded-full ${isActive ? 'bg-emerald-500 animate-pulse' : state.running ? 'bg-amber-500' : 'bg-gray-400'}`}

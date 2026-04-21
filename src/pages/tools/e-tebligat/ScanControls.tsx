@@ -249,8 +249,10 @@ const ScanControls: React.FC<ScanControlsProps> = ({
                     </>
                 )}
 
-                {/* Onboarding banner — shown when there are new (never-scanned) clients */}
-                {!scanning && hasNewClients && clientCount > 0 && (
+                {/* Onboarding banner — shown when there are new (never-scanned) clients.
+                    Hidden in compact mode to save vertical space (user is in the results tab,
+                    onboarding should only trigger when they explicitly open scan controls). */}
+                {!scanning && !compact && hasNewClients && clientCount > 0 && (
                     <div className="mb-4 mx-auto max-w-lg p-4 bg-emerald-50 border border-emerald-200 rounded-xl text-left">
                         <p className="text-sm font-semibold text-emerald-800 mb-1">
                             &#304;lk kurulum &mdash; Ke&#351;if ile ba&#351;lay&#305;n
@@ -297,18 +299,25 @@ const ScanControls: React.FC<ScanControlsProps> = ({
                     </div>
                 )}
 
-                {/* Main buttons - centered (hidden when scanning) */}
-                {!scanning && !hasNewClients && (
-                    <div className="flex items-center justify-center gap-3 mb-4">
+                {/* Main buttons - centered (hidden when scanning). Compact mode always shows
+                    these (even with new clients) since the onboarding banner is hidden. */}
+                {!scanning && (!hasNewClients || compact) && (
+                    <div
+                        className={`flex items-center justify-center gap-2 ${compact ? 'mb-1' : 'mb-4'}`}
+                    >
                         <button
                             onClick={() => setConfirmAction('scan')}
                             disabled={scanning}
-                            className="px-8 py-3 bg-indigo-600 text-white font-bold rounded-lg text-base shadow-lg hover:bg-indigo-700 hover:shadow-xl transition-all disabled:bg-gray-400 disabled:cursor-not-allowed"
+                            className={`bg-indigo-600 text-white font-semibold rounded-lg shadow-sm hover:bg-indigo-700 transition-all disabled:bg-gray-400 disabled:cursor-not-allowed ${
+                                compact
+                                    ? 'px-4 py-1.5 text-sm'
+                                    : 'px-8 py-3 text-base shadow-lg hover:shadow-xl font-bold'
+                            }`}
                         >
-                            <span className="flex items-center gap-2">
+                            <span className="flex items-center gap-1.5">
                                 <svg
                                     xmlns="http://www.w3.org/2000/svg"
-                                    className="h-5 w-5"
+                                    className={compact ? 'h-4 w-4' : 'h-5 w-5'}
                                     fill="none"
                                     viewBox="0 0 24 24"
                                     stroke="currentColor"
@@ -326,14 +335,16 @@ const ScanControls: React.FC<ScanControlsProps> = ({
                                         d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
                                     />
                                 </svg>
-                                Taramay&#305; Ba&#351;lat
+                                {compact ? 'Tara' : 'Taramay\u0131 Ba\u015flat'}
                             </span>
                         </button>
                         {clientCount > 0 && (
                             <button
                                 onClick={onStartPreview}
                                 disabled={previewRunning || scanning}
-                                className="px-5 py-3 font-semibold rounded-lg border border-emerald-500/40 text-emerald-700 hover:bg-emerald-50 transition-all disabled:opacity-50"
+                                className={`font-semibold rounded-lg border border-emerald-500/40 text-emerald-700 hover:bg-emerald-50 transition-all disabled:opacity-50 ${
+                                    compact ? 'px-3 py-1.5 text-sm' : 'px-5 py-3'
+                                }`}
                                 title="T&uuml;m m&uuml;kelleflerin tebligatlar&#305;n&#305; &ouml;nizle"
                             >
                                 {previewRunning ? 'Ke\u015fif...' : 'Ke\u015fif'}
@@ -466,25 +477,28 @@ const ScanControls: React.FC<ScanControlsProps> = ({
                 </p>
 
                 {/* Secondary actions */}
-                <div className="flex items-center justify-center gap-4 text-xs">
-                    <button
-                        type="button"
-                        onClick={onOpenHistory}
-                        className="text-gray-500 hover:text-indigo-600 transition-colors"
-                    >
-                        Tarama Ge&ccedil;mi&#351;i
-                    </button>
-                    {lastFailedIds.length > 0 && !scanning && (
+                {!compact && (
+                    <div className="flex items-center justify-center gap-4 text-xs">
                         <button
                             type="button"
-                            onClick={onRetryFailed}
-                            className="text-amber-600 hover:text-amber-700 font-medium transition-colors"
-                            title={`Son taramadaki ${lastFailedIds.length} ba\u015Far\u0131s\u0131z m\u00FCkellefi tekrar dene`}
+                            onClick={onOpenHistory}
+                            className="text-gray-500 hover:text-indigo-600 transition-colors"
                         >
-                            Ba&#351;ar&#305;s&#305;zlar&#305; Tekrar Dene ({lastFailedIds.length})
+                            Tarama Ge&ccedil;mi&#351;i
                         </button>
-                    )}
-                </div>
+                        {lastFailedIds.length > 0 && !scanning && (
+                            <button
+                                type="button"
+                                onClick={onRetryFailed}
+                                className="text-amber-600 hover:text-amber-700 font-medium transition-colors"
+                                title={`Son taramadaki ${lastFailedIds.length} ba\u015Far\u0131s\u0131z m\u00FCkellefi tekrar dene`}
+                            >
+                                Ba&#351;ar&#305;s&#305;zlar&#305; Tekrar Dene (
+                                {lastFailedIds.length})
+                            </button>
+                        )}
+                    </div>
+                )}
             </div>
         </>
     );

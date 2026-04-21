@@ -1,4 +1,5 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { FileText, ExternalLink, Inbox, Clock, Check } from 'lucide-react';
 import type { DaemonState, DaemonEvent } from '../types/electron';
 
 interface RecentTebligat {
@@ -267,8 +268,23 @@ export default function DaemonPopup() {
                     }`}
                 >
                     <div className="flex items-center gap-2">
-                        <span className="text-base">
-                            {unviewed.total === 0 ? '✓' : unviewed.todayNew > 0 ? '📬' : '⏳'}
+                        <span
+                            className={
+                                unviewed.total === 0
+                                    ? 'text-slate-400'
+                                    : unviewed.todayNew > 0
+                                      ? 'text-emerald-300'
+                                      : 'text-amber-300'
+                            }
+                            aria-hidden
+                        >
+                            {unviewed.total === 0 ? (
+                                <Check className="w-4 h-4" />
+                            ) : unviewed.todayNew > 0 ? (
+                                <Inbox className="w-4 h-4" />
+                            ) : (
+                                <Clock className="w-4 h-4" />
+                            )}
                         </span>
                         <div>
                             <div className="text-[10px] uppercase tracking-wide text-slate-400">
@@ -450,11 +466,11 @@ export default function DaemonPopup() {
                                                 )}
                                             </span>
                                             <span
-                                                className={`text-[11px] ${
+                                                className={
                                                     t.document_path
                                                         ? 'text-emerald-400'
                                                         : 'text-slate-500'
-                                                }`}
+                                                }
                                                 title={
                                                     t.document_path
                                                         ? 'PDF indirildi — tıklayınca açılır'
@@ -462,7 +478,11 @@ export default function DaemonPopup() {
                                                 }
                                                 aria-hidden
                                             >
-                                                {t.document_path ? '📄' : '↗'}
+                                                {t.document_path ? (
+                                                    <FileText className="w-3 h-3" />
+                                                ) : (
+                                                    <ExternalLink className="w-3 h-3" />
+                                                )}
                                             </span>
                                         </div>
                                     </div>
