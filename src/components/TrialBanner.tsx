@@ -19,9 +19,17 @@ const TrialBanner: React.FC = () => {
 
         fetchStatus();
         const interval = setInterval(fetchStatus, 60_000); // refresh every minute
+        // Also listen for explicit subscription-updated events (focus-triggered
+        // checkLicense in main.js, or user-initiated refresh button) so the banner
+        // disappears within ~1s of admin-side trial→paid conversion taking effect,
+        // not up to 60s later on the next poll.
+        const unsub = window.electronAPI?.onSubscriptionUpdated?.(() => {
+            fetchStatus();
+        });
         return () => {
             cancelled = true;
             clearInterval(interval);
+            if (unsub) unsub();
         };
     }, []);
 

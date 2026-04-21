@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
+import { toast } from 'sonner';
 import { useAuth } from '../../context/AuthContext';
 
 // --- CHANGELOG DATA ---
@@ -220,6 +221,23 @@ const LogoutIcon = () => (
     </svg>
 );
 
+const RefreshIcon = ({ spinning = false }: { spinning?: boolean }) => (
+    <svg
+        xmlns="http://www.w3.org/2000/svg"
+        className={`h-5 w-5 ${spinning ? 'animate-spin' : ''}`}
+        fill="none"
+        viewBox="0 0 24 24"
+        stroke="currentColor"
+    >
+        <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+        />
+    </svg>
+);
+
 const MailIcon = () => (
     <svg
         xmlns="http://www.w3.org/2000/svg"
@@ -317,6 +335,28 @@ const Sidebar: React.FC = () => {
             navigate('/login');
         } catch (error) {
             console.error('Failed to log out', error);
+        }
+    };
+
+    // Manual "refresh license" — force pull fresh subscription state from Supabase.
+    // For users whose admin has just converted them trial→paid via bank transfer:
+    // lets them see the change immediately instead of waiting up to 6h for the
+    // background poller or 2min for the focus-triggered check.
+    const [refreshingLicense, setRefreshingLicense] = useState(false);
+    const handleRefreshLicense = async () => {
+        if (refreshingLicense) return;
+        setRefreshingLicense(true);
+        try {
+            const result = await window.electronAPI.checkLicense();
+            if (result?.success) {
+                toast.success('Abonelik bilgileri güncellendi');
+            } else {
+                toast.error(result?.message || 'Güncelleme başarısız');
+            }
+        } catch (err) {
+            toast.error('Bağlantı hatası: ' + (err as Error).message);
+        } finally {
+            setRefreshingLicense(false);
         }
     };
 
@@ -601,6 +641,14 @@ const Sidebar: React.FC = () => {
                                     {currentUser?.email}
                                 </p>
                             </div>
+                            <button
+                                onClick={handleRefreshLicense}
+                                disabled={refreshingLicense}
+                                title="Abonelik bilgilerini yenile"
+                                className="text-slate-400 hover:text-sky-400 transition-colors disabled:opacity-40"
+                            >
+                                <RefreshIcon spinning={refreshingLicense} />
+                            </button>
                             <button
                                 onClick={handleLogout}
                                 title="&#199;&#305;k&#305;&#351; Yap"

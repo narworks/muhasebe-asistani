@@ -74,6 +74,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
         ipcRenderer.on('navigate-to', handler);
         return () => ipcRenderer.removeListener('navigate-to', handler);
     },
+    onSubscriptionUpdated: (callback) => {
+        const handler = () => callback();
+        ipcRenderer.on('subscription-updated', handler);
+        return () => ipcRenderer.removeListener('subscription-updated', handler);
+    },
     estimateScanDuration: (clientCount) =>
         ipcRenderer.invoke('estimate-scan-duration', clientCount),
     startScanWithOptions: (options) => ipcRenderer.send('start-scan-with-options', options),

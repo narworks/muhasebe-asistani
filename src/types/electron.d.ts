@@ -240,6 +240,7 @@ export interface IElectronAPI {
     }>;
     getUnreadCount: () => Promise<number>;
     onNavigateTo: (callback: (path: string) => void) => () => void;
+    onSubscriptionUpdated: (callback: () => void) => () => void;
     estimateScanDuration: (clientCount?: number) => Promise<{
         count: number;
         estimatedMinutes: number;

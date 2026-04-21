@@ -265,12 +265,29 @@ const createWindow = () => {
         }
     });
 
-    // Also clear on focus (e.g., user Alt+Tab'd to existing window)
-    mainWindow.on('focus', () => {
+    // Focus handler: clear unread badge + re-check license if last check is stale.
+    // The 6h polling interval in license.js can leave admin-initiated trial→paid
+    // conversions (havale flow) invisible to the client for hours — refreshing on
+    // window focus catches them within seconds of the user returning to the app.
+    // Debounced to 2min so fast Alt+Tab bursts don't hammer Supabase.
+    let lastFocusLicenseCheckAt = 0;
+    const FOCUS_LICENSE_CHECK_MIN_INTERVAL_MS = 2 * 60 * 1000;
+    mainWindow.on('focus', async () => {
         try {
             require('./unreadCounter').clear();
         } catch {
             /* ignore */
+        }
+        const now = Date.now();
+        if (now - lastFocusLicenseCheckAt < FOCUS_LICENSE_CHECK_MIN_INTERVAL_MS) return;
+        lastFocusLicenseCheckAt = now;
+        try {
+            const result = await licenseManager.checkLicense();
+            if (result?.success && mainWindow && !mainWindow.isDestroyed()) {
+                mainWindow.webContents.send('subscription-updated');
+            }
+        } catch (err) {
+            logger.debug(`[focus-license-check] ${err.message}`);
         }
     });
 };
