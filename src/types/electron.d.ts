@@ -21,6 +21,7 @@ export interface DaemonState {
     paused: boolean;
     pauseUntil: number;
     lastTickAt: number;
+    lastScheduledAt: number;
     nextTickAt: number;
     lastResult: unknown;
     stats: {

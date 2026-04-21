@@ -34,6 +34,12 @@ let state = {
     paused: false,
     pauseUntil: 0,
     lastTickAt: 0,
+    // lastScheduledAt — the moment scheduleNextTick() was called. Used by the
+    // popup's "Şu an" progress bar to compute tickSpan = nextTickAt - lastScheduledAt,
+    // which always matches the actual interval (10s initial delay, 2min steady
+    // state, etc). lastTickAt only updates on a successful scan start so can't
+    // be used as a span anchor pre-first-scan or during long idle stretches.
+    lastScheduledAt: 0,
     nextTickAt: 0,
     lastResult: null,
     consecutiveCaptchaFailures: 0,
@@ -81,6 +87,7 @@ function getState() {
         paused: state.paused,
         pauseUntil: state.pauseUntil,
         lastTickAt: state.lastTickAt,
+        lastScheduledAt: state.lastScheduledAt,
         nextTickAt: state.nextTickAt,
         lastResult: state.lastResult,
         stats: { ...state.stats },
@@ -280,7 +287,9 @@ async function tick() {
 function scheduleNextTick(delayMs) {
     if (tickTimer) clearTimeout(tickTimer);
     if (!state.running) return;
-    state.nextTickAt = Date.now() + delayMs;
+    const now = Date.now();
+    state.lastScheduledAt = now;
+    state.nextTickAt = now + delayMs;
     tickTimer = setTimeout(() => {
         tick().catch((err) => {
             logger.debug(`[Daemon] unhandled tick error: ${err.message}`);

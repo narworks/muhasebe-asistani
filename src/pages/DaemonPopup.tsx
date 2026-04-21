@@ -166,13 +166,14 @@ export default function DaemonPopup() {
         state?.nextTickAt && state.nextTickAt > nowTick ? state.nextTickAt - nowTick : 0;
     const nextTickLabel = formatCountdown(nextTickIn);
     // Progress bar percent for "Şu an" card — what fraction of the interval has
-    // elapsed. Needs the span between lastTickAt and nextTickAt; fall back to the
-    // default 2min when lastTickAt is missing (first tick after start). Clamped
-    // so edge cases (overdue ticks, clock skew) don't produce <0 or >100.
+    // elapsed. Uses lastScheduledAt (set every scheduleNextTick, including pre-first-
+    // scan 10s initial delay and idle re-schedules) rather than lastTickAt (which
+    // only updates on successful scan start and can be 0 or stale). Clamped so edge
+    // cases (overdue ticks, clock skew) don't produce <0 or >100.
     const DEFAULT_TICK_SPAN_MS = 2 * 60 * 1000;
     const tickSpan =
-        state?.lastTickAt && state?.nextTickAt && state.nextTickAt > state.lastTickAt
-            ? state.nextTickAt - state.lastTickAt
+        state?.lastScheduledAt && state?.nextTickAt && state.nextTickAt > state.lastScheduledAt
+            ? state.nextTickAt - state.lastScheduledAt
             : DEFAULT_TICK_SPAN_MS;
     const nextTickElapsedPercent = isActive
         ? Math.max(0, Math.min(100, ((tickSpan - nextTickIn) / tickSpan) * 100))
