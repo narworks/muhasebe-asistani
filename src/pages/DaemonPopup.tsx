@@ -165,6 +165,18 @@ export default function DaemonPopup() {
     const nextTickIn =
         state?.nextTickAt && state.nextTickAt > nowTick ? state.nextTickAt - nowTick : 0;
     const nextTickLabel = formatCountdown(nextTickIn);
+    // Progress bar percent for "Şu an" card — what fraction of the interval has
+    // elapsed. Needs the span between lastTickAt and nextTickAt; fall back to the
+    // default 2min when lastTickAt is missing (first tick after start). Clamped
+    // so edge cases (overdue ticks, clock skew) don't produce <0 or >100.
+    const DEFAULT_TICK_SPAN_MS = 2 * 60 * 1000;
+    const tickSpan =
+        state?.lastTickAt && state?.nextTickAt && state.nextTickAt > state.lastTickAt
+            ? state.nextTickAt - state.lastTickAt
+            : DEFAULT_TICK_SPAN_MS;
+    const nextTickElapsedPercent = isActive
+        ? Math.max(0, Math.min(100, ((tickSpan - nextTickIn) / tickSpan) * 100))
+        : 0;
     const dailyPercent = stats ? Math.round((stats.todayScans / stats.todayLimit) * 100) : 0;
 
     const totalPages = Math.max(1, Math.ceil(recent.length / PAGE_SIZE));
@@ -390,6 +402,7 @@ export default function DaemonPopup() {
                     label="Şu an"
                     value={activeClient ? 'Taranıyor' : isActive ? 'Bekliyor' : '-'}
                     hint={activeClient || (isActive ? nextTickLabel : '')}
+                    progress={isActive && !activeClient ? nextTickElapsedPercent : undefined}
                 />
                 <MiniStat
                     label="Hata"
@@ -622,11 +635,16 @@ function MiniStat({
     value,
     hint,
     tone = 'neutral',
+    progress,
 }: {
     label: string;
     value: string;
     hint?: string;
     tone?: 'good' | 'warn' | 'neutral';
+    // 0–100 — when provided, renders a thin horizontal progress bar at the
+    // bottom of the card. Bar color shifts green→amber→red as the remaining
+    // time shrinks (so the "Şu an" countdown visually screams approaching tick).
+    progress?: number;
 }) {
     const toneClass =
         tone === 'good'
@@ -634,11 +652,22 @@ function MiniStat({
             : tone === 'warn'
               ? 'text-amber-400'
               : 'text-slate-100';
+    const remaining = progress != null ? 100 - progress : 0;
+    const barColor =
+        remaining <= 10 ? 'bg-red-500' : remaining <= 30 ? 'bg-amber-500' : 'bg-emerald-500';
     return (
         <div className="bg-slate-800 rounded-lg px-3 py-2">
             <div className="text-[10px] uppercase text-slate-500 tracking-wide">{label}</div>
             <div className={`text-sm font-semibold mt-0.5 ${toneClass}`}>{value}</div>
             {hint && <div className="text-[10px] text-slate-500 truncate">{hint}</div>}
+            {progress != null && (
+                <div className="mt-1.5 h-1 bg-slate-900/60 rounded-full overflow-hidden">
+                    <div
+                        className={`h-full ${barColor} transition-all duration-1000 ease-linear`}
+                        style={{ width: `${Math.max(0, Math.min(100, progress))}%` }}
+                    />
+                </div>
+            )}
         </div>
     );
 }

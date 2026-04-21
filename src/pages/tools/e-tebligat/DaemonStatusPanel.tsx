@@ -24,6 +24,7 @@ export default function DaemonStatusPanel({ onForceRescanAll, compact = false }:
         Array<{ time: number; firmName?: string; event: string; data?: Record<string, unknown> }>
     >([]);
     const [showSettings, setShowSettings] = useState(false);
+    const [showActivity, setShowActivity] = useState(false);
     const [daemonSettings, setDaemonSettings] = useState<DaemonSettings>({});
     const [diskUsage, setDiskUsage] = useState<{
         totalMB: number | null;
@@ -258,6 +259,75 @@ export default function DaemonStatusPanel({ onForceRescanAll, compact = false }:
                             </button>
                         </div>
                     </div>
+                </div>
+            )}
+
+            {/* Compact mode: small inline "Son aktivite" expander so users can
+                 diagnose "daemon neden tick etmiyor" (skipped reasons, failures)
+                 without jumping to a separate page. Last 5 events from recentActivity. */}
+            {compact && recentActivity.length > 0 && (
+                <div className="mt-1">
+                    <button
+                        type="button"
+                        onClick={() => setShowActivity((v) => !v)}
+                        className="text-[10px] text-gray-400 hover:text-gray-600 transition-colors"
+                    >
+                        {showActivity ? '▾' : '▸'} Son aktivite ({recentActivity.length})
+                    </button>
+                    {showActivity && (
+                        <div className="mt-1 space-y-0.5 max-h-32 overflow-y-auto">
+                            {recentActivity.slice(0, 5).map((a, i) => (
+                                <div
+                                    key={i}
+                                    className="text-[11px] flex items-center gap-1.5 text-gray-600"
+                                >
+                                    <span className="text-gray-400 tabular-nums shrink-0">
+                                        {new Date(a.time).toLocaleTimeString('tr-TR')}
+                                    </span>
+                                    <span className="truncate">
+                                        {a.event === 'new_tebligat' ? (
+                                            <span className="text-emerald-600 font-medium">
+                                                🔔 {a.firmName}: {(a.data?.count as number) || ''}{' '}
+                                                yeni
+                                            </span>
+                                        ) : a.event === 'scan_success' ? (
+                                            <span>✓ {a.firmName || 'Tarama'}</span>
+                                        ) : a.event === 'scan_failure' ? (
+                                            <span className="text-red-600">
+                                                ✗ {a.firmName || 'Tarama'}:{' '}
+                                                {(a.data?.errorType as string) || ''}
+                                            </span>
+                                        ) : a.event === 'ip_blocked' ? (
+                                            <span className="text-red-600 font-semibold">
+                                                ⛔ GİB IP engeli — 24 saat duraklatıldı
+                                            </span>
+                                        ) : a.event === 'skipped' ? (
+                                            <span className="text-amber-600">
+                                                ⏸ Atlandı:{' '}
+                                                {skipReasonLabel(a.data?.reason as string)}
+                                            </span>
+                                        ) : a.event === 'idle' ? (
+                                            <span className="text-gray-500">
+                                                💤 Sırada mükellef yok
+                                            </span>
+                                        ) : a.event === 'scan_start' ? (
+                                            <span className="text-blue-600">🔍 Başladı</span>
+                                        ) : a.event === 'started' ? (
+                                            <span className="text-emerald-600">▶ Başlatıldı</span>
+                                        ) : a.event === 'stopped' ? (
+                                            <span className="text-gray-500">■ Durduruldu</span>
+                                        ) : a.event === 'paused' ? (
+                                            <span className="text-amber-600">⏸ Duraklatıldı</span>
+                                        ) : a.event === 'resumed' ? (
+                                            <span className="text-emerald-600">▶ Devam</span>
+                                        ) : (
+                                            <span>{a.event}</span>
+                                        )}
+                                    </span>
+                                </div>
+                            ))}
+                        </div>
+                    )}
                 </div>
             )}
 
