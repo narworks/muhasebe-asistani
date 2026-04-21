@@ -450,11 +450,16 @@ export default function DaemonPopup() {
                                                 )}
                                             </span>
                                             <span
-                                                className={`text-[11px] opacity-0 group-hover:opacity-100 transition-opacity ${
+                                                className={`text-[11px] ${
                                                     t.document_path
                                                         ? 'text-emerald-400'
                                                         : 'text-slate-500'
                                                 }`}
+                                                title={
+                                                    t.document_path
+                                                        ? 'PDF indirildi — tıklayınca açılır'
+                                                        : 'PDF henüz indirilmedi — tıklayınca uygulama açılır'
+                                                }
                                                 aria-hidden
                                             >
                                                 {t.document_path ? '📄' : '↗'}

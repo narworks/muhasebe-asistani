@@ -21,6 +21,9 @@ const formatDuration = (seconds: number): string => {
 };
 
 interface ScanControlsProps {
+    // Compact mode hides the heading/description and centers buttons in a single row.
+    // Used inside Sonuçlar tab where vertical space is scarce.
+    compact?: boolean;
     scanning: boolean;
     scanProgress: {
         current: number;
@@ -68,6 +71,7 @@ interface ScanControlsProps {
 }
 
 const ScanControls: React.FC<ScanControlsProps> = ({
+    compact = false,
     scanning,
     scanProgress,
     scanState,
@@ -231,13 +235,19 @@ const ScanControls: React.FC<ScanControlsProps> = ({
                 </div>
             )}
 
-            <div className="text-center py-6">
-                {/* Title area */}
-                <h2 className="text-lg font-semibold text-gray-700 mb-1">Tebligatları Tara</h2>
-                <p className="text-sm text-gray-400 mb-6">
-                    T&uuml;m m&uuml;kelleflerin G&#304;B portalı kontrol edilir ve yeni tebligatlar
-                    otomatik indirilir.
-                </p>
+            <div className={`text-center ${compact ? 'py-2' : 'py-6'}`}>
+                {/* Title area — hidden in compact mode (Sonuçlar tab strip) */}
+                {!compact && (
+                    <>
+                        <h2 className="text-lg font-semibold text-gray-700 mb-1">
+                            Tebligatları Tara
+                        </h2>
+                        <p className="text-sm text-gray-400 mb-6">
+                            T&uuml;m m&uuml;kelleflerin G&#304;B portalı kontrol edilir ve yeni
+                            tebligatlar otomatik indirilir.
+                        </p>
+                    </>
+                )}
 
                 {/* Onboarding banner — shown when there are new (never-scanned) clients */}
                 {!scanning && hasNewClients && clientCount > 0 && (
@@ -449,7 +459,7 @@ const ScanControls: React.FC<ScanControlsProps> = ({
                 )}
 
                 {/* Info line */}
-                <p className="text-xs text-gray-400 mb-4">
+                <p className={`text-xs text-gray-400 ${compact ? 'mb-1' : 'mb-4'}`}>
                     {clientCount} m&uuml;kellef
                     {estimatedMin && <> &middot; ~{estimatedMin}</>} &middot; Bug&uuml;n:{' '}
                     {rateLimits.dailyUsed}/{rateLimits.dailyLimit}
