@@ -148,7 +148,7 @@ const ResultsView: React.FC<ResultsViewProps> = ({
     const [showExportMenu, setShowExportMenu] = useState(false);
     const exportMenuRef = useRef<HTMLDivElement>(null);
 
-    // Computed once per render; used by getViewBadge for per-item "Yeni" vs "Bekleyen" decision.
+    // Computed once per render; used by getViewBadge for per-item "Yeni" vs "Bakılmadı" decision.
     const startOfTodayMs = useMemo(() => {
         const d = new Date();
         d.setHours(0, 0, 0, 0);
@@ -230,7 +230,7 @@ const ResultsView: React.FC<ResultsViewProps> = ({
         const clientName = t.firm_name || clientNameMap.get(t.client_id) || 'Bilinmeyen';
         const isNew = allNewTebligatIds.has(t.id);
         const badge = getViewBadge(t, startOfTodayMs);
-        // Border accent: green for "Yeni", amber for "Bekleyen", subtle for viewed
+        // Border accent: green for "Yeni", amber for "Bakılmadı", subtle for viewed
         const borderClass =
             badge === 'new'
                 ? 'border-l-4 border-l-emerald-400 bg-emerald-50/40'
@@ -256,7 +256,7 @@ const ResultsView: React.FC<ResultsViewProps> = ({
                             )}
                             {badge === 'pending' && (
                                 <span className="text-[10px] font-bold uppercase tracking-wide text-amber-700 bg-amber-200/70 px-1.5 py-0.5 rounded">
-                                    Bekleyen
+                                    Bakılmadı
                                 </span>
                             )}
                             <p className="font-medium text-sm text-gray-800 truncate">
@@ -277,7 +277,7 @@ const ResultsView: React.FC<ResultsViewProps> = ({
                             </span>
                         ) : (
                             <span className="text-sm font-medium px-2.5 py-0.5 rounded-full bg-gray-100 text-gray-500 border border-gray-200">
-                                Bekliyor
+                                İndirilmedi
                             </span>
                         )}
                     </div>

@@ -119,7 +119,7 @@ function init() {
     addColumnIfMissing('clients', 'recent_tebligat_count', 'INTEGER DEFAULT 0');
     // Tracks when the muhasebeci viewed the tebligat in OUR app (distinct from GİB's
     // 'Okunmuş' status, which tracks whether the mükellef opened it on GİB portal).
-    // Used to compute "Bekleyen" (pending/unviewed) counters for popup banner and tray badge.
+    // Used to compute "Bakılmadı" (pending/unviewed) counters for popup banner and tray badge.
     addColumnIfMissing('tebligatlar', 'app_viewed_at', 'TEXT');
 
     // One-time migration: legacy Turkish-format dates (DD.MM.YYYY or DD/MM/YYYY) → ISO 8601.

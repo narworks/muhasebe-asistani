@@ -326,7 +326,7 @@ export default function DaemonPopup() {
                                         <span className="tabular-nums">{unviewed.todayNew}</span>{' '}
                                         yeni +{' '}
                                         <span className="tabular-nums">{unviewed.pending}</span>{' '}
-                                        bekleyen
+                                        bakılmamış
                                     </span>
                                 ) : unviewed.todayNew > 0 ? (
                                     <span>
@@ -336,7 +336,7 @@ export default function DaemonPopup() {
                                 ) : (
                                     <span>
                                         <span className="tabular-nums">{unviewed.pending}</span>{' '}
-                                        tebligat bekliyor
+                                        tebligat bakılmayı bekliyor
                                     </span>
                                 )}
                             </div>
@@ -464,7 +464,7 @@ export default function DaemonPopup() {
                                                 )}
                                                 {badge === 'pending' && (
                                                     <span className="text-[9px] font-bold uppercase tracking-wide text-amber-300 bg-amber-500/20 px-1 rounded">
-                                                        Bekleyen
+                                                        Bakılmadı
                                                     </span>
                                                 )}
                                                 <button
