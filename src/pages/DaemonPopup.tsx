@@ -389,7 +389,7 @@ export default function DaemonPopup() {
                 <MiniStat
                     label="Şu an"
                     value={activeClient ? 'Taranıyor' : isActive ? 'Bekliyor' : '-'}
-                    hint={activeClient || (isActive ? `${nextTickLabel} sonra` : '')}
+                    hint={activeClient || (isActive ? nextTickLabel : '')}
                 />
                 <MiniStat
                     label="Hata"
@@ -692,11 +692,13 @@ function formatMB(mb: number): string {
 }
 
 // Countdown for the "Şu an" card — shown until the next daemon tick fires.
-// Format switches at natural boundaries so the label stays compact:
-//   ≥1h → "1 sa 23 dk"  (seconds are noise at this scale)
-//   ≥1m → "1 dk 45 sn"
-//   <1m → "45 sn"
+// Returns the full user-facing string (including "sonra" suffix) so callers
+// don't compose awkward phrases like "şimdi sonra" when the countdown hits zero.
+// Format boundaries:
 //   ≤0  → "şimdi"
+//   <1m → "45 sn sonra"
+//   ≥1m → "1 dk 45 sn sonra"
+//   ≥1h → "1 sa 23 dk sonra"  (seconds are noise at this scale)
 // Math.ceil on seconds so the first visible value after "2 dk" is "1 dk 59 sn"
 // not "1 dk 60 sn" — feels like a real countdown, not a stuttered one.
 function formatCountdown(ms: number): string {
@@ -705,12 +707,12 @@ function formatCountdown(ms: number): string {
     if (totalSec >= 3600) {
         const hours = Math.floor(totalSec / 3600);
         const mins = Math.floor((totalSec % 3600) / 60);
-        return `${hours} sa ${mins} dk`;
+        return `${hours} sa ${mins} dk sonra`;
     }
     const mins = Math.floor(totalSec / 60);
     const secs = totalSec % 60;
-    if (mins > 0) return `${mins} dk ${secs.toString().padStart(2, '0')} sn`;
-    return `${secs} sn`;
+    if (mins > 0) return `${mins} dk ${secs.toString().padStart(2, '0')} sn sonra`;
+    return `${secs} sn sonra`;
 }
 
 function parseAnyDate(s: string | null | undefined): Date | null {
