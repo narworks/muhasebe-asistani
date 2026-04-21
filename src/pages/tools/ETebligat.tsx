@@ -1261,102 +1261,110 @@ const ETebligat: React.FC = () => {
                         </TabsTrigger>
                     </TabsList>
 
-                    {/* Sonuçlar Tab — compact daemon + scan strip at top; everything scrolls
-                        together so long tebligat lists are fully accessible */}
-                    <TabsContent value="results" className="flex-1 overflow-y-auto pt-2">
-                        <DaemonStatusPanel compact />
-                        <ScanControls
-                            compact
-                            scanning={scanning}
-                            scanProgress={scanProgress}
-                            scanState={scanState}
-                            rateLimits={rateLimits}
-                            scanEstimate={scanEstimate}
-                            insufficientCredits={insufficientCredits}
-                            lastFailedIds={lastFailedIds}
-                            progressPercent={progressPercent}
-                            clientCount={clients.length}
-                            onStartScan={handleStartScan}
-                            onStopScan={handleStopScan}
-                            onResumeScan={handleResumeScan}
-                            onPurchaseCredits={() => window.electronAPI.purchaseCredits()}
-                            onRetryFailed={() => {
-                                setScanning(true);
-                                setLogs([]);
-                                setScanProgress(null);
-                                addLog(
-                                    `${lastFailedIds.length} ba\u015Far\u0131s\u0131z m\u00FCkellef yeniden taran\u0131yor...`,
-                                    'info'
-                                );
-                                window.electronAPI.startScanWithOptions({
-                                    clientIds: lastFailedIds,
-                                    scanType: 'retry_failed',
-                                });
-                            }}
-                            onOpenHistory={async () => {
-                                try {
-                                    const history = await window.electronAPI.getScanHistory(20);
-                                    setScanHistoryModal(history as ScanHistoryItem[]);
-                                } catch {
-                                    /* ignore */
-                                }
-                            }}
-                            onStartPreview={async () => {
-                                setPreviewRunning(true);
-                                setPreviewResults(null);
-                                setPreviewSelections({});
-                                setScanProgress(null);
-                                addLog(
-                                    'Ke\u015fif ba\u015flat\u0131l\u0131yor (belge indirme yok)...',
-                                    'info'
-                                );
-                                try {
-                                    const result = await window.electronAPI.previewScan();
-                                    if (result.ok && result.results) {
-                                        setPreviewResults(result.results);
-                                        const defaults: Record<number, PreviewSelectionMode> = {};
-                                        result.results.forEach((r) => {
-                                            if (r.ok && (r.count || 0) > 0) {
-                                                defaults[r.clientId] = 'last30';
-                                            } else {
-                                                defaults[r.clientId] = 'skip';
-                                            }
-                                        });
-                                        setPreviewSelections(defaults);
-                                        toast.info(
-                                            `Keşif tamamlandı: ${result.results.length} mükellef tarandı`
-                                        );
-                                    } else {
+                    {/* Sonuçlar Tab — daemon strip + scan controls stay fixed at top;
+                        only ResultsView scrolls so long lists remain usable */}
+                    <TabsContent
+                        value="results"
+                        className="flex-1 flex flex-col overflow-hidden pt-2"
+                    >
+                        <div className="shrink-0">
+                            <DaemonStatusPanel compact />
+                            <ScanControls
+                                compact
+                                scanning={scanning}
+                                scanProgress={scanProgress}
+                                scanState={scanState}
+                                rateLimits={rateLimits}
+                                scanEstimate={scanEstimate}
+                                insufficientCredits={insufficientCredits}
+                                lastFailedIds={lastFailedIds}
+                                progressPercent={progressPercent}
+                                clientCount={clients.length}
+                                onStartScan={handleStartScan}
+                                onStopScan={handleStopScan}
+                                onResumeScan={handleResumeScan}
+                                onPurchaseCredits={() => window.electronAPI.purchaseCredits()}
+                                onRetryFailed={() => {
+                                    setScanning(true);
+                                    setLogs([]);
+                                    setScanProgress(null);
+                                    addLog(
+                                        `${lastFailedIds.length} ba\u015Far\u0131s\u0131z m\u00FCkellef yeniden taran\u0131yor...`,
+                                        'info'
+                                    );
+                                    window.electronAPI.startScanWithOptions({
+                                        clientIds: lastFailedIds,
+                                        scanType: 'retry_failed',
+                                    });
+                                }}
+                                onOpenHistory={async () => {
+                                    try {
+                                        const history = await window.electronAPI.getScanHistory(20);
+                                        setScanHistoryModal(history as ScanHistoryItem[]);
+                                    } catch {
+                                        /* ignore */
+                                    }
+                                }}
+                                onStartPreview={async () => {
+                                    setPreviewRunning(true);
+                                    setPreviewResults(null);
+                                    setPreviewSelections({});
+                                    setScanProgress(null);
+                                    addLog(
+                                        'Ke\u015fif ba\u015flat\u0131l\u0131yor (belge indirme yok)...',
+                                        'info'
+                                    );
+                                    try {
+                                        const result = await window.electronAPI.previewScan();
+                                        if (result.ok && result.results) {
+                                            setPreviewResults(result.results);
+                                            const defaults: Record<number, PreviewSelectionMode> =
+                                                {};
+                                            result.results.forEach((r) => {
+                                                if (r.ok && (r.count || 0) > 0) {
+                                                    defaults[r.clientId] = 'last30';
+                                                } else {
+                                                    defaults[r.clientId] = 'skip';
+                                                }
+                                            });
+                                            setPreviewSelections(defaults);
+                                            toast.info(
+                                                `Keşif tamamlandı: ${result.results.length} mükellef tarandı`
+                                            );
+                                        } else {
+                                            addLog(
+                                                `Ke\u015fif hatas\u0131: ${result.error || 'Bilinmeyen hata'}`,
+                                                'error'
+                                            );
+                                        }
+                                    } catch (err) {
                                         addLog(
-                                            `Ke\u015fif hatas\u0131: ${result.error || 'Bilinmeyen hata'}`,
+                                            `Ke\u015fif hatas\u0131: ${(err as Error).message}`,
                                             'error'
                                         );
+                                    } finally {
+                                        setPreviewRunning(false);
+                                        // Preview doesn't go through handleComplete/handleError,
+                                        // so reset scanProgress here — otherwise buttons stay hidden.
+                                        setScanProgress(null);
                                     }
-                                } catch (err) {
-                                    addLog(
-                                        `Ke\u015fif hatas\u0131: ${(err as Error).message}`,
-                                        'error'
-                                    );
-                                } finally {
-                                    setPreviewRunning(false);
-                                    // Preview doesn't go through handleComplete/handleError,
-                                    // so reset scanProgress here — otherwise buttons stay hidden.
-                                    setScanProgress(null);
+                                }}
+                                previewRunning={previewRunning}
+                                hasNewClients={
+                                    clients.filter((c) => !c.last_full_scan_at).length > 0
                                 }
-                            }}
-                            previewRunning={previewRunning}
-                            hasNewClients={clients.filter((c) => !c.last_full_scan_at).length > 0}
-                            newClientsCount={clients.filter((c) => !c.last_full_scan_at).length}
-                        />
+                                newClientsCount={clients.filter((c) => !c.last_full_scan_at).length}
+                            />
 
-                        {/* LogDrawer — only shown during manual scans (daemon activity is in DaemonStatusPanel) */}
-                        {(scanning || logs.length > 0) && (
-                            <div className="mt-4">
-                                <LogDrawer logs={logs} logsEndRef={logsEndRef} />
-                            </div>
-                        )}
+                            {/* LogDrawer — only shown during manual scans (daemon activity is in DaemonStatusPanel) */}
+                            {(scanning || logs.length > 0) && (
+                                <div className="mt-4">
+                                    <LogDrawer logs={logs} logsEndRef={logsEndRef} />
+                                </div>
+                            )}
+                        </div>
 
-                        <div className="mt-2">
+                        <div className="flex-1 overflow-y-auto mt-2 min-h-0">
                             <ResultsView
                                 tebligatlar={tebligatlar}
                                 filteredTebligatlar={filteredTebligatlar}
