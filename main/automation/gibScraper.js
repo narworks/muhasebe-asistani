@@ -3072,6 +3072,19 @@ async function downloadSelectedTebligatlar(onStatusUpdate, apiKey, selections) {
  * Returns: { success, newTebligatCount, errorType?, errorMessage?, durationMs, trace }
  */
 async function scanSingleClient(clientId, apiKey, options = {}) {
+    // Serialize against full-scan run() — both paths share GIB session state,
+    // Gemini API quota, and rate limit counters. Running concurrently causes
+    // GIB to invalidate one session when the other logs in, and doubles
+    // CAPTCHA API costs for the same credentials. Return "busy" so daemon
+    // tick skips and retries on next interval rather than hanging.
+    if (isRunning) {
+        return {
+            success: false,
+            errorType: 'busy',
+            errorMessage: 'Başka bir tarama devam ediyor, bu mükellef atlanıyor',
+        };
+    }
+
     const client = database.getClients().find((c) => c.id === clientId);
     if (!client) {
         return {
@@ -3110,6 +3123,7 @@ async function scanSingleClient(clientId, apiKey, options = {}) {
 
     const statusCb = options.onStatusUpdate || (() => {});
 
+    isRunning = true;
     try {
         const tebligatlar = await httpLoginAndFetch(
             client,
@@ -3186,6 +3200,8 @@ async function scanSingleClient(clientId, apiKey, options = {}) {
             trace: result,
             client: { id: client.id, firm_name: client.firm_name },
         };
+    } finally {
+        isRunning = false;
     }
 }
 

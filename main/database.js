@@ -364,6 +364,12 @@ function saveTebligatlar(clientId, tebligatlar) {
 /**
  * Get the most recent N tebligat across all clients — for daemon popup feed.
  * Excludes placeholder "Tebligat yok" entries.
+ *
+ * Sort: created_at DESC (insertion time) — "Son tebligatlar" means "en son
+ * bize ulaşanlar", not "en son GIB tarafından düzenlenenler". Historical
+ * tebligats may have notification_date years in the past but arrive today;
+ * the user expects today's arrivals at the top. id DESC as tiebreaker when
+ * multiple rows share a timestamp (same-batch inserts).
  */
 function getRecentTebligatlar(limit = 5) {
     if (!db) init();
@@ -375,7 +381,7 @@ function getRecentTebligatlar(limit = 5) {
         FROM tebligatlar t
         JOIN clients c ON c.id = t.client_id
         WHERE t.status != 'Tebligat yok'
-        ORDER BY COALESCE(t.notification_date, t.send_date, t.created_at) DESC
+        ORDER BY t.created_at DESC, t.id DESC
         LIMIT ?
     `);
     return stmt.all(limit);

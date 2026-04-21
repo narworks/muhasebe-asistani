@@ -148,6 +148,17 @@ async function tick() {
 
         const result = await gibScraper.scanSingleClient(client.id, apiKey);
         state.lastResult = result;
+
+        // Busy: another scan holds the scraper mutex (manual full-scan or another
+        // single-client call). Don't count as a scan attempt or failure — just
+        // retry on next tick. Prevents false "3 consecutive failures" Sentry alerts
+        // while a user-triggered full scan runs.
+        if (!result.success && result.errorType === 'busy') {
+            emit('skipped', { reason: 'scanner_busy', clientId: client.id });
+            scheduleNextTick(ds.intervalMs);
+            return;
+        }
+
         state.stats.totalScans++;
 
         if (result.success) {

@@ -92,6 +92,31 @@ async function solveWithTesseract(imageBase64) {
     }
 }
 
+// Gemini SDK has no built-in per-request timeout. Without this, a stalled
+// upstream (network flake or API slowdown) blocks a whole scan indefinitely
+// — daemon tick hangs, user sees "1 dakika" progress stuck for minutes.
+const GEMINI_TIMEOUT_MS = 30_000;
+
+function withTimeout(promise, ms, label) {
+    return new Promise((resolve, reject) => {
+        const timer = setTimeout(() => {
+            const err = new Error(`${label} timeout after ${ms}ms`);
+            err.errorType = 'gemini_timeout';
+            reject(err);
+        }, ms);
+        promise.then(
+            (v) => {
+                clearTimeout(timer);
+                resolve(v);
+            },
+            (e) => {
+                clearTimeout(timer);
+                reject(e);
+            }
+        );
+    });
+}
+
 /**
  * Gemini 2.0 Flash CAPTCHA solver with rate-limit retry.
  */
@@ -101,12 +126,16 @@ async function solveWithGemini(imageBase64, apiKey) {
 
     for (let attempt = 1; attempt <= 3; attempt++) {
         try {
-            const result = await model.generateContent([
-                {
-                    text: 'Bu resimdeki metni oku. Sadece metni döndür, boşluksuz. Başka hiçbir şey yazma.',
-                },
-                { inlineData: { mimeType: 'image/png', data: imageBase64 } },
-            ]);
+            const result = await withTimeout(
+                model.generateContent([
+                    {
+                        text: 'Bu resimdeki metni oku. Sadece metni döndür, boşluksuz. Başka hiçbir şey yazma.',
+                    },
+                    { inlineData: { mimeType: 'image/png', data: imageBase64 } },
+                ]),
+                GEMINI_TIMEOUT_MS,
+                'Gemini CAPTCHA'
+            );
             const response = await result.response;
             const text = response.text().trim().replace(/\s/g, '');
             stats.gemini_success++;
@@ -118,9 +147,12 @@ async function solveWithGemini(imageBase64, apiKey) {
                 (err.message.includes('429') ||
                     err.message.includes('Rate') ||
                     err.message.includes('exhausted'));
-            if (isRateLimit && attempt < 3) {
-                const waitSec = 30 * attempt;
-                logger.debug(`[CAPTCHA] Gemini rate limited, waiting ${waitSec}s (${attempt}/3)`);
+            const isTimeout = err.errorType === 'gemini_timeout';
+            if ((isRateLimit || isTimeout) && attempt < 3) {
+                const waitSec = isTimeout ? 5 : 30 * attempt;
+                logger.debug(
+                    `[CAPTCHA] Gemini ${isTimeout ? 'timed out' : 'rate limited'}, waiting ${waitSec}s (${attempt}/3)`
+                );
                 await new Promise((r) => setTimeout(r, waitSec * 1000));
                 continue;
             }
