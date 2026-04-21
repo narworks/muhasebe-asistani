@@ -1100,7 +1100,7 @@ const ETebligat: React.FC = () => {
     // Show subscription inactive screen
     if (subscriptionStatus && !subscriptionStatus.isActive) {
         return (
-            <div className="p-6 h-full flex flex-col">
+            <div className="p-6 h-full flex flex-col overflow-hidden">
                 <div className="flex justify-between items-center mb-6">
                     <div>
                         <h1 className="text-2xl font-bold text-slate-800">E-Tebligat Tarama</h1>
@@ -1147,7 +1147,7 @@ const ETebligat: React.FC = () => {
     }
 
     return (
-        <div className="p-6 h-full flex flex-col">
+        <div className="p-6 h-full flex flex-col overflow-hidden">
             <LimitReachedModal
                 open={limitModal !== null}
                 onClose={() => setLimitModal(null)}
