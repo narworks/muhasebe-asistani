@@ -151,10 +151,20 @@ export default function DaemonPopup() {
         return () => window.removeEventListener('keydown', handler);
     }, [recent.length]);
 
+    // 1Hz ticker for the "Şu an" countdown — the 3s fetchAll poll only refreshes
+    // state every 3s so a minute-level label would stutter. A 1s re-render of this
+    // popup costs ~1ms; when popup is blur-hidden the work is invisible but still
+    // negligible. Stored as Date.now() so formatters always see a consistent "now".
+    const [nowTick, setNowTick] = useState(() => Date.now());
+    useEffect(() => {
+        const id = setInterval(() => setNowTick(Date.now()), 1000);
+        return () => clearInterval(id);
+    }, []);
+
     const isActive = state?.running && !state?.paused;
     const nextTickIn =
-        state?.nextTickAt && state.nextTickAt > Date.now() ? state.nextTickAt - Date.now() : 0;
-    const nextTickLabel = formatDuration(nextTickIn);
+        state?.nextTickAt && state.nextTickAt > nowTick ? state.nextTickAt - nowTick : 0;
+    const nextTickLabel = formatCountdown(nextTickIn);
     const dailyPercent = stats ? Math.round((stats.todayScans / stats.todayLimit) * 100) : 0;
 
     const totalPages = Math.max(1, Math.ceil(recent.length / PAGE_SIZE));
@@ -681,11 +691,26 @@ function formatMB(mb: number): string {
     return `${(mb / 1024).toFixed(1)} GB`;
 }
 
-function formatDuration(ms: number): string {
-    if (ms <= 0) return '—';
-    const mins = Math.ceil(ms / 60000);
-    if (mins < 60) return `${mins} dk`;
-    return `${Math.floor(mins / 60)} sa ${mins % 60} dk`;
+// Countdown for the "Şu an" card — shown until the next daemon tick fires.
+// Format switches at natural boundaries so the label stays compact:
+//   ≥1h → "1 sa 23 dk"  (seconds are noise at this scale)
+//   ≥1m → "1 dk 45 sn"
+//   <1m → "45 sn"
+//   ≤0  → "şimdi"
+// Math.ceil on seconds so the first visible value after "2 dk" is "1 dk 59 sn"
+// not "1 dk 60 sn" — feels like a real countdown, not a stuttered one.
+function formatCountdown(ms: number): string {
+    if (ms <= 0) return 'şimdi';
+    const totalSec = Math.ceil(ms / 1000);
+    if (totalSec >= 3600) {
+        const hours = Math.floor(totalSec / 3600);
+        const mins = Math.floor((totalSec % 3600) / 60);
+        return `${hours} sa ${mins} dk`;
+    }
+    const mins = Math.floor(totalSec / 60);
+    const secs = totalSec % 60;
+    if (mins > 0) return `${mins} dk ${secs.toString().padStart(2, '0')} sn`;
+    return `${secs} sn`;
 }
 
 function parseAnyDate(s: string | null | undefined): Date | null {
