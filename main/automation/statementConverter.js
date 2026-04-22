@@ -1,9 +1,14 @@
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const pdf = require('pdf-parse');
 const ExcelJS = require('exceljs');
+const { withTimeout } = require('./withTimeout');
 
 const MAX_CELLS = 50000;
 const MAX_CONTENT_CHARS = 500000; // 500K karakter — Gemini 2.0 Flash 1M token destekler
+// Statement conversion Gemini call timeout: prompt can be up to 500K chars
+// (tens of pages of bank data), output CSV can be large. 2 minutes is a
+// reasonable upper bound — beyond that we'd rather fail visibly than hang.
+const GEMINI_STATEMENT_TIMEOUT_MS = 120_000;
 
 // Hücre değerini Türkçe muhasebe formatında string'e çevir
 function formatCellValue(cell) {
@@ -201,8 +206,13 @@ ${prompt}
 CSV ÇIKTISI:
 `;
 
-    // 3. Call the Gemini API
-    const result = await model.generateContent(systemPrompt);
+    // 3. Call the Gemini API. Wrap with timeout so a stalled upstream can't
+    // hang the Excel Assistant indefinitely — user sees a clear error instead.
+    const result = await withTimeout(
+        model.generateContent(systemPrompt),
+        GEMINI_STATEMENT_TIMEOUT_MS,
+        'Gemini Statement'
+    );
     const response = await result.response;
     let text = response.text();
 

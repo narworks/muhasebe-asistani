@@ -1,5 +1,6 @@
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const logger = require('../logger');
+const { withTimeout } = require('./withTimeout');
 
 let tesseractWorker = null;
 let tesseractInitPromise = null;
@@ -92,30 +93,9 @@ async function solveWithTesseract(imageBase64) {
     }
 }
 
-// Gemini SDK has no built-in per-request timeout. Without this, a stalled
-// upstream (network flake or API slowdown) blocks a whole scan indefinitely
-// — daemon tick hangs, user sees "1 dakika" progress stuck for minutes.
+// CAPTCHA-specific timeout: images are small (single frame), solve should be
+// fast. 30s covers cold starts + retries without leaving the scan stuck.
 const GEMINI_TIMEOUT_MS = 30_000;
-
-function withTimeout(promise, ms, label) {
-    return new Promise((resolve, reject) => {
-        const timer = setTimeout(() => {
-            const err = new Error(`${label} timeout after ${ms}ms`);
-            err.errorType = 'gemini_timeout';
-            reject(err);
-        }, ms);
-        promise.then(
-            (v) => {
-                clearTimeout(timer);
-                resolve(v);
-            },
-            (e) => {
-                clearTimeout(timer);
-                reject(e);
-            }
-        );
-    });
-}
 
 /**
  * Gemini 2.0 Flash CAPTCHA solver with rate-limit retry.

@@ -143,6 +143,15 @@ export default function ScanResultsModal({ data, onClose, onRetryFailed }: Props
                             CSV Olarak &#304;ndir
                         </button>
                     )}
+                    {failures.length > 0 && (
+                        <button
+                            onClick={() => onRetryFailed(failures.map((f) => f.clientId))}
+                            className="bg-amber-500 hover:bg-amber-600 text-white text-sm font-semibold px-4 py-2 rounded-md"
+                            title="Başarısız mükellefleri yeniden tara"
+                        >
+                            {'🔄'} {failures.length} hatalıyı tekrar tara
+                        </button>
+                    )}
                     <button
                         onClick={onClose}
                         className="bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold px-4 py-2 rounded-md"
