@@ -120,7 +120,11 @@ const isEncryptionAvailable = () => {
     }
 };
 
-// Fallback: simple obfuscation when safeStorage unavailable (Windows edge case)
+// Fallback encoding when safeStorage is unavailable. This is NOT encryption
+// — base64 is reversible — it's obfuscation to avoid casual eyeballing of
+// settings.json. Any attacker with file read access decodes it trivially.
+// Used only for low-sensitivity values (session tokens) and flagged via
+// _method so callers can detect + warn.
 const obfuscate = (str) => Buffer.from(str).toString('base64');
 const deobfuscate = (str) => {
     try {
@@ -130,16 +134,48 @@ const deobfuscate = (str) => {
     }
 };
 
+// Keys classified as "high-sensitivity" — we refuse to fall back to base64
+// obfuscation for these. GIB passwords, if stored, would let an attacker log
+// into the tax portal; they must not land in a plaintext-equivalent state.
+// When safeStorage isn't available, setEncryptedValue throws for these keys
+// and the caller surfaces the error to the user.
+const HIGH_SENSITIVITY_KEYS = new Set(['gib_password']);
+
+class InsecureStorageError extends Error {
+    constructor(key) {
+        super(
+            `Secure storage unavailable (safeStorage.isEncryptionAvailable()=false). ` +
+                `Refusing to save sensitive value for key="${key}". ` +
+                `On Linux install libsecret; on Windows check DPAPI availability.`
+        );
+        this.name = 'InsecureStorageError';
+        this.code = 'INSECURE_STORAGE';
+    }
+}
+
 const setEncryptedValue = (key, value) => {
     const settings = readSettings();
     if (isEncryptionAvailable()) {
         settings.encrypted[key] = safeStorage.encryptString(value).toString('base64');
         settings.encrypted[key + '_method'] = 'safe';
-    } else {
-        // Fallback for Windows when DPAPI unavailable
-        settings.encrypted[key] = obfuscate(value);
-        settings.encrypted[key + '_method'] = 'fallback';
+        writeSettings(settings);
+        return;
     }
+    // Fallback path — refused for high-sensitivity keys.
+    if (HIGH_SENSITIVITY_KEYS.has(key)) {
+        throw new InsecureStorageError(key);
+    }
+    // Low-sensitivity tokens can fall back to obfuscation; logger.warn so
+    // support can spot systems in this degraded state in log files.
+    try {
+        require('./logger').warn(
+            `[settings] safeStorage unavailable — using obfuscation fallback for key="${key}"`
+        );
+    } catch {
+        /* logger might not be loadable in very early startup */
+    }
+    settings.encrypted[key] = obfuscate(value);
+    settings.encrypted[key + '_method'] = 'fallback';
     writeSettings(settings);
 };
 
@@ -177,4 +213,8 @@ module.exports = {
     setEncryptedValue,
     getEncryptedValue,
     getDeviceId,
+    // Exposed so callers (renderer via IPC, diagnostic bundles) can check
+    // storage security state before trusting saved passwords.
+    isEncryptionAvailable,
+    InsecureStorageError,
 };

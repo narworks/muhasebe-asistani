@@ -215,7 +215,41 @@ const downloadDocumentByClick = async (page, rowIndex, tableSelector, filePath) 
 // Module-level state
 let scanCancelled = false;
 let isRunning = false;
+// Timestamp when isRunning became true — powers stale-mutex watchdog below.
+// 0 when idle; set on every mutex acquire across all entry points via
+// acquireRunMutex(); cleared in releaseRunMutex().
+let isRunningSince = 0;
 let activeBrowser = null;
+
+// Stale mutex watchdog. If a scan crashes without running its cleanup path
+// (e.g., Puppeteer process killed by OS, unhandled exception escaping the
+// try/finally on some future code path), isRunning stays true and every
+// subsequent scan attempt sees "busy" until app restart. The watchdog gives
+// us a self-healing path: after 30 minutes — well past any legitimate scan
+// duration — we force-release and alert Sentry so we can investigate why the
+// cleanup was missed.
+const STALE_MUTEX_MS = 30 * 60 * 1000;
+setInterval(
+    () => {
+        if (isRunning && isRunningSince && Date.now() - isRunningSince > STALE_MUTEX_MS) {
+            logger.warn(
+                `[gibScraper] Stale isRunning mutex detected (${Math.round(
+                    (Date.now() - isRunningSince) / 60000
+                )}min), force-releasing`
+            );
+            if (Sentry) {
+                Sentry.captureMessage('scraper.stale_mutex_force_release', {
+                    level: 'warning',
+                    tags: { component: 'gibScraper' },
+                    extra: { stuckForMs: Date.now() - isRunningSince },
+                });
+            }
+            isRunning = false;
+            isRunningSince = 0;
+        }
+    },
+    5 * 60 * 1000
+); // check every 5min
 
 // Rate limiting to prevent GIB IP blocking
 const DAILY_CLIENT_LIMIT = 400; // Competitors handle 150-450/day without blocks
@@ -1453,6 +1487,7 @@ async function run(onStatusUpdate, apiKey, scanConfig = {}, options = {}, deduct
     }
 
     isRunning = true;
+    isRunningSince = Date.now();
     scanCancelled = false;
 
     // Reset daily/hourly counters with monotonic time check
@@ -2599,6 +2634,7 @@ async function previewScan(onStatusUpdate, apiKey) {
     }
 
     isRunning = true;
+    isRunningSince = Date.now();
     scanCancelled = false;
     refreshRateLimits();
 
@@ -2798,6 +2834,7 @@ async function downloadSelectedTebligatlar(onStatusUpdate, apiKey, selections) {
     }
 
     isRunning = true;
+    isRunningSince = Date.now();
     scanCancelled = false;
     refreshRateLimits();
 
@@ -3124,6 +3161,7 @@ async function scanSingleClient(clientId, apiKey, options = {}) {
     const statusCb = options.onStatusUpdate || (() => {});
 
     isRunning = true;
+    isRunningSince = Date.now();
     try {
         const tebligatlar = await httpLoginAndFetch(
             client,
