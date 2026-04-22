@@ -279,11 +279,17 @@ export default function DaemonPopup() {
                 </button>
             </div>
 
-            {/* Hybrid status banner — clickable: jumps to page 1 */}
+            {/* Hybrid status banner — clickable: opens main E-Tebligat panel
+                 with the 'pending' (bakılmadı) filter applied, so the user lands
+                 on exactly the unviewed tebligats the banner is counting. Popup
+                 previously only jumped to list page 1, which was a no-op when
+                 already on page 1 — dead click area. */}
             <div className="px-4 pt-3">
                 <button
                     type="button"
-                    onClick={() => unviewed.total > 0 && goToPage(1)}
+                    onClick={() =>
+                        unviewed.total > 0 && handleOpenMain('/tools/e-tebligat?filter=pending')
+                    }
                     disabled={unviewed.total === 0}
                     className={`w-full text-left rounded-lg px-3 py-2 flex items-center justify-between transition-colors ${
                         unviewed.total > 0
@@ -343,7 +349,7 @@ export default function DaemonPopup() {
                         </div>
                     </div>
                     {unviewed.total > 0 ? (
-                        <span className="text-[10px] text-emerald-400">Göster ↓</span>
+                        <span className="text-[10px] text-emerald-400">Aç →</span>
                     ) : null}
                 </button>
             </div>
