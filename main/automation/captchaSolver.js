@@ -1,6 +1,7 @@
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const logger = require('../logger');
 const { withTimeout } = require('./withTimeout');
+const aiProxy = require('./aiProxy');
 
 let tesseractWorker = null;
 let tesseractInitPromise = null;
@@ -98,9 +99,41 @@ async function solveWithTesseract(imageBase64) {
 const GEMINI_TIMEOUT_MS = 30_000;
 
 /**
- * Gemini 2.0 Flash CAPTCHA solver with rate-limit retry.
+ * Gemini 2.0 Flash CAPTCHA solver. Proxy-first: landing backend üzerinden
+ * çağrı yapar (API key bundle'da açık olmasın diye). Proxy fail olursa
+ * direkt Gemini SDK'ya düşer — grace period bitip direkt path kaldırılana
+ * kadar kullanıcı fail yaşamaz.
+ *
+ * Proxy çağrıları timeout, auth fail, rate limit vs. için düzgünce hata
+ * fırlatır (ProxyError); direct Gemini'ye düşüşte Sentry'ye warning atılır
+ * ki proxy health'ini gözlemleyebilelim.
  */
 async function solveWithGemini(imageBase64, apiKey) {
+    // Proxy-first path — user access_token ile landing /api/ai/captcha-solve
+    if (aiProxy.isProxyEnabled()) {
+        try {
+            const result = await aiProxy.solveCaptcha(imageBase64);
+            stats.gemini_success++;
+            logger.debug(`[CAPTCHA] Proxy solved: ${result.text}`);
+            return { text: result.text, source: 'gemini' };
+        } catch (err) {
+            // Rate limit (429) proxy tarafında — direct Gemini da aynı quota'dan
+            // düşeceği için retry etmez. Diğer error'larda direct fallback.
+            if (err.status === 429) {
+                stats.gemini_fail++;
+                logger.debug(`[CAPTCHA] Proxy rate limited: ${err.message}`);
+                throw err;
+            }
+            logger.debug(
+                `[CAPTCHA] Proxy fail (${err.code}), falling back to direct Gemini: ${err.message}`
+            );
+            // fall through to direct path below
+        }
+    }
+
+    // Direct Gemini SDK — grace period için korundu. 2-4 hafta sonra
+    // proxy stable olunca bu yol kaldırılır + GEMINI_API_KEY bundle'dan
+    // silinir (Phase 2 sunset adımı).
     const genAI = new GoogleGenerativeAI(apiKey);
     const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
 

@@ -2,6 +2,8 @@ const { GoogleGenerativeAI } = require('@google/generative-ai');
 const pdf = require('pdf-parse');
 const ExcelJS = require('exceljs');
 const { withTimeout } = require('./withTimeout');
+const aiProxy = require('./aiProxy');
+const logger = require('../logger');
 
 const MAX_CELLS = 50000;
 const MAX_CONTENT_CHARS = 500000; // 500K karakter — Gemini 2.0 Flash 1M token destekler
@@ -206,8 +208,28 @@ ${prompt}
 CSV ÇIKTISI:
 `;
 
-    // 3. Call the Gemini API. Wrap with timeout so a stalled upstream can't
-    // hang the Excel Assistant indefinitely — user sees a clear error instead.
+    // 3. Call the Gemini API. Proxy-first: landing backend üzerinden
+    //    (API key bundle exposure engellemek için). Proxy fail durumunda
+    //    direkt Gemini SDK fallback. Proxy tarafı zaten markdown trim
+    //    yapıyor, direct path'te kendimiz temizleriz.
+    if (aiProxy.isProxyEnabled()) {
+        try {
+            const csv = await aiProxy.convertStatement(systemPrompt);
+            return csv;
+        } catch (err) {
+            if (err.status === 429) {
+                // Rate limit proxy'de — direct path da aynı quota'dan düşer,
+                // daha iyi bir hata vermek için throw et.
+                throw err;
+            }
+            logger.debug(
+                `[Statement] Proxy fail (${err.code}), falling back to direct Gemini: ${err.message}`
+            );
+            // fall through to direct path
+        }
+    }
+
+    // Direct Gemini — grace period için. Sunset edilecek.
     const result = await withTimeout(
         model.generateContent(systemPrompt),
         GEMINI_STATEMENT_TIMEOUT_MS,
