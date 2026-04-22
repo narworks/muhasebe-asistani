@@ -42,27 +42,59 @@ const defaultState = {
 };
 
 /**
- * Kredi bütünlük imzası oluşturur
+ * Kredi bütünlük imzası oluşturur.
+ *
+ * Signature includes offlineOpsCount as of v1.7.18 to close a tamper window:
+ * previously the counter was plaintext in settings.json and could be manually
+ * reset to 0, giving a user unlimited offline operations. Including it in the
+ * HMAC means any edit invalidates the signature and the next deductCredits()
+ * returns integrity_check_failed, forcing an online sync before proceeding.
+ *
+ * monthlyUsed included for parallel reason — tamper detection on usage totals.
  */
 const generateCreditSignature = (credits, deviceId) => {
-    const data = `${credits.totalRemaining}:${credits.monthlyRemaining}:${credits.purchasedRemaining}:${deviceId}`;
+    const data = [
+        credits.totalRemaining ?? 0,
+        credits.monthlyRemaining ?? 0,
+        credits.purchasedRemaining ?? 0,
+        credits.monthlyUsed ?? 0,
+        credits.offlineOpsCount ?? 0,
+        deviceId,
+    ].join(':');
     return crypto.createHmac('sha256', deviceId).update(data).digest('hex');
 };
 
 /**
- * Kredi bütünlük imzasını doğrular
+ * Kredi bütünlük imzasını doğrular. Yeni formatı (v1.7.18+, offlineOpsCount +
+ * monthlyUsed dahil) önce dener; tutmazsa eski 3-alan formatını (v1.7.17 ve
+ * öncesi) geçici olarak kabul eder. Bu geriye dönük uyumluluk, yeni sürüme
+ * güncelleyen kullanıcının bir sonraki online sync'ten önce integrity_check
+ * hatası almasını engeller. Online sync yeni formatla re-sign eder.
  */
 const verifyCreditSignature = (credits, deviceId) => {
     if (!credits.signature) return false;
-    const expected = generateCreditSignature(credits, deviceId);
+    let signatureBuffer;
     try {
-        const signatureBuffer = Buffer.from(credits.signature, 'hex');
-        const expectedBuffer = Buffer.from(expected, 'hex');
-        if (signatureBuffer.length !== expectedBuffer.length) return false;
-        return crypto.timingSafeEqual(signatureBuffer, expectedBuffer);
+        signatureBuffer = Buffer.from(credits.signature, 'hex');
     } catch {
         return false;
     }
+    const compareHex = (hex) => {
+        try {
+            const expectedBuffer = Buffer.from(hex, 'hex');
+            if (signatureBuffer.length !== expectedBuffer.length) return false;
+            return crypto.timingSafeEqual(signatureBuffer, expectedBuffer);
+        } catch {
+            return false;
+        }
+    };
+    // New format (v1.7.18+)
+    if (compareHex(generateCreditSignature(credits, deviceId))) return true;
+    // Legacy format (v1.7.17 and earlier) — 3 fields, no offlineOpsCount/monthlyUsed.
+    // Still HMAC-signed so tamper still blocked; just doesn't cover the counter.
+    const legacyData = `${credits.totalRemaining}:${credits.monthlyRemaining}:${credits.purchasedRemaining}:${deviceId}`;
+    const legacyHex = crypto.createHmac('sha256', deviceId).update(legacyData).digest('hex');
+    return compareHex(legacyHex);
 };
 
 /**

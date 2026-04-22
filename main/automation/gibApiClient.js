@@ -80,25 +80,81 @@ function toIsoFromGib(dateStr) {
  * Fetch all tebligatlar across pages with ASC sort (GIB-native).
  * If sinceDate is provided, items older than that date are filtered out locally
  * after fetching. Pagination continues until all items fetched or totalCount reached.
+ *
+ * Resilience:
+ * - Per-page transient errors (timeout, 5xx, network flake) retry once with 2s
+ *   backoff; a second failure returns partial results rather than throwing. For
+ *   accounts with 1000+ tebligat, failing on page 7/10 and losing the 6000+
+ *   already-fetched items is worse than accepting a partial fetch and flagging.
+ * - Max page safety cap: 50 pages × 1000 = 50k items. GIB in practice tops out
+ *   well below this; the cap exists to prevent a malformed `count` response
+ *   from producing an infinite loop.
+ * - Callers can detect partial fetches via the `partial` flag on the return
+ *   object (future: expose this; currently silent — logged but fetch continues).
  */
 async function fetchAllTebligatlar(apiClient, { arsivDurum = null, sinceDate = null } = {}) {
     const PAGE_SIZE = 1000;
+    const MAX_PAGES = 50; // hard safety cap — 50k items is >> any real account
     const cutoff = sinceDate ? parseGibDate(sinceDate) || new Date(sinceDate).getTime() : null;
     let pageNo = 1;
     const allItems = [];
 
-    for (;;) {
-        const result = await listTebligatlar(apiClient, {
-            pageNo,
-            pageSize: PAGE_SIZE,
-            arsivDurum,
-        });
+    while (pageNo <= MAX_PAGES) {
+        let result;
+        try {
+            result = await listTebligatlar(apiClient, {
+                pageNo,
+                pageSize: PAGE_SIZE,
+                arsivDurum,
+            });
+        } catch (err) {
+            // Retry once for transient errors. If the retry also fails, break
+            // with partial results rather than losing everything fetched so far.
+            const isTransient =
+                err.code === 'ECONNABORTED' ||
+                err.code === 'ECONNRESET' ||
+                err.code === 'ETIMEDOUT' ||
+                err.message?.includes('timeout') ||
+                (err.response?.status >= 500 && err.response?.status < 600);
+            if (!isTransient) throw err;
+            try {
+                await new Promise((r) => setTimeout(r, 2000));
+                result = await listTebligatlar(apiClient, {
+                    pageNo,
+                    pageSize: PAGE_SIZE,
+                    arsivDurum,
+                });
+            } catch (retryErr) {
+                // Partial fetch: log and return what we have. Caller sees a list
+                // shorter than GIB's true count; downstream logic (skippedExisting
+                // dedup, scanSingleClient save) handles it naturally.
+                try {
+                    require('../logger').warn(
+                        `[fetchAllTebligatlar] Page ${pageNo} failed after retry, returning partial (${allItems.length} items): ${retryErr.message}`
+                    );
+                } catch {
+                    /* logger not available */
+                }
+                break;
+            }
+        }
+
         const items = result.data?.tebligatDtoList || [];
         allItems.push(...items);
 
         const totalCount = result.data?.count || 0;
         if (allItems.length >= totalCount || items.length < PAGE_SIZE) break;
         pageNo++;
+    }
+
+    if (pageNo > MAX_PAGES) {
+        try {
+            require('../logger').warn(
+                `[fetchAllTebligatlar] Hit MAX_PAGES=${MAX_PAGES} cap; items=${allItems.length}. Possible malformed count from GIB.`
+            );
+        } catch {
+            /* logger not available */
+        }
     }
 
     // Local filter by date if sinceDate provided
