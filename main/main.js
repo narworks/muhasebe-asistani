@@ -994,6 +994,26 @@ ipcMain.handle('export-diag-bundle', async (_event, scanHistoryId) => {
     }
 });
 
+// Read tail of main.log for support-ticket attachments. Returns the last
+// `maxLines` lines (default 200) to keep payload small — full log can be
+// many MB. Best-effort: if file doesn't exist or is unreadable, returns
+// empty string rather than throwing.
+ipcMain.handle('get-log-tail', async (_event, maxLines = 200) => {
+    try {
+        const logPath = logger.getLogFilePath();
+        if (!logPath) return { text: '', path: null };
+        const fs = require('fs');
+        if (!fs.existsSync(logPath)) return { text: '', path: logPath };
+        const content = fs.readFileSync(logPath, 'utf-8');
+        const lines = content.split('\n');
+        const tail = lines.slice(-Math.max(1, maxLines)).join('\n');
+        return { text: tail, path: logPath, totalLines: lines.length };
+    } catch (err) {
+        logger.debug(`[get-log-tail] error: ${err.message}`);
+        return { text: '', path: null, error: err.message };
+    }
+});
+
 // Daemon settings IPC
 ipcMain.handle('daemon-get-settings', async () => {
     const s = settings.readSettings() || {};

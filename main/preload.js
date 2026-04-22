@@ -42,6 +42,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getScanHistory: (limit) => ipcRenderer.invoke('get-scan-history', limit),
     getLastScanFailedIds: () => ipcRenderer.invoke('get-last-scan-failed-ids'),
     exportDiagBundle: (scanHistoryId) => ipcRenderer.invoke('export-diag-bundle', scanHistoryId),
+    getLogTail: (maxLines) => ipcRenderer.invoke('get-log-tail', maxLines),
     // Daemon control
     daemonGetState: () => ipcRenderer.invoke('daemon-get-state'),
     daemonStart: () => ipcRenderer.invoke('daemon-start'),

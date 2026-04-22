@@ -302,6 +302,10 @@ const Sidebar: React.FC = () => {
     const [supportSending, setSupportSending] = useState(false);
     const [supportSent, setSupportSent] = useState(false);
     const [supportError, setSupportError] = useState('');
+    // "Son logları ekle" — kullanıcı ticked ise main.log'un son 200 satırını
+    // destek talebine ekler. Destek ekibi hata teşhisini ticket üzerinden,
+    // ayrıca log isteme adımı olmadan yapabilir.
+    const [supportAttachLog, setSupportAttachLog] = useState(true);
     const [changelogOpen, setChangelogOpen] = useState(false);
 
     useEffect(() => {
@@ -506,6 +510,21 @@ const Sidebar: React.FC = () => {
                                         placeholder="Sorununuzu detayl&#305; a&ccedil;&#305;klay&#305;n..."
                                     />
                                 </div>
+                                <label className="flex items-start gap-2 cursor-pointer text-xs text-slate-300">
+                                    <input
+                                        type="checkbox"
+                                        checked={supportAttachLog}
+                                        onChange={(e) => setSupportAttachLog(e.target.checked)}
+                                        className="mt-0.5 shrink-0 accent-sky-500"
+                                    />
+                                    <span>
+                                        Son 200 satır teknik log ekle{' '}
+                                        <span className="text-slate-500">
+                                            (destek ekibinin sorunu hızla teşhis etmesine yardımcı
+                                            olur, şifre/kart bilgisi içermez)
+                                        </span>
+                                    </span>
+                                </label>
                             </div>
                             {supportSent && (
                                 <div className="mt-3 p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-lg text-sm text-emerald-400">
@@ -540,6 +559,25 @@ const Sidebar: React.FC = () => {
                                             setSupportSending(true);
                                             setSupportError('');
                                             try {
+                                                let fullMessage = supportMessage;
+                                                if (
+                                                    supportAttachLog &&
+                                                    window.electronAPI?.getLogTail
+                                                ) {
+                                                    try {
+                                                        const logRes =
+                                                            await window.electronAPI.getLogTail(
+                                                                200
+                                                            );
+                                                        if (logRes?.text) {
+                                                            fullMessage +=
+                                                                '\n\n--- TEKNIK LOG (son 200 satır) ---\n' +
+                                                                logRes.text;
+                                                        }
+                                                    } catch {
+                                                        /* log ekleme başarısız — talep yine gönderilir */
+                                                    }
+                                                }
                                                 const res = await fetch(
                                                     'https://muhasebeasistani.com/api/support',
                                                     {
@@ -551,7 +589,7 @@ const Sidebar: React.FC = () => {
                                                             email: currentUser?.email || '',
                                                             name: currentUser?.displayName || '',
                                                             subject: supportSubject,
-                                                            message: supportMessage,
+                                                            message: fullMessage,
                                                         }),
                                                     }
                                                 );

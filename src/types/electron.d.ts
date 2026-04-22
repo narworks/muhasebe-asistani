@@ -175,6 +175,9 @@ export interface IElectronAPI {
     exportDiagBundle: (
         scanHistoryId: number
     ) => Promise<{ saved: boolean; path?: string; reason?: string }>;
+    getLogTail: (
+        maxLines?: number
+    ) => Promise<{ text: string; path: string | null; totalLines?: number; error?: string }>;
     // Daemon
     daemonGetState: () => Promise<DaemonState>;
     daemonStart: () => Promise<{ ok: boolean }>;
