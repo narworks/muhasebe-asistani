@@ -120,20 +120,21 @@ export default function DaemonStatusPanel({ onForceRescanAll, compact = false }:
                     </h3>
                 </div>
                 <div className="flex gap-2">
-                    {state.paused && (
+                    {state.running && state.paused ? (
                         <button
                             onClick={handleResume}
                             className="px-3 py-1 text-xs bg-emerald-600 text-white rounded hover:bg-emerald-700"
                         >
                             Devam Et
                         </button>
+                    ) : (
+                        <button
+                            onClick={handleToggle}
+                            className="px-3 py-1 text-xs bg-gray-100 text-gray-700 rounded hover:bg-gray-200"
+                        >
+                            {state.running ? 'Duraklat (1 saat)' : 'Başlat'}
+                        </button>
                     )}
-                    <button
-                        onClick={handleToggle}
-                        className="px-3 py-1 text-xs bg-gray-100 text-gray-700 rounded hover:bg-gray-200"
-                    >
-                        {state.running ? 'Duraklat (1 saat)' : 'Başlat'}
-                    </button>
                     <button
                         onClick={() => setShowSettings(true)}
                         title="Ayarlar"

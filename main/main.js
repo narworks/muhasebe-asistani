@@ -548,20 +548,38 @@ app.whenReady().then(() => {
                 enabled: false,
             },
             { type: 'separator' },
-            {
-                label: daemonState.running ? 'Duraklat (1 saat)' : 'Başlat',
-                click: () => {
-                    if (daemonState.running) daemonScheduler.pause(60 * 60 * 1000);
-                    else
-                        daemonScheduler.start((event) => {
-                            if (mainWindow && !mainWindow.isDestroyed()) {
-                                mainWindow.webContents.send('daemon-event', event);
-                            }
+            (() => {
+                if (!daemonState.running) {
+                    return {
+                        label: 'Başlat',
+                        click: () => {
+                            daemonScheduler.start((event) => {
+                                if (mainWindow && !mainWindow.isDestroyed()) {
+                                    mainWindow.webContents.send('daemon-event', event);
+                                }
+                                updateTrayMenu();
+                            });
                             updateTrayMenu();
-                        });
-                    updateTrayMenu();
-                },
-            },
+                        },
+                    };
+                }
+                if (daemonState.paused) {
+                    return {
+                        label: '▶ Devam Et',
+                        click: () => {
+                            daemonScheduler.resume();
+                            updateTrayMenu();
+                        },
+                    };
+                }
+                return {
+                    label: 'Duraklat (1 saat)',
+                    click: () => {
+                        daemonScheduler.pause(60 * 60 * 1000);
+                        updateTrayMenu();
+                    },
+                };
+            })(),
         ];
 
         // Dynamic: show update install option if update is ready

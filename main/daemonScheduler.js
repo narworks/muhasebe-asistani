@@ -204,6 +204,12 @@ async function tick() {
                 state.pauseUntil = Date.now() + IP_BLOCK_PAUSE_MS;
                 state.paused = true;
                 logger.debug('[Daemon] IP block detected, pausing 24h');
+                if (Sentry) {
+                    Sentry.captureMessage('daemon.ip_blocked', {
+                        level: 'error',
+                        tags: { component: 'daemon', errorType: 'ip_blocked' },
+                    });
+                }
                 if (ds.notificationsEnabled) {
                     notifications.notifyCritical(
                         'GİB IP Engeli',

@@ -207,8 +207,13 @@ export default function DaemonPopup() {
     };
 
     const handleToggle = async () => {
-        if (state?.running) await window.electronAPI.daemonPause(60 * 60 * 1000);
-        else await window.electronAPI.daemonStart();
+        if (state?.running && state?.paused) {
+            await window.electronAPI.daemonResume();
+        } else if (state?.running) {
+            await window.electronAPI.daemonPause(60 * 60 * 1000);
+        } else {
+            await window.electronAPI.daemonStart();
+        }
     };
 
     const handleOpenMain = (path?: string) => {
@@ -619,12 +624,16 @@ export default function DaemonPopup() {
                 <button
                     onClick={handleToggle}
                     className={`flex-1 text-xs py-2 rounded font-medium ${
-                        state?.running
+                        state?.running && !state?.paused
                             ? 'bg-amber-600 hover:bg-amber-500 text-white'
                             : 'bg-emerald-600 hover:bg-emerald-500 text-white'
                     }`}
                 >
-                    {state?.running ? '⏸ Duraklat' : '▶ Başlat'}
+                    {state?.running && state?.paused
+                        ? '▶ Devam Et'
+                        : state?.running
+                          ? '⏸ Duraklat'
+                          : '▶ Başlat'}
                 </button>
                 <button
                     onClick={() => handleOpenMain()}
