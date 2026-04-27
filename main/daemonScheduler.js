@@ -246,11 +246,54 @@ async function tick() {
             state.consecutiveFailuresForClient = state.consecutiveFailuresForClient || {};
             state.consecutiveFailuresForClient[client.id] =
                 (state.consecutiveFailuresForClient[client.id] || 0) + 1;
+            const failCount = state.consecutiveFailuresForClient[client.id];
 
-            // If same client fails 3+ times in a row, report to Sentry (not PII — just client_id).
-            // errorMessage (truncated 300 chars) is included so "unknown" errorType cases are
-            // diagnosable — without it we only see errorType:"unknown" with no context.
-            if (state.consecutiveFailuresForClient[client.id] === 3) {
+            // Permanent errors can't be fixed by retrying — auto-disable the client.
+            // User re-enables via "Aktif Yap" after updating password / unlocking account.
+            const isPermanentError =
+                result.errorType === 'wrong_credentials' || result.errorType === 'account_locked';
+
+            if (isPermanentError && failCount >= 3) {
+                try {
+                    database.updateClientStatus(client.id, 'inactive');
+                } catch (err) {
+                    logger.debug(
+                        `[Daemon] could not flip client ${client.id} to inactive: ${err.message}`
+                    );
+                }
+                if (Sentry) {
+                    Sentry.captureMessage(`daemon.client_auto_disabled`, {
+                        level: 'warning',
+                        tags: {
+                            component: 'daemon',
+                            errorType: result.errorType,
+                        },
+                        extra: {
+                            clientId: client.id,
+                            errorType: result.errorType,
+                            consecutiveFailures: failCount,
+                        },
+                    });
+                }
+                if (ds.notificationsEnabled) {
+                    const reason =
+                        result.errorType === 'wrong_credentials'
+                            ? 'şifre hatalı'
+                            : 'GİB hesabı kilitli';
+                    notifications.notifyCritical(
+                        'Mükellef Tarama Devre Dışı',
+                        `${client.firm_name} taraması durduruldu (${reason}). Düzeltip "Aktif Yap" diyebilirsiniz.`
+                    );
+                }
+                delete state.consecutiveFailuresForClient[client.id];
+                emit('client_auto_disabled', {
+                    clientId: client.id,
+                    firmName: client.firm_name,
+                    errorType: result.errorType,
+                });
+            } else if (failCount === 3) {
+                // Transient errors: alert once at threshold but keep retrying.
+                // errorMessage (truncated 300 chars) helps diagnose "unknown" errorType cases.
                 if (Sentry) {
                     Sentry.captureMessage(`daemon.client_repeat_failure`, {
                         level: 'warning',

@@ -497,23 +497,21 @@ const ensureLoginForm = async (page) => {
 };
 
 const solveCaptcha = async (page, apiKey) => {
-    let captchaElement = await page.$('#imgCaptcha');
+    // GİB renders the CAPTCHA via async XHR after the login form mounts, so a
+    // synchronous query right after the form appears often returns null on slow
+    // networks. Wait for the canonical id first, then fall back to attribute
+    // probes if GİB renamed the element.
+    let captchaElement = await page
+        .waitForSelector('#imgCaptcha', { timeout: 10000 })
+        .catch(() => null);
 
     if (!captchaElement) {
-        const hasCaptcha = await page.evaluate(() => {
-            const imgs = Array.from(document.querySelectorAll('img'));
-            return imgs.some(
-                (img) =>
-                    img.alt?.toLowerCase().includes('captcha') ||
-                    img.className?.toLowerCase().includes('captcha') ||
-                    img.src?.includes('captcha')
-            );
-        });
-        if (hasCaptcha) {
-            captchaElement = await page.$(
-                'img[alt*="captcha" i], img[class*="captcha" i], img[src*="captcha" i]'
-            );
-        }
+        captchaElement = await page
+            .waitForSelector(
+                'img[alt*="captcha" i], img[class*="captcha" i], img[src*="captcha" i]',
+                { timeout: 5000 }
+            )
+            .catch(() => null);
     }
 
     if (!captchaElement) {

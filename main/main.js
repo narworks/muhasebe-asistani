@@ -57,6 +57,20 @@ if (process.env.SENTRY_DSN) {
             return 0.1;
         },
         beforeSend(event) {
+            // Drop electron-updater filesystem errors that leak past its
+            // internal `on('error')` handler. Almost always Windows antivirus
+            // quarantining the partial Setup.exe between download and rename.
+            // Not actionable on our side — autoUpdater still surfaces a
+            // user-facing UI message via update-status.
+            const exMessage = event.exception?.values?.[0]?.value || '';
+            const msg = exMessage || event.message || '';
+            if (
+                /ENOENT.*muhasebeci-arac-kutusu-updater/i.test(msg) ||
+                /Muhasebe-Asistani-Setup\.exe/i.test(msg)
+            ) {
+                return null;
+            }
+
             // Strip user identification
             if (event.user) {
                 delete event.user.email;
