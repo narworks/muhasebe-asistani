@@ -215,37 +215,61 @@ const downloadDocumentByClick = async (page, rowIndex, tableSelector, filePath) 
 // Module-level state
 let scanCancelled = false;
 let isRunning = false;
-// Timestamp when isRunning became true — powers stale-mutex watchdog below.
-// 0 when idle; set on every mutex acquire across all entry points via
-// acquireRunMutex(); cleared in releaseRunMutex().
+// Timestamp + reason when isRunning became true — powers stale-mutex watchdog.
+// 0/null when idle; set/cleared exclusively via acquireRunMutex/releaseRunMutex.
 let isRunningSince = 0;
+let acquireReason = null;
 let activeBrowser = null;
+
+/**
+ * Acquire the scraper run mutex. The reason string identifies the entry point
+ * (e.g. 'run', 'previewScan', 'scanSingleClient', 'downloadSelectedTebligatlar')
+ * and surfaces in the watchdog's Sentry payload, so when a hang triggers a
+ * force-release we know which call site is stuck instead of just "something".
+ * Caller is responsible for verifying isRunning is false before calling.
+ */
+function acquireRunMutex(reason) {
+    isRunning = true;
+    isRunningSince = Date.now();
+    acquireReason = reason || 'unknown';
+}
+
+/**
+ * Release the scraper run mutex. Always pairs with acquireRunMutex() in a
+ * try/finally; safe to call when not held (idempotent).
+ */
+function releaseRunMutex() {
+    isRunning = false;
+    isRunningSince = 0;
+    acquireReason = null;
+}
 
 // Stale mutex watchdog. If a scan crashes without running its cleanup path
 // (e.g., Puppeteer process killed by OS, unhandled exception escaping the
 // try/finally on some future code path), isRunning stays true and every
 // subsequent scan attempt sees "busy" until app restart. The watchdog gives
 // us a self-healing path: after 30 minutes — well past any legitimate scan
-// duration — we force-release and alert Sentry so we can investigate why the
-// cleanup was missed.
+// duration — we force-release and alert Sentry with the acquireReason so we
+// can pinpoint which entry point hung instead of guessing.
 const STALE_MUTEX_MS = 30 * 60 * 1000;
 setInterval(
     () => {
         if (isRunning && isRunningSince && Date.now() - isRunningSince > STALE_MUTEX_MS) {
+            const stuckForMs = Date.now() - isRunningSince;
+            const stuckReason = acquireReason || 'unknown';
             logger.warn(
                 `[gibScraper] Stale isRunning mutex detected (${Math.round(
-                    (Date.now() - isRunningSince) / 60000
-                )}min), force-releasing`
+                    stuckForMs / 60000
+                )}min, reason=${stuckReason}), force-releasing`
             );
             if (Sentry) {
                 Sentry.captureMessage('scraper.stale_mutex_force_release', {
                     level: 'warning',
-                    tags: { component: 'gibScraper' },
-                    extra: { stuckForMs: Date.now() - isRunningSince },
+                    tags: { component: 'gibScraper', acquireReason: stuckReason },
+                    extra: { stuckForMs, acquireReason: stuckReason },
                 });
             }
-            isRunning = false;
-            isRunningSince = 0;
+            releaseRunMutex();
         }
     },
     5 * 60 * 1000
@@ -1484,8 +1508,7 @@ async function run(onStatusUpdate, apiKey, scanConfig = {}, options = {}, deduct
         return;
     }
 
-    isRunning = true;
-    isRunningSince = Date.now();
+    acquireRunMutex('run');
     scanCancelled = false;
 
     // Reset daily/hourly counters with monotonic time check
@@ -1547,7 +1570,7 @@ async function run(onStatusUpdate, apiKey, scanConfig = {}, options = {}, deduct
 
     if (allClients.length === 0) {
         onStatusUpdate({ message: 'Tanımlı aktif mükellef bulunamadı.', type: 'info' });
-        isRunning = false;
+        releaseRunMutex();
         return;
     }
 
@@ -1580,7 +1603,7 @@ async function run(onStatusUpdate, apiKey, scanConfig = {}, options = {}, deduct
 
     if (!apiKey) {
         onStatusUpdate({ message: 'API anahtarı bulunamadı.', type: 'error' });
-        isRunning = false;
+        releaseRunMutex();
         return;
     }
 
@@ -1595,7 +1618,7 @@ async function run(onStatusUpdate, apiKey, scanConfig = {}, options = {}, deduct
 
     if (isResume && totalRemaining === 0) {
         onStatusUpdate({ message: 'Devam edilecek mükellef kalmadı.', type: 'info' });
-        isRunning = false;
+        releaseRunMutex();
         return;
     }
 
@@ -1872,7 +1895,7 @@ async function run(onStatusUpdate, apiKey, scanConfig = {}, options = {}, deduct
                             activeBrowser.close().catch(() => {});
                             activeBrowser = null;
                         }
-                        isRunning = false;
+                        releaseRunMutex();
                         return;
                     }
 
@@ -2022,7 +2045,7 @@ async function run(onStatusUpdate, apiKey, scanConfig = {}, options = {}, deduct
                                 activeBrowser.close().catch(() => {});
                                 activeBrowser = null;
                             }
-                            isRunning = false;
+                            releaseRunMutex();
                             return;
                         }
 
@@ -2210,7 +2233,7 @@ async function run(onStatusUpdate, apiKey, scanConfig = {}, options = {}, deduct
             logger.debug(`[Telemetry] Send error (ignored): ${telErr.message}`);
         }
 
-        isRunning = false;
+        releaseRunMutex();
     }
 
     // Update final state
@@ -2631,14 +2654,13 @@ async function previewScan(onStatusUpdate, apiKey) {
         return { ok: false, error: 'busy' };
     }
 
-    isRunning = true;
-    isRunningSince = Date.now();
+    acquireRunMutex('previewScan');
     scanCancelled = false;
     refreshRateLimits();
 
     const activeClients = database.getClients().filter((c) => c.status === 'active');
     if (activeClients.length === 0) {
-        isRunning = false;
+        releaseRunMutex();
         return { ok: false, error: 'Aktif mükellef yok' };
     }
 
@@ -2816,7 +2838,7 @@ async function previewScan(onStatusUpdate, apiKey) {
 
         return { ok: true, results };
     } finally {
-        isRunning = false;
+        releaseRunMutex();
     }
 }
 
@@ -2831,8 +2853,7 @@ async function downloadSelectedTebligatlar(onStatusUpdate, apiKey, selections) {
         return { ok: false, error: 'busy' };
     }
 
-    isRunning = true;
-    isRunningSince = Date.now();
+    acquireRunMutex('downloadSelectedTebligatlar');
     scanCancelled = false;
     refreshRateLimits();
 
@@ -3097,7 +3118,7 @@ async function downloadSelectedTebligatlar(onStatusUpdate, apiKey, selections) {
 
         return { ok: true, downloaded: downloadedTotal, errors: errorTotal };
     } finally {
-        isRunning = false;
+        releaseRunMutex();
     }
 }
 
@@ -3158,8 +3179,7 @@ async function scanSingleClient(clientId, apiKey, options = {}) {
 
     const statusCb = options.onStatusUpdate || (() => {});
 
-    isRunning = true;
-    isRunningSince = Date.now();
+    acquireRunMutex('scanSingleClient');
     try {
         const tebligatlar = await httpLoginAndFetch(
             client,
@@ -3237,7 +3257,7 @@ async function scanSingleClient(clientId, apiKey, options = {}) {
             client: { id: client.id, firm_name: client.firm_name },
         };
     } finally {
-        isRunning = false;
+        releaseRunMutex();
     }
 }
 
