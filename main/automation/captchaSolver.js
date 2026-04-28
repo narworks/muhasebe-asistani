@@ -122,6 +122,7 @@ async function solveWithGemini(imageBase64, apiKey) {
             if (err.status === 429) {
                 stats.gemini_fail++;
                 logger.debug(`[CAPTCHA] Proxy rate limited: ${err.message}`);
+                err.errorType = 'ai_rate_limit';
                 throw err;
             }
             logger.debug(
@@ -159,7 +160,8 @@ async function solveWithGemini(imageBase64, apiKey) {
                 err.message &&
                 (err.message.includes('429') ||
                     err.message.includes('Rate') ||
-                    err.message.includes('exhausted'));
+                    err.message.includes('exhausted') ||
+                    err.message.toLowerCase().includes('too many requests'));
             const isTimeout = err.errorType === 'gemini_timeout';
             if ((isRateLimit || isTimeout) && attempt < 3) {
                 const waitSec = isTimeout ? 5 : 30 * attempt;
@@ -170,6 +172,9 @@ async function solveWithGemini(imageBase64, apiKey) {
                 continue;
             }
             stats.gemini_fail++;
+            if (isRateLimit) {
+                err.errorType = 'ai_rate_limit';
+            }
             throw err;
         }
     }

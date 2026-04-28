@@ -131,7 +131,8 @@ async function httpLogin(userid, password, apiKey, maxAttempts = 3) {
             if (
                 err.errorType === 'ip_blocked' ||
                 err.errorType === 'wrong_credentials' ||
-                err.errorType === 'account_locked'
+                err.errorType === 'account_locked' ||
+                err.errorType === 'ai_rate_limit'
             ) {
                 throw err;
             }

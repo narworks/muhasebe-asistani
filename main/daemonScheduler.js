@@ -28,6 +28,7 @@ const DEFAULT_INTERVAL_MS = 2 * 60 * 1000; // 2 minutes
 const MIN_INTERVAL_MS = 60 * 1000; // Never go below 1 minute
 const IP_BLOCK_PAUSE_MS = 24 * 60 * 60 * 1000; // 24 hours
 const CAPTCHA_STREAK_PAUSE_MS = 30 * 60 * 1000; // 30 minutes
+const AI_RATE_LIMIT_PAUSE_MS = 5 * 60 * 1000; // 5 minutes — Gemini quota window
 
 let state = {
     running: false,
@@ -218,6 +219,25 @@ async function tick() {
                 }
                 emit('ip_blocked', {});
                 scheduleNextTick(IP_BLOCK_PAUSE_MS);
+                return;
+            }
+
+            // AI rate limit → short pause. Gemini quota is shared across all
+            // clients, so per-client failure counters are misleading here —
+            // the same quota would block every other client too. One alert
+            // per pause window is enough; quota resets within minutes.
+            if (result.errorType === 'ai_rate_limit') {
+                state.pauseUntil = Date.now() + AI_RATE_LIMIT_PAUSE_MS;
+                state.paused = true;
+                logger.debug('[Daemon] AI rate limit hit, pausing 5min');
+                if (Sentry) {
+                    Sentry.captureMessage('daemon.ai_rate_limit', {
+                        level: 'warning',
+                        tags: { component: 'daemon', errorType: 'ai_rate_limit' },
+                    });
+                }
+                emit('ai_rate_limit', { clientId: client.id });
+                scheduleNextTick(AI_RATE_LIMIT_PAUSE_MS);
                 return;
             }
 
