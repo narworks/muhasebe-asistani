@@ -17,10 +17,25 @@
 const settings = require('../settings');
 const logger = require('../logger');
 
-const PROXY_BASE =
-    process.env.AI_PROXY_URL ||
-    process.env.BILLING_URL?.replace(/\/billing\/?$/, '') ||
-    'https://muhasebeasistani.com';
+// Origin'i URL parse ile çıkar — BILLING_URL "/billing" yerine "/pricing"
+// gibi farklı bir path ile gelse de host doğru çözülür. Eski kod sadece
+// "/billing" suffix'ini regex ile silerken "/pricing" gibi değerlerde
+// path olduğu gibi kalıp PROXY_BASE bozuluyordu (CI secret v1.7.20'den
+// beri yanlış set edildiği için /api/ai/* çağrıları 404 yiyordu).
+function deriveProxyOrigin() {
+    const candidates = [process.env.AI_PROXY_URL, process.env.BILLING_URL];
+    for (const candidate of candidates) {
+        if (!candidate) continue;
+        try {
+            return new URL(candidate).origin;
+        } catch {
+            // invalid URL → bir sonraki adaya geç
+        }
+    }
+    return 'https://muhasebeasistani.com';
+}
+
+const PROXY_BASE = deriveProxyOrigin();
 
 const DEFAULT_TIMEOUT_MS = 150_000; // statement convert için headroom dahil
 
