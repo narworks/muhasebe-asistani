@@ -68,17 +68,9 @@ function getAccessToken() {
 }
 
 /**
- * Proxy endpoint çağrısı. Başarı durumunda JSON döner; hata durumunda
- * ProxyError fırlatır (caller yakalar, fallback'e düşer).
+ * Single fetch attempt — internal helper, no retry mantığı içermiyor.
  */
-async function callProxy(endpoint, body, timeoutMs = DEFAULT_TIMEOUT_MS) {
-    const accessToken = getAccessToken();
-    if (!accessToken) {
-        const err = new Error('No access token — user not logged in');
-        err.code = 'NO_TOKEN';
-        throw err;
-    }
-
+async function singleFetch(endpoint, body, accessToken, timeoutMs) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
 
@@ -119,6 +111,42 @@ async function callProxy(endpoint, body, timeoutMs = DEFAULT_TIMEOUT_MS) {
         throw err;
     } finally {
         clearTimeout(timer);
+    }
+}
+
+/**
+ * Proxy endpoint çağrısı. Başarı durumunda JSON döner; hata durumunda
+ * ProxyError fırlatır (caller yakalar, fallback'e düşer).
+ *
+ * 401 alındığında bir kez token refresh + retry yapar — Supabase JWT 1
+ * saatte expire olur, license modülü 50dk'da bir auto-refresh ediyor ama
+ * race window'da 401 olabilir. Tek retry yeterli; refresh fail olursa
+ * direkt fırlatır, caller fallback Gemini'ye düşer.
+ */
+async function callProxy(endpoint, body, timeoutMs = DEFAULT_TIMEOUT_MS) {
+    const accessToken = getAccessToken();
+    if (!accessToken) {
+        const err = new Error('No access token — user not logged in');
+        err.code = 'NO_TOKEN';
+        throw err;
+    }
+
+    try {
+        return await singleFetch(endpoint, body, accessToken, timeoutMs);
+    } catch (err) {
+        // 401 → token expired olabilir, refresh + retry
+        if (err.code === 'PROXY_HTTP' && err.status === 401) {
+            const license = require('../license');
+            const refreshed = await license.ensureFreshToken();
+            if (refreshed) {
+                logger.debug('[aiProxy] Token refreshed after 401, retrying');
+                const newToken = getAccessToken();
+                if (newToken) {
+                    return await singleFetch(endpoint, body, newToken, timeoutMs);
+                }
+            }
+        }
+        throw err;
     }
 }
 

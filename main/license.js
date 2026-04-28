@@ -10,11 +10,14 @@ const supabase = require('./supabase');
 
 const BILLING_URL = process.env.BILLING_URL || 'https://muhasebeasistani.com/billing';
 const CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000; // 6 saat
+const TOKEN_REFRESH_INTERVAL_MS = 50 * 60 * 1000; // 50 dk — Supabase JWT 1 saat ömürlü, expiry'den önce yenile
 const GRACE_PERIOD_MS = 7 * 24 * 60 * 60 * 1000; // 7 gün
 const MAX_OFFLINE_OPERATIONS = 50; // Maksimum offline işlem sayısı
 
 let state = null;
 let checkIntervalId = null;
+let tokenRefreshIntervalId = null;
+let refreshInProgress = null; // Concurrent refresh dedupe
 
 const defaultState = {
     userId: null,
@@ -257,6 +260,47 @@ const login = async ({ email, password }) => {
 };
 
 /**
+ * Stored refresh_token ile yeni access_token alır. State + persistent
+ * storage güncellenir. Concurrent çağrılar dedupe edilir (aynı anda
+ * birden çok 401 retry tetiklenirse tek refresh yapılır).
+ *
+ * @returns {Promise<boolean>} refresh başarılıysa true
+ */
+const ensureFreshToken = async () => {
+    ensureLoaded();
+    if (!state.refreshToken) return false;
+
+    if (refreshInProgress) return refreshInProgress;
+
+    refreshInProgress = (async () => {
+        try {
+            const { session, error } = await supabase.refreshSession(state.refreshToken);
+            if (error || !session) {
+                console.warn(
+                    `[License] Token refresh failed: ${error?.message || 'no session returned'}`
+                );
+                return false;
+            }
+            state.accessToken = session.access_token;
+            if (session.refresh_token) {
+                state.refreshToken = session.refresh_token;
+            }
+            persistState();
+            return true;
+        } catch (err) {
+            console.warn(`[License] Token refresh error: ${err.message}`);
+            return false;
+        }
+    })();
+
+    try {
+        return await refreshInProgress;
+    } finally {
+        refreshInProgress = null;
+    }
+};
+
+/**
  * Subscription durumunu Supabase'den kontrol eder
  */
 const checkLicense = async () => {
@@ -314,6 +358,15 @@ const startScheduler = () => {
             checkLicense();
         }
     }, CHECK_INTERVAL_MS);
+
+    if (tokenRefreshIntervalId) return;
+    // Supabase JWT 1 saatte expire olur — biz her 50 dk'da bir yeniliyoruz
+    // ki proxy çağrıları taze token ile gitsin.
+    tokenRefreshIntervalId = setInterval(() => {
+        if (state && state.refreshToken) {
+            ensureFreshToken();
+        }
+    }, TOKEN_REFRESH_INTERVAL_MS);
 };
 
 /**
@@ -322,6 +375,13 @@ const startScheduler = () => {
 const init = () => {
     ensureLoaded();
     startScheduler();
+    // App start'ta token taze değilse şimdi yenile — proxy'nin ilk çağrısı
+    // 401 yiyip fallback'e düşmesin. Best-effort, fail olursa sessiz geç.
+    if (state && state.refreshToken) {
+        ensureFreshToken().catch(() => {
+            /* ensureFreshToken kendi içinde logluyor */
+        });
+    }
 };
 
 /**
@@ -666,6 +726,7 @@ module.exports = {
     init,
     login,
     checkLicense,
+    ensureFreshToken,
     logout,
     hasActiveSubscription,
     hasModuleAccess,

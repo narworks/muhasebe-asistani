@@ -88,6 +88,27 @@ const signUpWithEmail = async (email, password) => {
 };
 
 /**
+ * Refresh token ile yeni access_token alır. Supabase JWT default 1 saat
+ * ömürlü; refresh_token ile yenileme yapılmazsa proxy çağrıları 401 yer
+ * ve direct Gemini fallback'e düşer (paylaşımlı bundle key → 429 zinciri).
+ *
+ * @param {string} refreshToken - Saklı refresh token
+ * @returns {Promise<{session, error}>} session.access_token + session.refresh_token
+ */
+const refreshSession = async (refreshToken) => {
+    const client = getClient();
+    const { data, error } = await client.auth.refreshSession({
+        refresh_token: refreshToken,
+    });
+
+    if (error) {
+        return { session: null, error };
+    }
+
+    return { session: data.session, error: null };
+};
+
+/**
  * Mevcut session'dan kullanıcı bilgisini getirir
  * @param {string} accessToken - JWT access token
  * @returns {Promise<{user, error}>}
@@ -400,6 +421,7 @@ module.exports = {
     getClient,
     signInWithEmail,
     signUpWithEmail,
+    refreshSession,
     getUserFromToken,
     getSubscription,
     updateSubscription,
