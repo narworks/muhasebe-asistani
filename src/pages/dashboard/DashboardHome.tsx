@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import Card from '../../components/ui/Card';
+import SubscriptionBanner from '../../components/SubscriptionBanner';
 
 const ArrowRightIcon = () => (
     <svg
@@ -79,6 +80,9 @@ const DashboardHome: React.FC = () => {
 
     return (
         <div>
+            <div className="mb-6">
+                <SubscriptionBanner />
+            </div>
             <h1 className="text-3xl md:text-4xl font-bold text-white mb-4">
                 Merhaba,{' '}
                 <span className="text-sky-400">

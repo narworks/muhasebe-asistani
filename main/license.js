@@ -11,12 +11,15 @@ const supabase = require('./supabase');
 const BILLING_URL = process.env.BILLING_URL || 'https://muhasebeasistani.com/billing';
 const CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000; // 6 saat
 const TOKEN_REFRESH_INTERVAL_MS = 50 * 60 * 1000; // 50 dk — Supabase JWT 1 saat ömürlü, expiry'den önce yenile
+const EXPIRY_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000; // 6 saat — gün eşiği değişimi yakalanır
 const GRACE_PERIOD_MS = 7 * 24 * 60 * 60 * 1000; // 7 gün
 const MAX_OFFLINE_OPERATIONS = 50; // Maksimum offline işlem sayısı
+const EXPIRY_NOTIFICATION_THRESHOLDS = [30, 14, 7, 3, 1, 0]; // Gün eşikleri (0 = bugün sona eriyor)
 
 let state = null;
 let checkIntervalId = null;
 let tokenRefreshIntervalId = null;
+let expiryCheckIntervalId = null;
 let refreshInProgress = null; // Concurrent refresh dedupe
 
 const defaultState = {
@@ -28,9 +31,11 @@ const defaultState = {
     plan: null,
     expiresAt: null,
     isTrial: false,
+    isComplimentary: false,
     trialEndsAt: null,
     modules: [],
     lastCheckAt: null,
+    lastExpiryNotificationThreshold: null, // En son hangi gün eşiği için bildirim atıldı (30/14/7/3/1/0)
     credits: {
         monthlyRemaining: 0,
         monthlyLimit: 5000,
@@ -157,10 +162,19 @@ const persistState = () => {
 const setStateFromSubscription = (subscription) => {
     if (!subscription) return;
 
+    const newExpiresAt = subscription.end_date || subscription.expires_at || null;
+    // Yeni dönem başladıysa (örn. yenileme sonrası expiresAt ileriye atıldı)
+    // eski bildirim eşiğini sıfırla ki yeni dönemde yine 30/14/7/3/1 gün
+    // kala bildirim atılabilsin.
+    if (newExpiresAt && state.expiresAt && newExpiresAt !== state.expiresAt) {
+        state.lastExpiryNotificationThreshold = null;
+    }
+
     state.subscriptionStatus = subscription.status || 'inactive';
     state.plan = subscription.plan_type || subscription.plan || 'pro'; // Support both field names
-    state.expiresAt = subscription.end_date || subscription.expires_at || null; // Support both field names
+    state.expiresAt = newExpiresAt;
     state.isTrial = subscription.is_trial || false;
+    state.isComplimentary = subscription.is_complimentary || false;
     state.trialEndsAt = subscription.trial_ends_at || null;
     state.lastCheckAt = new Date().toISOString();
 
@@ -301,6 +315,75 @@ const ensureFreshToken = async () => {
 };
 
 /**
+ * Subscription bitimine yaklaşma durumunda native notification fire eder.
+ * Eşikler: 30/14/7/3/1/0 gün — her eşikte 1 kez fire (lastNotifiedThreshold
+ * persist). Complimentary user'lar atlanır (bitiş yok).
+ */
+const checkExpiryAndNotify = () => {
+    ensureLoaded();
+    if (!state.expiresAt) return;
+    if (state.isComplimentary) return; // Founder/test user — bildirim atma
+
+    const expiryMs = new Date(state.expiresAt).getTime();
+    const nowMs = Date.now();
+    const daysRemaining = Math.floor((expiryMs - nowMs) / (1000 * 60 * 60 * 24));
+
+    // Geçmiş abonelik için ayrı bildirim (bitiş gününde 1 kez)
+    if (daysRemaining < 0 && state.lastExpiryNotificationThreshold !== 'expired') {
+        try {
+            const notifications = require('./notifications');
+            notifications.notifyCritical(
+                'Aboneliğiniz Sona Erdi',
+                'Hizmete kesintisiz devam etmek için aboneliğinizi yenileyin.'
+            );
+        } catch (err) {
+            console.warn(`[License] expiry notification error: ${err.message}`);
+        }
+        state.lastExpiryNotificationThreshold = 'expired';
+        persistState();
+        return;
+    }
+
+    // Eşiklere ulaşıldı mı kontrol et — en yakın eşik için fire
+    const matchedThreshold = EXPIRY_NOTIFICATION_THRESHOLDS.find((t) => daysRemaining === t);
+    if (matchedThreshold === undefined) return;
+
+    // Bu eşik için zaten bildirim atıldıysa atla
+    if (state.lastExpiryNotificationThreshold === matchedThreshold) return;
+
+    try {
+        const notifications = require('./notifications');
+        const titles = {
+            30: 'Aboneliğinize 1 Ay Kaldı',
+            14: 'Aboneliğinize 2 Hafta Kaldı',
+            7: 'Aboneliğinize 1 Hafta Kaldı',
+            3: 'Aboneliğinize 3 Gün Kaldı',
+            1: 'Yarın Aboneliğiniz Sona Eriyor',
+            0: 'Aboneliğiniz Bugün Sona Eriyor',
+        };
+        const bodies = {
+            30: 'Yenilemek için Abonelik sayfasına göz atabilirsiniz.',
+            14: 'Hizmet kesintisiz devam etsin diye yenilemenizi öneririz.',
+            7: 'Aboneliğinizi yenilemeyi unutmayın.',
+            3: 'Aboneliğiniz pek az kaldı — şimdi yenilemenizi öneririz.',
+            1: 'Süre dolduğunda hizmete erişiminiz kısıtlanacak.',
+            0: 'Bugün sona eriyor. Yenilemek için Abonelik sayfasına gidin.',
+        };
+        const urgency = matchedThreshold <= 3 ? 'critical' : 'normal';
+        if (urgency === 'critical') {
+            notifications.notifyCritical(titles[matchedThreshold], bodies[matchedThreshold]);
+        } else {
+            notifications.notifyInfo(titles[matchedThreshold], bodies[matchedThreshold]);
+        }
+    } catch (err) {
+        console.warn(`[License] expiry notification error: ${err.message}`);
+    }
+
+    state.lastExpiryNotificationThreshold = matchedThreshold;
+    persistState();
+};
+
+/**
  * Subscription durumunu Supabase'den kontrol eder
  */
 const checkLicense = async () => {
@@ -367,6 +450,14 @@ const startScheduler = () => {
             ensureFreshToken();
         }
     }, TOKEN_REFRESH_INTERVAL_MS);
+
+    if (expiryCheckIntervalId) return;
+    // Subscription expiry eşiklerini izle — günde 4 kez (6 saatte bir).
+    // Idempotent: lastExpiryNotificationThreshold persist edildiği için
+    // aynı eşikte tek bildirim atılır.
+    expiryCheckIntervalId = setInterval(() => {
+        checkExpiryAndNotify();
+    }, EXPIRY_CHECK_INTERVAL_MS);
 };
 
 /**
@@ -382,6 +473,9 @@ const init = () => {
             /* ensureFreshToken kendi içinde logluyor */
         });
     }
+    // App start'ta expiry kontrolü — kullanıcı uzun süre kapalı tutmuşsa
+    // bildirim eşiğini app açılır açılmaz görsün. Idempotent.
+    checkExpiryAndNotify();
 };
 
 /**
@@ -393,6 +487,13 @@ const hasActiveSubscription = () => {
     // Status kontrolü
     if (state.subscriptionStatus !== 'active') {
         return false;
+    }
+
+    // Complimentary kullanıcılar (founder, test) için expiry/grace check'i atla.
+    // Server-side cron expire-subscriptions zaten is_complimentary=true olanları
+    // atlıyor, ama client-side belt-and-suspenders.
+    if (state.isComplimentary) {
+        return true;
     }
 
     // Expiry kontrolü
@@ -450,6 +551,7 @@ const getSubscriptionStatus = () => {
         expiresAt: state.expiresAt || null,
         status: state.subscriptionStatus || 'inactive',
         isTrial: state.isTrial || false,
+        isComplimentary: state.isComplimentary || false,
         trialEndsAt: state.trialEndsAt || null,
         modules: state.modules || [],
     };

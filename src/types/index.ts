@@ -132,6 +132,7 @@ export interface Subscription {
     expiresAt: string | null;
     status: string;
     isTrial: boolean;
+    isComplimentary?: boolean;
     trialEndsAt: string | null;
     modules: string[];
 }

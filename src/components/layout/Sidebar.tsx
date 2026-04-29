@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { useAuth } from '../../context/AuthContext';
+import { getExpiryStatus, getCompactLabel, getSeverityColors } from '../../lib/subscriptionUtils';
+import type { Subscription } from '../../types';
 
 // --- CHANGELOG DATA ---
 type ChangeEntry = { type: '+' | '~' | '-'; text: string };
@@ -296,6 +298,7 @@ const Sidebar: React.FC = () => {
     const navigate = useNavigate();
     const [modules, setModules] = useState<string[]>([]);
     const [isTrial, setIsTrial] = useState(false);
+    const [subscription, setSubscription] = useState<Subscription | null>(null);
     const [supportOpen, setSupportOpen] = useState(false);
     const [supportSubject, setSupportSubject] = useState('');
     const [supportMessage, setSupportMessage] = useState('');
@@ -315,6 +318,7 @@ const Sidebar: React.FC = () => {
                 .then((sub) => {
                     setModules(sub.modules || []);
                     setIsTrial(sub.isTrial || false);
+                    setSubscription(sub);
                 })
                 .catch(() => {});
         };
@@ -445,7 +449,21 @@ const Sidebar: React.FC = () => {
                             }
                         >
                             <CreditCardIcon />
-                            <span>Abonelik</span>
+                            <div className="flex-1 flex items-center justify-between">
+                                <span>Abonelik</span>
+                                {(() => {
+                                    const status = getExpiryStatus(subscription);
+                                    if (!status.shouldShowBanner) return null;
+                                    const colors = getSeverityColors(status.severity);
+                                    return (
+                                        <span
+                                            className={`text-[10px] px-1.5 py-0.5 rounded ${colors.bg} ${colors.text} font-medium`}
+                                        >
+                                            {getCompactLabel(status)}
+                                        </span>
+                                    );
+                                })()}
+                            </div>
                         </NavLink>
                         <button
                             onClick={() => setSupportOpen(true)}
