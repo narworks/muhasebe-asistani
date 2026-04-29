@@ -1,0 +1,15 @@
+# CRNN CAPTCHA training pipeline — local M1/M2 (MPS) veya CUDA GPU.
+# Modal.com'da koşmak için aynı versiyonlar uyumlu (modal_train.py içinden çağrılır).
+
+torch>=2.2,<3.0
+torchvision>=0.17,<1.0
+pillow>=10.0
+numpy>=1.26
+pandas>=2.0
+opencv-python-headless>=4.9
+onnx>=1.16
+onnxruntime>=1.17
+tqdm>=4.66
+
+# Quantization (INT8) — onnxruntime ekstra
+onnx-simplifier>=0.4

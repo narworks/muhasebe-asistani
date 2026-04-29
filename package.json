@@ -44,6 +44,7 @@
         "iyzipay": "^2.0.64",
         "lucide-react": "^1.8.0",
         "node-cron": "^4.2.1",
+        "openai": "^6.35.0",
         "p-limit": "^3.1.0",
         "pdf-parse": "^2.4.5",
         "puppeteer": "^24.32.0",

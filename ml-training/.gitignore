@@ -1,0 +1,7 @@
+.venv/
+__pycache__/
+*.pyc
+checkpoints/
+*.onnx
+*.metadata.json
+.DS_Store

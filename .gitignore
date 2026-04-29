@@ -53,3 +53,6 @@ supabase/.temp/
 # Next.js build output
 .next/
 next-env.d.ts
+
+# CAPTCHA training data (large local-only artifacts)
+training-data/
