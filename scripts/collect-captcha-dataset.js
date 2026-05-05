@@ -54,7 +54,7 @@ const CAPTCHA_FALLBACK_SELECTOR =
 const MIN_DELAY_MS = 2_000;
 const MAX_DELAY_MS = 4_000;
 const LABEL_TIMEOUT_MS = 30_000;
-const STATS_INTERVAL = 50;
+const STATS_INTERVAL = 100;
 const VALID_PROVIDERS = ['openai', 'gemini'];
 
 function parseArgs(argv) {

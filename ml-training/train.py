@@ -18,9 +18,11 @@ from __future__ import annotations
 
 import argparse
 import json
+import random
 import time
 from pathlib import Path
 
+import numpy as np
 import torch
 import torch.nn.functional as F
 from torch.optim import AdamW
@@ -32,11 +34,23 @@ from dataset import CaptchaDataset, NUM_CLASSES, BLANK_IDX, collate_fn, indices_
 from model import CRNN, count_params
 
 
+def set_all_seeds(seed: int):
+    """Tüm RNG'leri seed'le — model init + augmentation order ensemble için
+    farklılık yaratır (split seed dataset.py'da sabit kalır)."""
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
+
+
 def pick_device() -> torch.device:
+    # NOT: PyTorch 2.11 itibariyle MPS backend aten::_ctc_loss desteklemiyor
+    # (https://github.com/pytorch/pytorch/issues/141287). CRNN training CTC
+    # loss kullandığı için MPS skip edilir → CUDA varsa CUDA, yoksa CPU.
+    # M1 Max CPU 2K dataset/50 epoch için ~30-90 dk arası tamamlar.
     if torch.cuda.is_available():
         return torch.device("cuda")
-    if torch.backends.mps.is_available():
-        return torch.device("mps")
     return torch.device("cpu")
 
 
@@ -107,10 +121,12 @@ def main():
     p.add_argument("--lr", type=float, default=1e-3)
     p.add_argument("--workers", type=int, default=2)
     p.add_argument("--out", type=str, default="checkpoints")
+    p.add_argument("--seed", type=int, default=42, help="RNG seed (ensemble için 1/2/3)")
     args = p.parse_args()
 
+    set_all_seeds(args.seed)
     device = pick_device()
-    print(f"[train] device: {device}")
+    print(f"[train] device: {device} | seed: {args.seed}")
 
     train_ds = CaptchaDataset(args.data, split="train", augment=True)
     val_ds = CaptchaDataset(args.data, split="val", augment=False)
@@ -129,7 +145,8 @@ def main():
     print(f"[train] params: {count_params(model):,}")
 
     criterion = torch.nn.CTCLoss(blank=BLANK_IDX, zero_infinity=True)
-    optimizer = AdamW(model.parameters(), lr=args.lr, weight_decay=1e-4)
+    # weight_decay 1e-4 → 5e-4 (overfit'i azaltma + stronger augment ile uyumlu)
+    optimizer = AdamW(model.parameters(), lr=args.lr, weight_decay=5e-4)
     scheduler = CosineAnnealingLR(optimizer, T_max=args.epochs)
 
     out_dir = Path(args.out)

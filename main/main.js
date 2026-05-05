@@ -472,6 +472,13 @@ app.whenReady().then(() => {
         logger.debug(`[diskUsage] init error: ${err.message}`);
     }
 
+    // CAPTCHA per-attempt telemetry batch upload (5dk interval, fire-and-forget)
+    try {
+        require('./captchaTelemetry').start();
+    } catch (err) {
+        logger.debug(`[captchaTelemetry] init error: ${err.message}`);
+    }
+
     // Initialize scheduler
     scheduler.init(() => runScanWithUpdates());
 
@@ -696,13 +703,26 @@ app.whenReady().then(() => {
     });
 });
 
-app.on('before-quit', () => {
+app.on('before-quit', async () => {
     logger.info('[Main] before-quit fired, cleaning up tray and allowing exit');
     isQuitting = true;
     // Destroy tray so app can fully exit (needed for auto-update)
     if (tray) {
         tray.destroy();
         tray = null;
+    }
+    // Flush kalan CAPTCHA telemetry batch'lerini son şansta gönder + CRNN worker'ı kapat
+    try {
+        const captchaTelemetry = require('./captchaTelemetry');
+        await captchaTelemetry.stop();
+    } catch (err) {
+        logger.debug(`[Main] captchaTelemetry.stop error: ${err.message}`);
+    }
+    try {
+        const captchaSolver = require('./automation/captchaSolver');
+        await captchaSolver.terminate();
+    } catch (err) {
+        logger.debug(`[Main] captchaSolver.terminate error: ${err.message}`);
     }
 });
 

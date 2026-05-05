@@ -35,7 +35,10 @@ def export_fp32(checkpoint_path: Path, out_path: Path):
     model.load_state_dict(state["model"])
     model.train(False)  # inference mode
 
-    # Dynamic width — ONNX dinamik axis ile değişken W destekler
+    # Dynamic width — ONNX dinamik axis ile değişken W destekler.
+    # NOT: PyTorch 2.11+ yeni dynamo-based exporter LSTM + dinamik W ile
+    # 'GuardOnDataDependentSymNode' atıyor → legacy TorchScript exporter
+    # (dynamo=False) kullanıyoruz, bu kombinasyonu sorunsuz handle ediyor.
     dummy = torch.randn(1, 1, TARGET_HEIGHT, MAX_WIDTH)
     torch.onnx.export(
         model,
@@ -46,6 +49,7 @@ def export_fp32(checkpoint_path: Path, out_path: Path):
         dynamic_axes={"image": {0: "batch", 3: "width"}, "log_probs": {0: "time", 1: "batch"}},
         opset_version=17,
         do_constant_folding=True,
+        dynamo=False,
     )
 
     # Validate

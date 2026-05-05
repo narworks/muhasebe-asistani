@@ -56,3 +56,8 @@ next-env.d.ts
 
 # CAPTCHA training data (large local-only artifacts)
 training-data/
+
+# CRNN model dosyaları — local'de bundle'a girer ama git'te tutulmaz
+# (electron-builder.yml extraResources'tan kopyalar)
+main/automation/models/*.onnx
+main/automation/models/*.metadata.json

@@ -57,9 +57,12 @@ class CRNN(nn.Module):
             nn.ReLU(inplace=True),
         )
 
+        # Dropout 0.2 → 0.4 (overfit'i azaltmak için), input dropout da ekle
+        self.lstm_input_dropout = nn.Dropout(0.2)
         self.lstm = nn.LSTM(
-            input_size=512, hidden_size=hidden, num_layers=2, bidirectional=True, dropout=0.2
+            input_size=512, hidden_size=hidden, num_layers=2, bidirectional=True, dropout=0.4
         )
+        self.fc_dropout = nn.Dropout(0.3)
         self.fc = nn.Linear(hidden * 2, num_classes)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -70,7 +73,9 @@ class CRNN(nn.Module):
             feats = feats.mean(dim=2, keepdim=True)
         feats = feats.squeeze(2)  # (B, C, W')
         feats = feats.permute(2, 0, 1).contiguous()  # (T=W', B, C)
+        feats = self.lstm_input_dropout(feats)
         rnn_out, _ = self.lstm(feats)  # (T, B, 2H)
+        rnn_out = self.fc_dropout(rnn_out)
         out = self.fc(rnn_out)  # (T, B, num_classes)
         return out
 

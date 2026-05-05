@@ -27,6 +27,7 @@
         "prepare": "husky"
     },
     "dependencies": {
+        "@anthropic-ai/sdk": "^0.92.0",
         "@google/generative-ai": "^0.24.1",
         "@radix-ui/react-accordion": "^1.2.12",
         "@radix-ui/react-dialog": "^1.1.15",
@@ -44,6 +45,7 @@
         "iyzipay": "^2.0.64",
         "lucide-react": "^1.8.0",
         "node-cron": "^4.2.1",
+        "onnxruntime-node": "^1.25.1",
         "openai": "^6.35.0",
         "p-limit": "^3.1.0",
         "pdf-parse": "^2.4.5",

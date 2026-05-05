@@ -20,9 +20,21 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import torch
-from PIL import Image, ImageFilter
+from PIL import Image, ImageEnhance, ImageFilter
 from torch.utils.data import Dataset
 from torchvision import transforms
+
+
+def _find_perspective_coeffs(source_coords, target_coords):
+    """8 katsayıyı hesapla — PIL Image.PERSPECTIVE için."""
+    matrix = []
+    for s, t in zip(source_coords, target_coords):
+        matrix.append([t[0], t[1], 1, 0, 0, 0, -s[0] * t[0], -s[0] * t[1]])
+        matrix.append([0, 0, 0, t[0], t[1], 1, -s[1] * t[0], -s[1] * t[1]])
+    A = np.array(matrix, dtype=np.float64)
+    B = np.array(source_coords, dtype=np.float64).reshape(8)
+    res = np.linalg.solve(A, B)
+    return tuple(res.tolist())
 
 # Charset — CTC için index 0 = blank, 1..62 = karakterler.
 CHARSET = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
@@ -111,18 +123,69 @@ class CaptchaDataset(Dataset):
         return Image.open(path).convert("L")
 
     def _augment(self, img: Image.Image) -> Image.Image:
-        # Hafif rotasyon
-        if random.random() < 0.5:
-            img = img.rotate(random.uniform(-8, 8), resample=Image.BILINEAR, fillcolor=255)
+        """Stronger augmentation pipeline — overfit'i azaltır.
+
+        Önceki sürüm hafif (rotation ±8°, blur, noise) idi; model 8K
+        train data'sını çabuk ezberliyordu. Bu sürüm perspective +
+        brightness + erasing ekleyerek varyasyon arttırır.
+        """
+        w, h = img.size
+
+        # Rotation ±15° (önceki ±8°)
+        if random.random() < 0.6:
+            angle = random.uniform(-15, 15)
+            img = img.rotate(angle, resample=Image.BILINEAR, fillcolor=255)
+
+        # Perspective transform (CAPTCHA tipik perspective içerir)
+        if random.random() < 0.4:
+            max_warp = 0.10
+            dx, dy = w * max_warp, h * max_warp
+            src = [(0, 0), (w, 0), (w, h), (0, h)]
+            dst = [
+                (random.uniform(-dx, dx), random.uniform(-dy, dy)),
+                (w + random.uniform(-dx, dx), random.uniform(-dy, dy)),
+                (w + random.uniform(-dx, dx), h + random.uniform(-dy, dy)),
+                (random.uniform(-dx, dx), h + random.uniform(-dy, dy)),
+            ]
+            try:
+                coeffs = _find_perspective_coeffs(src, dst)
+                img = img.transform(
+                    (w, h), Image.PERSPECTIVE, coeffs, Image.BILINEAR, fillcolor=255
+                )
+            except np.linalg.LinAlgError:
+                pass  # rare singular matrix — skip
+
+        # Brightness/contrast jitter
+        if random.random() < 0.4:
+            factor = random.uniform(0.7, 1.3)
+            img = ImageEnhance.Brightness(img).enhance(factor)
+        if random.random() < 0.3:
+            factor = random.uniform(0.7, 1.3)
+            img = ImageEnhance.Contrast(img).enhance(factor)
+
         # Gauss blur
         if random.random() < 0.3:
             img = img.filter(ImageFilter.GaussianBlur(radius=random.uniform(0.3, 1.0)))
-        # Gauss noise
-        if random.random() < 0.3:
+
+        # Gauss noise (hafif güçlendirildi)
+        if random.random() < 0.4:
             arr = np.array(img, dtype=np.float32)
-            noise = np.random.normal(0, random.uniform(3, 10), arr.shape)
+            noise = np.random.normal(0, random.uniform(5, 15), arr.shape)
             arr = np.clip(arr + noise, 0, 255).astype(np.uint8)
             img = Image.fromarray(arr)
+
+        # Random erasing — küçük patch'ler beyaz/siyah ile silinir
+        if random.random() < 0.3:
+            arr = np.array(img)
+            erase_w = max(1, int(w * random.uniform(0.05, 0.15)))
+            erase_h = max(1, int(h * random.uniform(0.05, 0.20)))
+            if erase_w < w and erase_h < h:
+                ex = random.randint(0, w - erase_w)
+                ey = random.randint(0, h - erase_h)
+                fill = random.choice([0, 128, 255])
+                arr[ey : ey + erase_h, ex : ex + erase_w] = fill
+                img = Image.fromarray(arr)
+
         return img
 
     def _resize(self, img: Image.Image) -> Image.Image:

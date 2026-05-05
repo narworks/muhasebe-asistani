@@ -9,6 +9,7 @@ pandas>=2.0
 opencv-python-headless>=4.9
 onnx>=1.16
 onnxruntime>=1.17
+onnxscript>=0.1                # PyTorch 2.11+ ONNX exporter zorunluluğu
 tqdm>=4.66
 
 # Quantization (INT8) — onnxruntime ekstra
