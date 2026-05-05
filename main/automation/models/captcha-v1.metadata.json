@@ -1,0 +1,12 @@
+{
+    "version": "v1-seed1",
+    "architecture": "CRNN (CNN+BiLSTM+CTC)",
+    "input_shape": [1, 1, 32, 160],
+    "input_format": "grayscale, height=32, variable width up to 160, normalized [-1,1]",
+    "output_format": "log_probs (T, B, num_classes), CTC decode (greedy)",
+    "charset": "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz",
+    "blank_idx": 0,
+    "num_classes": 63,
+    "test_accuracy": 0.635,
+    "training_sample_count": 20000
+}

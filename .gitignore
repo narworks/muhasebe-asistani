@@ -59,5 +59,7 @@ training-data/
 
 # CRNN model dosyaları — local'de bundle'a girer ama git'te tutulmaz
 # (electron-builder.yml extraResources'tan kopyalar)
-main/automation/models/*.onnx
-main/automation/models/*.metadata.json
+
+# CRNN ensemble seeds (production tek seed2 kullanıyor)
+main/automation/models/captcha-v1-seed1.int8.onnx
+main/automation/models/captcha-v1-seed3.int8.onnx
