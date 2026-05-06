@@ -80,13 +80,15 @@ function pushBuffer(buffer, entry) {
  * Bir CAPTCHA solve attempt kaydı.
  *
  * @param {Object} e
- * @param {'crnn'|'gemini'|'tesseract'} e.method
+ * @param {'crnn'|'gemini'|'tesseract'|'openai'|'claude'} e.method
  * @param {boolean} e.success
  * @param {string} [e.modelVersion]   crnn için 'v1', 'v2'...
  * @param {number} [e.confidence]     0-1
  * @param {number} [e.durationMs]
  * @param {string} [e.imageHash]
  * @param {string} [e.failureReason]  'low_confidence' | 'gib_rejected' | ...
+ * @param {string} [e.attemptId]      Aynı CAPTCHA için cascade rowlarını bağlayan UUID
+ *                                    (CRNN fail + Tesseract fail + AI success → 1 attemptId)
  */
 function recordCaptcha(e) {
     if (!e || !e.method || typeof e.success !== 'boolean') return;
@@ -98,6 +100,7 @@ function recordCaptcha(e) {
         duration_ms: typeof e.durationMs === 'number' ? Math.round(e.durationMs) : null,
         image_hash: e.imageHash || null,
         failure_reason: e.failureReason || null,
+        attempt_id: e.attemptId || null,
         attempted_at: new Date().toISOString(),
     });
 }

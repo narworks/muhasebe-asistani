@@ -1,7 +1,7 @@
 {
     "name": "muhasebeci-arac-kutusu",
     "private": true,
-    "version": "1.8.1",
+    "version": "1.9.0",
     "main": "main/main.js",
     "author": {
         "name": "NarWorks",
@@ -38,6 +38,7 @@
         "axios": "^1.13.2",
         "better-sqlite3": "^12.5.0",
         "clsx": "^2.1.1",
+        "ddddocr-node": "^2.3.0",
         "dotenv": "^17.2.3",
         "electron-squirrel-startup": "^1.0.1",
         "electron-updater": "^6.1.8",

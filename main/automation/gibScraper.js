@@ -812,9 +812,46 @@ const httpLoginAndFetch = async (
     };
 
     const loginFn = async () =>
-        gibHttpLogin.httpLogin(client.gib_user_code, password, apiKey, config.maxCaptchaRetries);
-    const loginResult = trace ? await trace.span('login.http', loginFn) : await loginFn();
-    const apiClient = gibApiClient.createApiClient(loginResult.token);
+        gibHttpLogin.loginOrReuseToken(
+            client.gib_user_code,
+            password,
+            apiKey,
+            config.maxCaptchaRetries
+        );
+    let loginResult = trace ? await trace.span('login.http', loginFn) : await loginFn();
+    let apiClient = gibApiClient.createApiClient(loginResult.token);
+
+    // Token cache hit → API call'da 401 alırsak token gerçekten expire/revoked
+    // demektir. Cache invalidate + fresh login retry. Bu fail-safe pattern.
+    const apiClientWith401Recovery = (originalClient) => {
+        if (!loginResult.fromCache) return originalClient; // fresh token, recovery gerek yok
+        // Axios interceptor: 401 → invalidate + relogin + retry tek seferlik
+        let recoveryAttempted = false;
+        originalClient.interceptors.response.use(
+            (resp) => resp,
+            async (err) => {
+                if (err.response?.status === 401 && !recoveryAttempted) {
+                    recoveryAttempted = true;
+                    logger.debug(`[HTTP-Login] Cached token returned 401, invalidating + relogin`);
+                    const tokenCache = require('./gibTokenCache');
+                    tokenCache.invalidateToken(client.gib_user_code);
+                    loginResult = await gibHttpLogin.loginOrReuseToken(
+                        client.gib_user_code,
+                        password,
+                        apiKey,
+                        config.maxCaptchaRetries
+                    );
+                    apiClient = gibApiClient.createApiClient(loginResult.token);
+                    // Original request'i yeni token'la retry et
+                    err.config.headers.Authorization = `Bearer ${loginResult.token}`;
+                    return apiClient.request(err.config);
+                }
+                return Promise.reject(err);
+            }
+        );
+        return originalClient;
+    };
+    apiClient = apiClientWith401Recovery(apiClient);
 
     let allDtos = [];
     if (isFirstScan) {
@@ -2517,10 +2554,12 @@ function getRateLimits() {
  * Used by preview and download functions.
  */
 async function loginAndGetToken(client, password, apiKey) {
-    // Try HTTP-only login first (no browser needed, ~3-5s)
+    // Try HTTP-only login first (no browser needed, ~3-5s) — token cache aware
     try {
-        const result = await gibHttpLogin.httpLogin(client.gib_user_code, password, apiKey);
-        logger.debug(`[loginAndGetToken] HTTP login OK for ${client.gib_user_code}`);
+        const result = await gibHttpLogin.loginOrReuseToken(client.gib_user_code, password, apiKey);
+        logger.debug(
+            `[loginAndGetToken] HTTP login OK for ${client.gib_user_code} ${result.fromCache ? '(cached)' : '(fresh)'}`
+        );
         return { browser: null, page: null, bearerToken: result.token };
     } catch (httpErr) {
         // IP block and credential errors propagate immediately

@@ -63,3 +63,14 @@ training-data/
 # CRNN ensemble seeds (production tek seed2 kullanıyor)
 main/automation/models/captcha-v1-seed1.int8.onnx
 main/automation/models/captcha-v1-seed3.int8.onnx
+
+# Local-only build/test artifacts root'a sızmış (gerçek kaynaklar main/ altında)
+/aiProxy.js
+/env-config.js
+/eng.traineddata
+
+# ddddocr fine-tune deneme — plateau %81.25, vazgeçildi (CRNN seed2 ile aynı)
+ml-training/dddd_trainer/
+ml-training/RUNBOOK_DDDDOCR.md
+scripts/test-ddddocr.js
+scripts/convert-to-ddddocr-format.js

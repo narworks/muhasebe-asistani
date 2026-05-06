@@ -1,6 +1,27 @@
 const axios = require('axios');
 const logger = require('../logger');
 const captchaSolver = require('./captchaSolver');
+const tokenCache = require('./gibTokenCache');
+const captchaTelemetry = require('../captchaTelemetry');
+
+// errorType → captcha_telemetry.gib_login.failure_stage enum mapping
+// Schema enum: 'captcha' | 'credentials' | 'session' | 'network' | 'rate_limit'
+function errorTypeToFailureStage(errorType) {
+    switch (errorType) {
+        case 'captcha_failed':
+            return 'captcha';
+        case 'wrong_credentials':
+        case 'account_locked':
+            return 'credentials';
+        case 'ip_blocked':
+        case 'ai_rate_limit':
+            return 'rate_limit';
+        case 'network_timeout':
+            return 'network';
+        default:
+            return null;
+    }
+}
 
 const GIB_API_BASE = 'https://dijital.gib.gov.tr/apigateway';
 const CAPTCHA_URL = `${GIB_API_BASE}/captcha/getnewcaptcha`;
@@ -86,21 +107,32 @@ function classifyLoginError(data) {
  */
 async function httpLogin(userid, password, apiKey, maxAttempts = 3) {
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        const attemptStart = Date.now();
         try {
             const captcha = await fetchCaptcha();
             logger.debug(`[HTTP-Login] CAPTCHA fetched (cid: ${captcha.cid.substring(0, 8)}...)`);
 
+            // GİB feedback retry: attempt 1 = CRNN+Tesseract local, attempt >1 = AI direct.
+            // CRNN'in tahmini yanlışsa GİB "captcha_failed" döndürür → retry attempt 2'de
+            // AI cascade çağrılır (bypass local). AI bağımlılığını minimize eder.
             const captchaResult = await captchaSolver.solveCaptchaWithSource(
                 captcha.imageBase64,
-                apiKey
+                apiKey,
+                { attempt }
             );
             const captchaText = captchaResult.text;
-            logger.debug(`[HTTP-Login] CAPTCHA solved by ${captchaResult.source}: ${captchaText}`);
+            logger.debug(
+                `[HTTP-Login] CAPTCHA solved by ${captchaResult.source} (attempt ${attempt}): ${captchaText}`
+            );
             logger.debug(`[HTTP-Login] CAPTCHA solved: ${captchaText}`);
 
             const result = await postLogin(userid, password, captchaText, captcha.cid);
 
             if (result.token) {
+                captchaTelemetry.recordGibLogin({
+                    success: true,
+                    durationMs: Date.now() - attemptStart,
+                });
                 logger.debug('[HTTP-Login] Bearer token acquired');
                 return { token: result.token };
             }
@@ -123,6 +155,12 @@ async function httpLogin(userid, password, apiKey, maxAttempts = 3) {
                     err.errorType = 'unknown';
                 }
             }
+
+            captchaTelemetry.recordGibLogin({
+                success: false,
+                failureStage: errorTypeToFailureStage(err.errorType),
+                durationMs: Date.now() - attemptStart,
+            });
 
             logger.debug(
                 `[HTTP-Login] Attempt ${attempt}/${maxAttempts}: ${err.errorType} — ${err.message}`
@@ -154,4 +192,30 @@ async function httpLogin(userid, password, apiKey, maxAttempts = 3) {
     }
 }
 
-module.exports = { httpLogin, fetchCaptcha };
+/**
+ * Token cache aware login: önce disk cache'e bak, valid token varsa CAPTCHA
+ * çözmeden onu döndür. Yoksa httpLogin (CAPTCHA + login) çağır + cache'le.
+ *
+ * Caller (genelde gibScraper.httpLoginAndFetch) bu fonksiyonu kullanır —
+ * mevcut httpLogin'i drop-in replace eder, ek field { fromCache: bool } ekler.
+ *
+ * 401 detection: caller apiClient'tan 401 alırsa
+ *   tokenCache.invalidateToken(userid)
+ *   loginOrReuseToken(...) // bu sefer cache miss → fresh login
+ */
+async function loginOrReuseToken(userid, password, apiKey, maxAttempts = 3) {
+    const cached = tokenCache.getValidToken(userid);
+    if (cached) {
+        logger.debug(`[HTTP-Login] Token cache HIT — CAPTCHA atlandı (${userid.slice(0, 4)}***)`);
+        return { token: cached, fromCache: true };
+    }
+
+    logger.debug(`[HTTP-Login] Token cache MISS — fresh login (${userid.slice(0, 4)}***)`);
+    const result = await httpLogin(userid, password, apiKey, maxAttempts);
+    if (result && result.token) {
+        tokenCache.setToken(userid, result.token);
+    }
+    return { ...result, fromCache: false };
+}
+
+module.exports = { httpLogin, fetchCaptcha, loginOrReuseToken };

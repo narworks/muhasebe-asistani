@@ -12,11 +12,11 @@ let tesseractInitPromise = null;
 // CAPTCHA text validation: 4-7 alphanumeric characters
 const CAPTCHA_VALID_REGEX = /^[A-Za-z0-9]{4,7}$/;
 
-// CRNN confidence threshold — bunun altında AI fallback'e düşülür.
-// Seed2 model (test %79.95) + min-conf calibration (1000 sample):
-//   Threshold 0.99 → coverage %10.7, CRNN-acc %99.07
-// Multi-AI cascade ile bu hibrit %99+ olur. Production telemetry ile re-tune.
-const CRNN_CONFIDENCE_THRESHOLD = 0.99;
+// NOT (eski): CRNN confidence threshold yaklaşımı KALDIRILDI.
+// GİB feedback retry stratejisi (solveCaptchaWithSource attempt parameter)
+// CRNN'in pre-validation threshold'una güvenmek yerine GİB'in gerçek
+// validasyonuna güveniyor. CRNN format-valid her tahmini submit edilir,
+// yanlışsa caller attempt 2 ile AI cascade'e düşer. AI bağımlılığı %86 → %20.
 
 // Aggregate solver stats (exposed for telemetry)
 const stats = {
@@ -106,13 +106,18 @@ async function solveWithTesseract(imageBase64) {
         const { data } = await worker.recognize(processed);
         const text = (data.text || '').trim().replace(/\s+/g, '');
 
-        if (CAPTCHA_VALID_REGEX.test(text)) {
+        // Tesseract bazen conf=0 ile garbage döndürüyor — bunu invalid say.
+        // GİB tarafında "captcha_failed" yiyip retry zorlanıyor (gereksiz CAPTCHA).
+        const TESSERACT_MIN_CONFIDENCE = 50;
+        if (CAPTCHA_VALID_REGEX.test(text) && data.confidence >= TESSERACT_MIN_CONFIDENCE) {
             stats.tesseract_success++;
             logger.debug(`[CAPTCHA] Tesseract solved: ${text} (confidence: ${data.confidence})`);
             return { text, source: 'tesseract', confidence: data.confidence };
         }
         stats.tesseract_fail++;
-        logger.debug(`[CAPTCHA] Tesseract result invalid: "${text}"`);
+        logger.debug(
+            `[CAPTCHA] Tesseract result rejected: "${text}" (conf=${data.confidence}, regex=${CAPTCHA_VALID_REGEX.test(text)})`
+        );
         return null;
     } catch (err) {
         stats.tesseract_fail++;
@@ -346,48 +351,66 @@ async function solveCaptcha(imageBase64, apiKey) {
 /**
  * Same as solveCaptcha but returns { text, source }.
  *
- * Hibrit kademeli akış (plan: local-captcha-self-healing):
- *   1) CRNN (lokal ONNX, ~30-60ms, model varsa) — confidence ≥ %85 ise döner
- *   2) Tesseract — emergency only (CRNN model yoksa veya CRNN crash ederse)
- *   3) Gemini (proxy üzerinden, cloud) — son fallback
+ * GİB feedback retry akışı:
+ *   attempt 1: CRNN (threshold YOK) → format-valid her tahmini submit et.
+ *              GİB kabul ederse local çözüm, AI hiç çağrılmaz.
+ *              GİB reddederse caller (gibHttpLogin) attempt 2 başlatır.
+ *   attempt >1: CRNN+Tesseract bypass, AI cascade direkt.
  *
- * Her aşamada captchaTelemetry.recordCaptcha() çağrılır → admin dashboard
- * bu data'yı dağılım/health/active model widget'larında gösterir.
+ * CRNN test acc %80 → attempt 1'de %80 lokal başarı, %20 retry'da AI.
+ * AI bağımlılığı %86 (önceki threshold-based) → %20.
+ *
+ * @param {string} imageBase64
+ * @param {string} apiKey  Gemini API key
+ * @param {Object} [options]
+ * @param {number} [options.attempt=1]  1=local first, >1=AI direct
  */
-async function solveCaptchaWithSource(imageBase64, apiKey) {
+async function solveCaptchaWithSource(imageBase64, apiKey, options = {}) {
     const buffer = Buffer.from(imageBase64, 'base64');
     const imageHash = hashImageShort(buffer);
+    const attempt = options.attempt || 1;
+    const skipLocal = attempt > 1;
+    // attempt_id: bu CAPTCHA çözüm denemesinin tüm rowlarını (CRNN fail + Tesseract fail
+    // + AI success gibi cascade satırlarını) bağlar — dashboard %başarı'yı GROUP BY
+    // attempt_id, MAX(success) ile hesaplar (per-row değil per-CAPTCHA).
+    const attemptId = crypto.randomUUID();
 
-    // --- 1) CRNN (lokal) ---
-    if (captchaCRNN.isAvailable()) {
+    // --- 1) CRNN (lokal, sadece attempt=1) ---
+    if (!skipLocal && captchaCRNN.isAvailable()) {
         try {
             const r = await captchaCRNN.solve(buffer);
             const validFormat = CAPTCHA_VALID_REGEX.test(r.text);
-            const isHighConf = r.confidence >= CRNN_CONFIDENCE_THRESHOLD;
-            const accepted = validFormat && isHighConf;
 
-            captchaTelemetry.recordCaptcha({
-                method: 'crnn',
-                modelVersion: r.modelVersion,
-                success: accepted,
-                confidence: r.confidence,
-                durationMs: r.latencyMs,
-                imageHash,
-                failureReason: accepted ? null : !validFormat ? 'invalid_format' : 'low_confidence',
-            });
-
-            if (accepted) {
+            // GİB feedback retry: confidence threshold YOK. Format-valid her CRNN
+            // tahmini submit edilir; doğruluğu GİB validation belirler. Yanlışsa
+            // caller attempt 2 ile bizi tekrar çağırır (skipLocal=true → AI).
+            if (validFormat) {
                 stats.crnn_success++;
+                captchaTelemetry.recordCaptcha({
+                    method: 'crnn',
+                    modelVersion: r.modelVersion,
+                    success: true, // optimistic — GİB reject ederse attempt 2'de AI
+                    confidence: r.confidence,
+                    durationMs: r.latencyMs,
+                    imageHash,
+                    attemptId,
+                });
                 logger.debug(
                     `[CAPTCHA] CRNN solved: ${r.text} (conf=${r.confidence.toFixed(3)}, ${r.latencyMs}ms)`
                 );
                 return { text: r.text, source: 'crnn' };
             }
-            if (!validFormat) stats.crnn_invalid++;
-            else stats.crnn_lowconf++;
-            logger.debug(
-                `[CAPTCHA] CRNN rejected (text="${r.text}", conf=${r.confidence.toFixed(3)}), Gemini fallback`
-            );
+            stats.crnn_invalid++;
+            captchaTelemetry.recordCaptcha({
+                method: 'crnn',
+                modelVersion: r.modelVersion,
+                success: false,
+                confidence: r.confidence,
+                imageHash,
+                failureReason: 'invalid_format',
+                attemptId,
+            });
+            logger.debug(`[CAPTCHA] CRNN invalid format ("${r.text}"), Tesseract fallback`);
         } catch (err) {
             stats.crnn_error++;
             captchaTelemetry.recordCaptcha({
@@ -395,33 +418,39 @@ async function solveCaptchaWithSource(imageBase64, apiKey) {
                 success: false,
                 imageHash,
                 failureReason: 'model_error',
+                attemptId,
             });
             logger.debug(`[CAPTCHA] CRNN error: ${err.message}, Tesseract+Gemini fallback`);
         }
     }
 
-    // --- 2) Tesseract (emergency / CRNN yoksa) ---
-    const tesStart = Date.now();
-    const tesseractResult = await solveWithTesseract(imageBase64);
-    if (tesseractResult) {
+    // --- 2) Tesseract (lokal, sadece attempt=1, CRNN format invalid sonrası) ---
+    if (!skipLocal) {
+        const tesStart = Date.now();
+        const tesseractResult = await solveWithTesseract(imageBase64);
+        if (tesseractResult) {
+            captchaTelemetry.recordCaptcha({
+                method: 'tesseract',
+                success: true,
+                confidence: tesseractResult.confidence ? tesseractResult.confidence / 100 : null,
+                durationMs: Date.now() - tesStart,
+                imageHash,
+                attemptId,
+            });
+            return { text: tesseractResult.text, source: 'tesseract' };
+        }
         captchaTelemetry.recordCaptcha({
             method: 'tesseract',
-            success: true,
-            confidence: tesseractResult.confidence ? tesseractResult.confidence / 100 : null,
+            success: false,
             durationMs: Date.now() - tesStart,
             imageHash,
+            failureReason: 'invalid_format',
+            attemptId,
         });
-        return { text: tesseractResult.text, source: 'tesseract' };
     }
-    captchaTelemetry.recordCaptcha({
-        method: 'tesseract',
-        success: false,
-        durationMs: Date.now() - tesStart,
-        imageHash,
-        failureReason: 'invalid_format',
-    });
 
     // --- 3) AI Cascade (Gemini → OpenAI → Claude) ---
+    // attempt > 1 (GİB reject sonrası) veya tüm local solver'lar fail.
     const aiStart = Date.now();
     try {
         const aiResult = await solveWithAICascade(imageBase64, apiKey);
@@ -430,6 +459,7 @@ async function solveCaptchaWithSource(imageBase64, apiKey) {
             success: true,
             durationMs: Date.now() - aiStart,
             imageHash,
+            attemptId,
         });
         return aiResult;
     } catch (err) {
@@ -444,6 +474,7 @@ async function solveCaptchaWithSource(imageBase64, apiKey) {
                     : err.errorType === 'ai_all_failed'
                       ? 'unknown'
                       : 'unknown',
+            attemptId,
         });
         throw err;
     }
