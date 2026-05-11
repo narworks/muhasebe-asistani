@@ -71,7 +71,7 @@ function estimateScanDuration() {
     // Average batch pause (in seconds)
     const avgBatchPauseSeconds = (batchPauseMin + batchPauseMax) / 2;
 
-    // Estimated time per client (login + CAPTCHA + scraping + logout): ~45 seconds
+    // Estimated time per client (login + CAPTCHA + fetch + logout): ~45 seconds
     const timePerClientSeconds = 45;
 
     // Total delay time between clients

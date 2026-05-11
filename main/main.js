@@ -192,7 +192,7 @@ process.on('unhandledRejection', (reason, _promise) => {
 const supabase = require('./supabase');
 const licenseManager = require('./license');
 const database = require('./database');
-const gibScraper = require('./automation/gibScraper');
+const gibAutomation = require('./automation/gibAutomation');
 const statementConverter = require('./automation/statementConverter');
 const settings = require('./settings');
 const scheduler = require('./scheduler');
@@ -331,7 +331,7 @@ const runScanWithUpdates = async () => {
     };
 
     try {
-        await gibScraper.run(
+        await gibAutomation.run(
             (status) => {
                 if (mainWindow && !mainWindow.isDestroyed()) {
                     mainWindow.webContents.send('scan-update', status);
@@ -786,7 +786,7 @@ ipcMain.on('start-scan-with-options', async (event, scanOptions) => {
 
     const sleepBlockId = powerSaveBlocker.start('prevent-app-suspension');
     try {
-        await gibScraper.run(
+        await gibAutomation.run(
             (status) => {
                 if (!mainWindow.isDestroyed()) {
                     mainWindow.webContents.send('scan-update', status);
@@ -841,7 +841,7 @@ ipcMain.on('start-scan', async (event) => {
     logger.debug(`[Scan] Sleep blocker started: ${sleepBlockId}`);
 
     try {
-        await gibScraper.run(
+        await gibAutomation.run(
             (status) => {
                 if (!mainWindow.isDestroyed()) {
                     mainWindow.webContents.send('scan-update', status);
@@ -899,7 +899,7 @@ ipcMain.on('resume-scan', async (event) => {
     const sleepBlockId = powerSaveBlocker.start('prevent-app-suspension');
 
     try {
-        await gibScraper.run(
+        await gibAutomation.run(
             (status) => {
                 if (!mainWindow.isDestroyed()) {
                     mainWindow.webContents.send('scan-update', status);
@@ -930,7 +930,7 @@ ipcMain.on('resume-scan', async (event) => {
 
 // Rate limits
 ipcMain.handle('get-rate-limits', () => {
-    return gibScraper.getRateLimits();
+    return gibAutomation.getRateLimits();
 });
 
 // Preview scan — login + list only, no document download
@@ -939,7 +939,7 @@ ipcMain.handle('preview-scan', async (_event) => {
     if (!apiKey) return { ok: false, error: 'Sistem yapılandırma hatası' };
     const blockId = powerSaveBlocker.start('prevent-app-suspension');
     try {
-        return await gibScraper.previewScan((status) => {
+        return await gibAutomation.previewScan((status) => {
             if (mainWindow && !mainWindow.isDestroyed()) {
                 mainWindow.webContents.send('scan-update', status);
             }
@@ -958,7 +958,7 @@ ipcMain.handle('download-selected-tebligatlar', async (event, selections) => {
     if (!apiKey) return { ok: false, error: 'Sistem yapılandırma hatası' };
     const blockId = powerSaveBlocker.start('prevent-app-suspension');
     try {
-        return await gibScraper.downloadSelectedTebligatlar(
+        return await gibAutomation.downloadSelectedTebligatlar(
             (status) => {
                 if (mainWindow && !mainWindow.isDestroyed()) {
                     mainWindow.webContents.send('scan-update', status);
@@ -982,7 +982,7 @@ ipcMain.handle('test-client-login', async (_event, clientId) => {
         return { success: false, errorType: 'unknown', errorMessage: 'Sistem yapılandırma hatası' };
     }
     try {
-        return await gibScraper.testClientLogin(clientId, apiKey);
+        return await gibAutomation.testClientLogin(clientId, apiKey);
     } catch (err) {
         logger.error('[test-client-login] error:', err);
         return {
@@ -996,7 +996,7 @@ ipcMain.handle('test-client-login', async (_event, clientId) => {
 // Return the last scan's per-client results for the summary modal
 ipcMain.handle('get-last-scan-results', async () => {
     try {
-        return { ok: true, results: gibScraper.getLastScanResults() };
+        return { ok: true, results: gibAutomation.getLastScanResults() };
     } catch (err) {
         return { ok: false, error: err.message };
     }
@@ -1301,7 +1301,7 @@ ipcMain.handle('scan-single-client', async (_event, clientId) => {
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) return { success: false, errorMessage: 'API anahtarı yok' };
     try {
-        const result = await gibScraper.scanSingleClient(clientId, apiKey, {
+        const result = await gibAutomation.scanSingleClient(clientId, apiKey, {
             onStatusUpdate: (status) => {
                 if (mainWindow && !mainWindow.isDestroyed()) {
                     mainWindow.webContents.send('scan-update', status);
@@ -1328,7 +1328,7 @@ ipcMain.handle('estimate-scan-duration', async (_event, clientCount) => {
     try {
         const count =
             clientCount ?? database.getClients().filter((c) => c.status === 'active').length;
-        // Match gibScraper config: delayMin 15s, delayMax 30s, batchSize 20, batchPauseMin 60s
+        // Match gibAutomation config: delayMin 15s, delayMax 30s, batchSize 20, batchPauseMin 60s
         const avgDelay = 22; // seconds between clients
         const avgBatchPause = 90; // seconds
         const timePerClient = 45; // login + captcha + fetch
@@ -1344,13 +1344,13 @@ ipcMain.handle('estimate-scan-duration', async (_event, clientCount) => {
 
 // Cancel Scan
 ipcMain.on('cancel-scan', (event) => {
-    gibScraper.cancelScan();
+    gibAutomation.cancelScan();
     event.reply('scan-update', { message: 'Tarama durdurma isteği gönderildi...', type: 'info' });
 });
 
 // Scan State (for resume)
 ipcMain.handle('get-scan-state', () => {
-    return gibScraper.getScanState();
+    return gibAutomation.getScanState();
 });
 
 // Legal consent
@@ -1721,7 +1721,9 @@ ipcMain.handle('delete-client-history', async (event, clientId) => {
             const settings = require('./settings');
             const s = settings.readSettings();
             const basePath = s.documentsFolder || path.join(app.getPath('userData'), 'documents');
-            const safeFirmName = gibScraper.sanitizeFirmName(client.firm_name || String(clientId));
+            const safeFirmName = gibAutomation.sanitizeFirmName(
+                client.firm_name || String(clientId)
+            );
             const firmDir = path.join(basePath, safeFirmName);
             if (fs.existsSync(firmDir)) {
                 fs.rmSync(firmDir, { recursive: true, force: true });
@@ -2068,7 +2070,7 @@ ipcMain.handle('fetch-tebligat-document', async (event, tebligatId) => {
     const maxRetries = 3;
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
         try {
-            const docPath = await gibScraper.fetchSingleDocument(tebligat, apiKey);
+            const docPath = await gibAutomation.fetchSingleDocument(tebligat, apiKey);
             if (docPath) {
                 database.updateTebligatDocument(tebligatId, docPath);
                 return { success: true, path: docPath };

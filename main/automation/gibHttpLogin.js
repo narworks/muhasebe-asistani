@@ -196,7 +196,7 @@ async function httpLogin(userid, password, apiKey, maxAttempts = 3) {
  * Token cache aware login: önce disk cache'e bak, valid token varsa CAPTCHA
  * çözmeden onu döndür. Yoksa httpLogin (CAPTCHA + login) çağır + cache'le.
  *
- * Caller (genelde gibScraper.httpLoginAndFetch) bu fonksiyonu kullanır —
+ * Caller (genelde gibAutomation.httpLoginAndFetch) bu fonksiyonu kullanır —
  * mevcut httpLogin'i drop-in replace eder, ek field { fromCache: bool } ekler.
  *
  * 401 detection: caller apiClient'tan 401 alırsa

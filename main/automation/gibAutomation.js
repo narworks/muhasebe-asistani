@@ -222,7 +222,7 @@ let acquireReason = null;
 let activeBrowser = null;
 
 /**
- * Acquire the scraper run mutex. The reason string identifies the entry point
+ * Acquire the automation run mutex. The reason string identifies the entry point
  * (e.g. 'run', 'previewScan', 'scanSingleClient', 'downloadSelectedTebligatlar')
  * and surfaces in the watchdog's Sentry payload, so when a hang triggers a
  * force-release we know which call site is stuck instead of just "something".
@@ -235,7 +235,7 @@ function acquireRunMutex(reason) {
 }
 
 /**
- * Release the scraper run mutex. Always pairs with acquireRunMutex() in a
+ * Release the automation run mutex. Always pairs with acquireRunMutex() in a
  * try/finally; safe to call when not held (idempotent).
  */
 function releaseRunMutex() {
@@ -258,14 +258,14 @@ setInterval(
             const stuckForMs = Date.now() - isRunningSince;
             const stuckReason = acquireReason || 'unknown';
             logger.warn(
-                `[gibScraper] Stale isRunning mutex detected (${Math.round(
+                `[gibAutomation] Stale isRunning mutex detected (${Math.round(
                     stuckForMs / 60000
                 )}min, reason=${stuckReason}), force-releasing`
             );
             if (Sentry) {
-                Sentry.captureMessage('scraper.stale_mutex_force_release', {
+                Sentry.captureMessage('automation.stale_mutex_force_release', {
                     level: 'warning',
-                    tags: { component: 'gibScraper', acquireReason: stuckReason },
+                    tags: { component: 'gibAutomation', acquireReason: stuckReason },
                     extra: { stuckForMs, acquireReason: stuckReason },
                 });
             }
@@ -1083,7 +1083,7 @@ const loginAndFetch = async (
         throw err;
     }
 
-    // Direct API mode: use HTTP calls instead of Puppeteer scraping (20x faster)
+    // Direct API mode: use HTTP calls instead of Puppeteer fetch (20x faster)
     if (bearerToken) {
         try {
             const apiClient = gibApiClient.createApiClient(bearerToken);
@@ -1195,7 +1195,7 @@ const loginAndFetch = async (
         }
     }
 
-    // Fallback: Puppeteer-based scraping (Navigate to E-Tebligat)
+    // Fallback: Puppeteer-based fetch (Navigate to E-Tebligat)
     const eTebligatLink = await page.evaluate(() => {
         const links = Array.from(document.querySelectorAll('a'));
         const link = links.find(
@@ -1313,7 +1313,7 @@ const loginAndFetch = async (
         };
 
         while (pageNum <= maxPages) {
-            logger.debug(`[DEBUG] Scraping page ${pageNum}...`);
+            logger.debug(`[DEBUG] Fetching page ${pageNum}...`);
 
             // Extract data from current page
             let pageTebligatlar;
@@ -2197,7 +2197,7 @@ async function run(onStatusUpdate, apiKey, scanConfig = {}, options = {}, deduct
         if (Sentry) {
             Sentry.captureException(error, {
                 tags: {
-                    component: 'gib-scraper',
+                    component: 'gib-automation',
                     phase: 'scan-main',
                     platform: process.platform,
                     arch: process.arch,
@@ -2995,8 +2995,8 @@ async function downloadSelectedTebligatlar(onStatusUpdate, apiKey, selections) {
                     const t = sel.tebligatList[j];
                     const fresh = freshByBelgeNo.get(t.belgeNo);
 
-                    // Convert preview shape to scraper shape (prefer fresh secureIds)
-                    const scraperTeb = {
+                    // Convert preview shape to fetch shape (prefer fresh secureIds)
+                    const tebligatPayload = {
                         sender: t.sender,
                         subject: t.subject,
                         documentNo: t.belgeNo,
@@ -3014,7 +3014,7 @@ async function downloadSelectedTebligatlar(onStatusUpdate, apiKey, selections) {
                     };
 
                     // Download (skip if already exists)
-                    const dateStr = scraperTeb.date || null;
+                    const dateStr = tebligatPayload.date || null;
                     const docsDir = getDocumentsDir(sel.clientId, sel.firmName, dateStr);
                     const safeDocNo = (t.belgeNo || String(j)).replace(/[^a-zA-Z0-9-_]/g, '_');
                     const baseName = `tebligat_${safeDocNo}`;
@@ -3031,17 +3031,17 @@ async function downloadSelectedTebligatlar(onStatusUpdate, apiKey, selections) {
                     }
 
                     if (existingPath) {
-                        scraperTeb.documentPath = existingPath;
+                        tebligatPayload.documentPath = existingPath;
                         clientDownloaded++;
                         downloadedTotal++;
                     } else {
                         try {
                             const downloaded = await gibApiClient.downloadDocument(
                                 apiClient,
-                                scraperTeb,
+                                tebligatPayload,
                                 filePath
                             );
-                            scraperTeb.documentPath = downloaded;
+                            tebligatPayload.documentPath = downloaded;
                             clientDownloaded++;
                             downloadedTotal++;
                         } catch (dlErr) {
@@ -3054,7 +3054,7 @@ async function downloadSelectedTebligatlar(onStatusUpdate, apiKey, selections) {
                             });
                         }
                     }
-                    toSave.push(scraperTeb);
+                    toSave.push(tebligatPayload);
 
                     // Inter-document delay
                     if (j < sel.tebligatList.length - 1 && !scanCancelled) {

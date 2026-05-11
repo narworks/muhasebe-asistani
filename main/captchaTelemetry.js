@@ -6,7 +6,7 @@
  * method breakdown ve failure sample listesi için gerekli.
  *
  * Akış:
- *   1. captchaSolver / gibScraper her solve veya login attempt'ten sonra
+ *   1. captchaSolver / gibAutomation her solve veya login attempt'ten sonra
  *      record* fonksiyonlarını çağırır (fire-and-forget, hata loglanır).
  *   2. Entry'ler in-memory buffer'a yazılır.
  *   3. 5 dakikada bir buffer landing API'ye POST edilir

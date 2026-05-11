@@ -34,7 +34,7 @@ main/                 # Electron main process (JavaScript)
   settings.js         # User preferences persistence
   logger.js           # Application logging
   automation/         # GIB scraping + statement conversion
-    gibScraper.js     # Puppeteer-based GIB portal scraper
+    gibAutomation.js  # Puppeteer-based GIB portal automation
     gibApiClient.js   # GIB API wrapper
     statementConverter.js  # Gemini AI bank statement parsing
 
@@ -81,7 +81,7 @@ npm run test:coverage # Tests with coverage report
 ### File Naming
 
 - Components: PascalCase (`Button.tsx`, `MainLayout.tsx`)
-- Main process modules: camelCase (`database.js`, `gibScraper.js`)
+- Main process modules: camelCase (`database.js`, `gibAutomation.js`)
 
 ### Git Hooks (Husky + lint-staged)
 
@@ -113,7 +113,7 @@ npm run test:coverage # Tests with coverage report
 
 ### Large Files
 
-- `src/pages/tools/ETebligat.tsx` (~247KB) and `main/automation/gibScraper.js` (~97KB) are very large — read specific line ranges rather than entire files
+- `src/pages/tools/ETebligat.tsx` (~247KB) and `main/automation/gibAutomation.js` (~97KB) are very large — read specific line ranges rather than entire files
 - `main/main.js` (~45KB) — similarly large, read targeted sections
 
 ## Environment Variables

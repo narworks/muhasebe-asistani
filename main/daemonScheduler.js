@@ -14,7 +14,7 @@ const database = require('./database');
 const logger = require('./logger');
 const settings = require('./settings');
 const systemMonitor = require('./systemMonitor');
-const gibScraper = require('./automation/gibScraper');
+const gibAutomation = require('./automation/gibAutomation');
 const notifications = require('./notifications');
 const unreadCounter = require('./unreadCounter');
 let Sentry;
@@ -154,10 +154,10 @@ async function tick() {
             return;
         }
 
-        const result = await gibScraper.scanSingleClient(client.id, apiKey);
+        const result = await gibAutomation.scanSingleClient(client.id, apiKey);
         state.lastResult = result;
 
-        // Busy: another scan holds the scraper mutex (manual full-scan or another
+        // Busy: another scan holds the automation mutex (manual full-scan or another
         // single-client call). Don't count as a scan attempt or failure — just
         // retry on next tick. Prevents false "3 consecutive failures" Sentry alerts
         // while a user-triggered full scan runs.

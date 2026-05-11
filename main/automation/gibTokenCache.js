@@ -94,7 +94,7 @@ function persistCache() {
 /**
  * GİB token = 128 char hex (random session token, JWT değil).
  * Expire süresi sunucu tarafında — bilinmiyor. Fallback kullan, 401 recovery
- * interceptor (gibScraper) gerçek expire'da invalidate eder.
+ * interceptor (gibAutomation) gerçek expire'da invalidate eder.
  *
  * NOT: İleride farklı bir GİB endpoint JWT döndürürse decode fallback'i için
  * try block korundu (defensive).
