@@ -5,7 +5,7 @@ const tokenCache = require('./gibTokenCache');
 const captchaTelemetry = require('../captchaTelemetry');
 
 // errorType → captcha_telemetry.gib_login.failure_stage enum mapping
-// Schema enum: 'captcha' | 'credentials' | 'session' | 'network' | 'rate_limit'
+// Schema enum: 'captcha' | 'credentials' | 'session' | 'network' | 'rate_limit' | 'unknown'
 function errorTypeToFailureStage(errorType) {
     switch (errorType) {
         case 'captcha_failed':
@@ -13,6 +13,8 @@ function errorTypeToFailureStage(errorType) {
         case 'wrong_credentials':
         case 'account_locked':
             return 'credentials';
+        case 'session_invalid':
+            return 'session';
         case 'ip_blocked':
         case 'ai_rate_limit':
             return 'rate_limit';
@@ -142,10 +144,25 @@ async function httpLogin(userid, password, apiKey, maxAttempts = 3) {
             err.errorType = errorInfo.type;
             throw err;
         } catch (err) {
-            if (err.response && err.response.data) {
-                const errorInfo = classifyLoginError(err.response.data);
-                err.errorType = errorInfo.type;
-                err.message = errorInfo.message;
+            // HTTP status-based classification (önce, body parse'tan önce).
+            // 2026-05-15/16 incident'inde HTTP 403 "unknown" olarak kayıt edilip
+            // dashboard'da 'captcha' bucket'ına düşüyordu — gerçekte WAF/IP block idi.
+            if (err.response) {
+                const status = err.response.status;
+                if (status === 403) {
+                    err.errorType = 'ip_blocked';
+                    err.message = 'GİB erişim reddedildi (HTTP 403) — WAF/IP reputation block';
+                } else if (status === 401) {
+                    err.errorType = 'session_invalid';
+                    err.message = 'GİB session/auth reddi (HTTP 401)';
+                } else if (status === 429) {
+                    err.errorType = 'ip_blocked';
+                    err.message = 'GİB rate limit (HTTP 429)';
+                } else if (err.response.data) {
+                    const errorInfo = classifyLoginError(err.response.data);
+                    err.errorType = errorInfo.type;
+                    err.message = errorInfo.message;
+                }
             }
 
             if (!err.errorType) {
@@ -170,6 +187,7 @@ async function httpLogin(userid, password, apiKey, maxAttempts = 3) {
                 err.errorType === 'ip_blocked' ||
                 err.errorType === 'wrong_credentials' ||
                 err.errorType === 'account_locked' ||
+                err.errorType === 'session_invalid' ||
                 err.errorType === 'ai_rate_limit'
             ) {
                 throw err;
