@@ -2560,7 +2560,12 @@ async function loginAndGetToken(client, password, apiKey) {
         logger.debug(
             `[loginAndGetToken] HTTP login OK for ${client.gib_user_code} ${result.fromCache ? '(cached)' : '(fresh)'}`
         );
-        return { browser: null, page: null, bearerToken: result.token };
+        return {
+            browser: null,
+            page: null,
+            bearerToken: result.token,
+            fromCache: result.fromCache,
+        };
     } catch (httpErr) {
         // IP block and credential errors propagate immediately
         if (
@@ -2643,7 +2648,50 @@ async function loginAndGetToken(client, password, apiKey) {
         throw e;
     }
 
-    return { browser, page, bearerToken };
+    return { browser, page, bearerToken, fromCache: false };
+}
+
+/**
+ * apiClient'ı 401-recovery interceptor'la sar.
+ * Cached token expire/revoked olursa: invalidate + relogin + retry tek seferlik.
+ * Fresh login için no-op (recovery zaten gereksiz).
+ *
+ * 2026-05-30 incident: previewScan + downloadSelectedTebligatlar bu interceptor'u
+ * kullanmıyordu → cached token 401 dönünce kullanıcı 42/75 fail aldı, dashboard
+ * "captcha" bucket'ına düştü (gerçekte session sorunu).
+ */
+function wrapApiClientWith401Recovery(originalClient, loginResult, client, password, apiKey) {
+    if (!loginResult.fromCache) return originalClient;
+
+    let recoveryAttempted = false;
+    let activeToken = loginResult.bearerToken;
+    let activeClient = originalClient;
+
+    activeClient.interceptors.response.use(
+        (resp) => resp,
+        async (err) => {
+            if (err.response?.status === 401 && !recoveryAttempted) {
+                recoveryAttempted = true;
+                logger.debug(
+                    `[loginAndGetToken] Cached token returned 401 for ${client.gib_user_code}, invalidating + relogin`
+                );
+                const tokenCache = require('./gibTokenCache');
+                tokenCache.invalidateToken(client.gib_user_code);
+                const fresh = await gibHttpLogin.loginOrReuseToken(
+                    client.gib_user_code,
+                    password,
+                    apiKey
+                );
+                activeToken = fresh.token;
+                activeClient = gibApiClient.createApiClient(activeToken);
+                err.config.headers.Authorization = `Bearer ${activeToken}`;
+                return activeClient.request(err.config);
+            }
+            return Promise.reject(err);
+        }
+    );
+
+    return activeClient;
 }
 
 /**
@@ -2756,7 +2804,13 @@ async function previewScan(onStatusUpdate, apiKey) {
             browser = loginResult.browser;
             const { bearerToken } = loginResult;
 
-            const apiClient = gibApiClient.createApiClient(bearerToken);
+            const apiClient = wrapApiClientWith401Recovery(
+                gibApiClient.createApiClient(bearerToken),
+                loginResult,
+                client,
+                password,
+                apiKey
+            );
             const listResp = await apiClient.post('/etebligat/etebligat/tebligat-listele', {
                 meta: {
                     pagination: { pageNo: 1, pageSize: 1000 },
@@ -2972,7 +3026,13 @@ async function downloadSelectedTebligatlar(onStatusUpdate, apiKey, selections) {
             try {
                 const loginResult = await loginAndGetToken(client, password, apiKey);
                 browser = loginResult.browser;
-                const apiClient = gibApiClient.createApiClient(loginResult.bearerToken);
+                const apiClient = wrapApiClientWith401Recovery(
+                    gibApiClient.createApiClient(loginResult.bearerToken),
+                    loginResult,
+                    client,
+                    password,
+                    apiKey
+                );
 
                 // Re-list in the fresh session to get valid secureIds.
                 // secureIds from the preview session are bound to that bearer token
