@@ -179,6 +179,15 @@ function startDownload() {
     autoUpdater.downloadUpdate();
 }
 
+// Callback that main.js registers to flip its isQuitting flag before we quit.
+// Without this, mainWindow.on('close') handler calls event.preventDefault()
+// because isQuitting=false, and app.quit() stalls waiting for window to close.
+let onBeforeQuitCallback = null;
+
+function setOnBeforeQuit(cb) {
+    onBeforeQuitCallback = cb;
+}
+
 function quitAndInstall() {
     if (installInProgress) {
         logger.info('[AutoUpdater] quitAndInstall already in progress, ignoring duplicate call');
@@ -187,27 +196,54 @@ function quitAndInstall() {
     installInProgress = true;
     logger.info('[AutoUpdater] quitAndInstall called — restarting to apply update');
 
-    // On macOS, Squirrel's ShipIt needs the app to be fully exited
-    // before it can replace the bundle. app.quit() is too slow —
-    // ShipIt sees the app still running and aborts.
-    // Use autoUpdater.quitAndInstall with isSilent=true to force quit,
-    // then app.exit as fallback.
+    // 1) Notify main.js to set isQuitting=true so window close handler doesn't
+    //    preventDefault() and stall app.quit().
+    try {
+        if (onBeforeQuitCallback) {
+            onBeforeQuitCallback();
+            logger.info('[AutoUpdater] onBeforeQuit callback invoked (isQuitting set)');
+        }
+    } catch (err) {
+        logger.info(`[AutoUpdater] onBeforeQuit callback error: ${err.message}`);
+    }
+
+    // 2) Belt + suspenders: explicitly remove close listeners from all windows
+    //    so even if isQuitting wasn't propagated, close goes through.
+    try {
+        const { BrowserWindow } = require('electron');
+        BrowserWindow.getAllWindows().forEach((win) => {
+            try {
+                win.removeAllListeners('close');
+            } catch {
+                /* ignore */
+            }
+        });
+        logger.info('[AutoUpdater] Removed close listeners from all windows');
+    } catch (err) {
+        logger.info(`[AutoUpdater] Remove listeners error: ${err.message}`);
+    }
+
+    // 3) Trigger the actual install + relaunch.
     try {
         autoUpdater.quitAndInstall(true, true);
-        logger.info('[AutoUpdater] quitAndInstall() returned, waiting for quit signal...');
+        logger.info('[AutoUpdater] quitAndInstall(true, true) returned');
     } catch (err) {
         logger.info(`[AutoUpdater] quitAndInstall threw: ${err.message}`);
     }
 
+    // Fallback: if Squirrel/ShipIt didn't quit the app, force-exit after 5s.
+    // Previous 1s was killing the process before Squirrel could finish the
+    // bundle replacement → update would never actually install → endless loop.
+    // 5s gives Squirrel handshake + before-quit async cleanup (CRNN worker
+    // termination, telemetry flush) enough time to complete.
     setTimeout(() => {
-        logger.info('[AutoUpdater] Fallback app.exit(0) triggered after 1s');
+        logger.info('[AutoUpdater] Fallback app.exit(0) triggered after 5s');
         app.exit(0);
-    }, 1000);
+    }, 5000);
 
-    // If after 3s we're still running, the quit failed — surface a dialog so the user
-    // knows they need to restart manually instead of thinking the click did nothing.
+    // If after 8s we're still running, the quit failed — surface a dialog.
     setTimeout(() => {
-        logger.info('[AutoUpdater] Still running after 3s — showing manual-restart dialog');
+        logger.info('[AutoUpdater] Still running after 8s — showing manual-restart dialog');
         try {
             const { dialog } = require('electron');
             dialog.showMessageBox({
@@ -221,7 +257,7 @@ function quitAndInstall() {
             logger.info(`[AutoUpdater] Fallback dialog error: ${err.message}`);
         }
         installInProgress = false; // allow retry
-    }, 3000);
+    }, 8000);
 }
 
 module.exports = {
@@ -231,4 +267,5 @@ module.exports = {
     quitAndInstall,
     isUpdateReady,
     setOnUpdateReady,
+    setOnBeforeQuit,
 };

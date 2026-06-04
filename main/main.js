@@ -493,6 +493,12 @@ app.whenReady().then(() => {
     // Initialize auto-updater
     autoUpdater.init(mainWindow);
 
+    // v1.9.6: autoUpdater.quitAndInstall'a girmeden önce isQuitting'i set et —
+    // close handler preventDefault yapmasın, app.quit() takılmasın.
+    autoUpdater.setOnBeforeQuit(() => {
+        isQuitting = true;
+    });
+
     // When update is downloaded (background), refresh tray menu to show install option
     autoUpdater.setOnUpdateReady(() => {
         try {
@@ -509,6 +515,9 @@ app.whenReady().then(() => {
 
     // IPC: restart and install update
     ipcMain.handle('restart-and-update', () => {
+        // Belt + suspenders: setOnBeforeQuit zaten flag set ediyor ama burada
+        // explicit yapmak da güvenli (renderer'ın "Yeniden Başlat" butonu).
+        isQuitting = true;
         autoUpdater.quitAndInstall();
     });
 
