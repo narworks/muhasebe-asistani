@@ -256,21 +256,12 @@ const createWindow = () => {
         }
     });
 
-    // Hide dock / taskbar icon when window is hidden → true menu-bar-app behavior
-    mainWindow.on('hide', () => {
-        if (process.platform === 'darwin' && app.dock) {
-            app.dock.hide();
-        } else if (process.platform === 'win32') {
-            mainWindow.setSkipTaskbar(true);
-        }
-    });
-
+    // v1.9.5: Pencere gizlendiğinde dock/taskbar ikonunu KORUYORUZ.
+    // Eskiden "menu-bar-app behavior" için dock.hide()/setSkipTaskbar(true)
+    // yapıyorduk; ama macOS Tahoe'da menu bar ikonları agresif gizlendiği için
+    // dock'tan da kaybolunca kullanıcı uygulamaya hiçbir yerden erişemiyordu.
+    // Standart desktop app davranışına geçtik — dock'tan tıklayınca pencere geri açılır.
     mainWindow.on('show', () => {
-        if (process.platform === 'darwin' && app.dock) {
-            app.dock.show();
-        } else if (process.platform === 'win32') {
-            mainWindow.setSkipTaskbar(false);
-        }
         // Clear unread counter when user opens the main window
         try {
             require('./unreadCounter').clear();
@@ -491,8 +482,9 @@ app.whenReady().then(() => {
             app.getLoginItemSettings().wasOpenedAtLogin &&
             app.getLoginItemSettings().wasOpenedAsHidden;
         if (wasLaunchedAtLogin && mainWindow) {
+            // Pencereyi gizle ama dock ikonunu koru (v1.9.5: kullanıcı boot sonrası
+            // dock'tan tek tık ile uygulamayı açabilsin).
             mainWindow.hide();
-            if (app.dock) app.dock.hide();
         }
     } catch {
         /* ignore */
