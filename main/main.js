@@ -443,6 +443,18 @@ const toggleDaemonPopup = (trayBounds) => {
 };
 
 app.whenReady().then(() => {
+    // v1.9.7: macOS önceki sürüm'de app.dock.hide() çağrıldığında bu kararı
+    // process restart sonrası bile sticky olarak hatırlıyor. Eski v1.9.2-v1.9.5
+    // çalıştırmış kullanıcılarda dock ikonu kalıcı gizli kalmıştı. Her açılışta
+    // explicit show() çağırarak bu sticky state'i override ediyoruz.
+    if (process.platform === 'darwin' && app.dock) {
+        try {
+            app.dock.show();
+        } catch (err) {
+            console.error('app.dock.show() failed:', err.message);
+        }
+    }
+
     // Supabase'i başlat
     try {
         supabase.init();
