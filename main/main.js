@@ -1506,50 +1506,28 @@ ipcMain.handle('download-excel-template', async () => {
         cell.protection = { locked: true };
     });
 
-    // Header hücre açıklamaları (tooltip)
-    ws.getCell('A1').note = 'Zorunlu alan. Firma veya şahıs adını yazın.';
-    ws.getCell('B1').note = 'Opsiyonel. 10 veya 11 haneli vergi/TC kimlik numarası.';
+    // Header hücre açıklamaları (tooltip) — örnek değer + açıklama
+    ws.getCell('A1').note = 'Zorunlu. Firma veya şahıs adını yazın. Örn: ABC Tekstil A.Ş.';
+    ws.getCell('B1').note = 'Opsiyonel. 10 haneli VKN veya 11 haneli TC kimlik. Örn: 1234567890';
     ws.getCell('C1').note =
-        'GİB portalına giriş için kullanıcı kodu (genellikle vergi numarası ile aynı).';
-    ws.getCell('D1').note = 'GİB portalı şifresi. Bu bilgi yalnızca bilgisayarınızda saklanır.';
-
-    // Örnek satır (gri italik — import sırasında otomatik atlanır)
-    const exRow = ws.addRow(['Örnek Firma Ltd. Şti.', '1234567890', '1234567890', 'sifre123']);
-    exRow.eachCell((cell) => {
-        cell.font = { italic: true, color: { argb: 'FF9CA3AF' } };
-        cell.protection = { locked: false };
-    });
-
-    // Veri girişi yapılacak satırlar (2-201)
-    const dataRange = 201;
+        'GİB portal giriş kullanıcı kodu. Mükellef hesabı için VKN/TCKN ile aynı olur (10-11 hane). Mali müşavir adına açılmış hesaplar için GİB özel kısa kod atar (6-8 hane). Uzunluk kısıtı yok.';
+    ws.getCell('D1').note = 'GİB portal şifresi. Yalnızca cihazınızda şifreli olarak saklanır.';
 
     // B ve C sütunları "Metin" formatında — kopyala-yapıştır sırasında baştaki
     // sıfırların korunması için kritik (vergi no 0123456789 → 123456789'a düşmesin).
-    // Önceden data validation popup'ı vardı; toplu paste'i yıldırıcı hale getiriyordu
-    // ve sunucu tarafında zaten validate ediliyor. Sadece informatif tooltip yeterli.
     ws.getColumn('B').numFmt = '@';
     ws.getColumn('C').numFmt = '@';
 
-    // Veri satırları kilit açık, boş hücreler düzenlenebilir
-    for (let r = 2; r <= dataRange; r++) {
-        ws.getRow(r).eachCell({ includeEmpty: true }, (cell) => {
-            cell.protection = { locked: false };
-        });
-    }
-
-    // Sayfayı koru — header kilitli, veri alanları açık (şifresiz koruma).
-    // formatColumns: true → kullanıcı gerekirse sütun formatını değiştirebilsin
-    // (örn. başka bir kaynaktan paste sonrası Metin formatını korumak için).
-    await ws.protect('', {
-        selectLockedCells: true,
-        selectUnlockedCells: true,
-        formatColumns: true,
-        formatRows: true,
-        insertRows: true,
-        deleteRows: true,
-        sort: false,
-        autoFilter: false,
-    });
+    // Not: Sayfa koruması KOYMUYORUZ.
+    // v1.9.2'de protect() ile header'ı korumaya çalışıyorduk; ExcelJS'in unlock
+    // davranışındaki edge case'ler (column-level style + boş hücrelerde default
+    // locked:true) yüzünden müşteriler "Değiştirmeye çalıştığınız hücre korumalı
+    // sayfada" hatası alıyordu. Header zaten import handler tarafında EXPECTED_HEADERS
+    // ile validate ediliyor; yanlış değişirse import "başlık formatta değil" hatası
+    // veriyor. Bu yüzden Excel-side koruma gereksiz friction.
+    // Ayrıca: örnek satır da kaldırıldı (2. satır → şablonda kafa karışıklığı
+    // yaratıyordu; "silsem mi, üstüne mi yazsam?" sorusu). Yerine header tooltip'leri
+    // örnek değer içeriyor (üstte note alanları).
 
     await wb.xlsx.writeFile(filePath);
     return { success: true, filePath };
