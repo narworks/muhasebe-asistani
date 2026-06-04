@@ -74,5 +74,3 @@ ml-training/dddd_trainer/
 ml-training/RUNBOOK_DDDDOCR.md
 scripts/test-ddddocr.js
 scripts/convert-to-ddddocr-format.js
-public/brand/*linkedin*
-public/brand/*kapak*
