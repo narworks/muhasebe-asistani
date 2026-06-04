@@ -1520,32 +1520,15 @@ ipcMain.handle('download-excel-template', async () => {
         cell.protection = { locked: false };
     });
 
-    // Veri girişi yapılacak satırlar (2-201) için doğrulama kuralları
+    // Veri girişi yapılacak satırlar (2-201)
     const dataRange = 201;
 
-    // B sütunu: Vergi numarası — sadece rakam, 10-11 hane
-    for (let r = 2; r <= dataRange; r++) {
-        ws.getCell(`B${r}`).dataValidation = {
-            type: 'textLength',
-            operator: 'between',
-            showErrorMessage: true,
-            errorTitle: 'Geçersiz Vergi Numarası',
-            error: 'Vergi numarası 10 veya 11 haneli olmalıdır.',
-            formulae: [10, 11],
-        };
-    }
-
-    // C sütunu: GİB kullanıcı kodu — metin uzunluğu
-    for (let r = 2; r <= dataRange; r++) {
-        ws.getCell(`C${r}`).dataValidation = {
-            type: 'textLength',
-            operator: 'between',
-            showErrorMessage: true,
-            errorTitle: 'Geçersiz Kullanıcı Kodu',
-            error: 'GİB kullanıcı kodu 10-11 karakter olmalıdır.',
-            formulae: [10, 11],
-        };
-    }
+    // B ve C sütunları "Metin" formatında — kopyala-yapıştır sırasında baştaki
+    // sıfırların korunması için kritik (vergi no 0123456789 → 123456789'a düşmesin).
+    // Önceden data validation popup'ı vardı; toplu paste'i yıldırıcı hale getiriyordu
+    // ve sunucu tarafında zaten validate ediliyor. Sadece informatif tooltip yeterli.
+    ws.getColumn('B').numFmt = '@';
+    ws.getColumn('C').numFmt = '@';
 
     // Veri satırları kilit açık, boş hücreler düzenlenebilir
     for (let r = 2; r <= dataRange; r++) {
@@ -1554,12 +1537,14 @@ ipcMain.handle('download-excel-template', async () => {
         });
     }
 
-    // Sayfayı koru — header kilitli, veri alanları açık (şifresiz koruma)
+    // Sayfayı koru — header kilitli, veri alanları açık (şifresiz koruma).
+    // formatColumns: true → kullanıcı gerekirse sütun formatını değiştirebilsin
+    // (örn. başka bir kaynaktan paste sonrası Metin formatını korumak için).
     await ws.protect('', {
         selectLockedCells: true,
         selectUnlockedCells: true,
-        formatColumns: false,
-        formatRows: false,
+        formatColumns: true,
+        formatRows: true,
         insertRows: true,
         deleteRows: true,
         sort: false,
