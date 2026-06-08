@@ -74,3 +74,6 @@ ml-training/dddd_trainer/
 ml-training/RUNBOOK_DDDDOCR.md
 scripts/test-ddddocr.js
 scripts/convert-to-ddddocr-format.js
+
+# 2Captcha calibration test result (local only)
+2captcha-calibration-result.json

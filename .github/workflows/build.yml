@@ -7,6 +7,7 @@ on:
 
 # Required GitHub Secrets:
 # - GEMINI_API_KEY: Google Gemini AI API key
+# - TWOCAPTCHA_API_KEY: 2Captcha service API key (CAPTCHA fallback when CRNN fails)
 # - SUPABASE_URL: Supabase project URL
 # - SUPABASE_ANON_KEY: Supabase anonymous/public key
 # - BILLING_URL: Billing portal URL
@@ -46,12 +47,14 @@ jobs:
               shell: bash
               env:
                   GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+                  TWOCAPTCHA_API_KEY: ${{ secrets.TWOCAPTCHA_API_KEY }}
                   SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
                   SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
                   BILLING_URL: ${{ secrets.BILLING_URL }}
                   SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
               run: |
                   echo "GEMINI_API_KEY=${GEMINI_API_KEY}" > .env
+                  echo "TWOCAPTCHA_API_KEY=${TWOCAPTCHA_API_KEY}" >> .env
                   echo "SUPABASE_URL=${SUPABASE_URL}" >> .env
                   echo "SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}" >> .env
                   echo "BILLING_URL=${BILLING_URL}" >> .env

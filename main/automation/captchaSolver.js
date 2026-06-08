@@ -26,6 +26,10 @@ const stats = {
     crnn_error: 0,
     tesseract_success: 0,
     tesseract_fail: 0,
+    twocaptcha_success: 0,
+    twocaptcha_fail: 0,
+    // Eski AI cascade istatistikleri — v1.9.9'da AI fallback kaldırıldı,
+    // dead code temizliği v2.0'da yapılacak. Şimdilik 0 kalır.
     gemini_success: 0,
     gemini_fail: 0,
     openai_success: 0,
@@ -294,50 +298,98 @@ async function solveWithClaude(imageBase64) {
 }
 
 /**
- * AI Cascade — Gemini → OpenAI → Claude. Bir provider throttle/ban
- * yerse otomatik diğerine geçer. Hibrit accuracy %99-99.5 sağlar.
+ * 2Captcha — CAPTCHA-spesifik servis (insan + AI hibrit solver).
  *
- * Provider sırası bilinçli: Gemini en ucuz + en hızlı, fail olunca pahalı
- * ama çok doğru OpenAI/Claude denenir.
+ * v1.9.9 itibarıyla CRNN/Tesseract fallback'i olarak Gemini/OpenAI/Claude
+ * AI cascade'inin yerini aldı. Sebepler:
+ *   - 2026-06-07 incident: Google gemini-2.0-flash deprecate edip 404 dönmeye
+ *     başladı (Sentry MUHASEBE-ASISTANI-29) → tüm CAPTCHA fallback koptu.
+ *   - OpenAI ve Anthropic kullanım politikaları CAPTCHA çözmeyi açıkça yasaklar
+ *     (account ban riski).
+ *   - 2Captcha CAPTCHA çözmek için kurulmuş bir servis — ban riski sıfır,
+ *     deprecation riski sıfır, $0.0005/captcha sabit fiyat.
+ *
+ * Akış: POST /in.php (base64 image) → captcha_id → poll GET /res.php her 5s
+ * → solution. Tipik süre 6-12 sn.
  */
-async function solveWithAICascade(imageBase64, geminiApiKey) {
-    const errors = [];
+const TWOCAPTCHA_BASE = 'https://2captcha.com';
+const TWOCAPTCHA_SUBMIT_TIMEOUT_MS = 15_000;
+const TWOCAPTCHA_POLL_TIMEOUT_MS = 10_000;
+const TWOCAPTCHA_POLL_INTERVAL_MS = 5_000;
+const TWOCAPTCHA_MAX_POLL_MS = 60_000;
 
-    // 1) Gemini (mevcut, proxy üzerinden)
-    try {
-        const r = await solveWithGemini(imageBase64, geminiApiKey);
-        return { text: r.text, source: 'gemini' };
-    } catch (err) {
-        stats.gemini_fail++;
-        errors.push(`gemini: ${err.message}`);
-        logger.debug(`[CAPTCHA] Gemini fail: ${err.message}, OpenAI fallback`);
+async function solveWith2Captcha(imageBase64) {
+    const apiKey = process.env.TWOCAPTCHA_API_KEY;
+    if (!apiKey) throw new Error('TWOCAPTCHA_API_KEY missing');
+
+    // 1) Submit
+    const form = new URLSearchParams();
+    form.append('key', apiKey);
+    form.append('method', 'base64');
+    form.append('body', imageBase64);
+    form.append('json', '1');
+
+    const submitData = await withTimeout(
+        fetch(`${TWOCAPTCHA_BASE}/in.php`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: form.toString(),
+        }).then((r) => r.json()),
+        TWOCAPTCHA_SUBMIT_TIMEOUT_MS,
+        '2Captcha submit'
+    );
+
+    if (submitData.status !== 1) {
+        throw new Error(`2Captcha submit failed: ${submitData.request || 'unknown'}`);
     }
+    const captchaId = submitData.request;
 
-    // 2) OpenAI Vision
+    // 2) Poll (5s aralıkla, max 60s)
+    const pollStart = Date.now();
+    while (Date.now() - pollStart < TWOCAPTCHA_MAX_POLL_MS) {
+        await new Promise((r) => setTimeout(r, TWOCAPTCHA_POLL_INTERVAL_MS));
+        const url = `${TWOCAPTCHA_BASE}/res.php?key=${apiKey}&action=get&id=${captchaId}&json=1`;
+        const pollData = await withTimeout(
+            fetch(url).then((r) => r.json()),
+            TWOCAPTCHA_POLL_TIMEOUT_MS,
+            '2Captcha poll'
+        );
+        if (pollData.status === 1) {
+            const text = (pollData.request || '').trim().replace(/\s/g, '');
+            if (!CAPTCHA_VALID_REGEX.test(text)) {
+                throw new Error(`Invalid 2Captcha solution format: "${text}"`);
+            }
+            return { text, source: '2captcha' };
+        }
+        if (pollData.request !== 'CAPCHA_NOT_READY') {
+            throw new Error(`2Captcha poll error: ${pollData.request}`);
+        }
+    }
+    throw new Error('2Captcha timeout (60s)');
+}
+
+/**
+ * Fallback solver — CRNN/Tesseract fail olunca devreye girer.
+ *
+ * v1.9.9 itibarıyla sadece 2Captcha kullanır. Eski Gemini/OpenAI/Claude
+ * cascade kaldırıldı (yukarıdaki solveWith2Captcha dokümantasyonu).
+ *
+ * Function imzası `geminiApiKey` parametresi geriye uyumluluk için tutuluyor;
+ * 2Captcha kendi API key'ini process.env'den okur. Param ignore edilir.
+ */
+async function solveWithAICascade(imageBase64, _geminiApiKey) {
     try {
-        const r = await solveWithOpenAI(imageBase64);
-        stats.openai_success++;
+        const r = await solveWith2Captcha(imageBase64);
+        stats.twocaptcha_success++;
+        logger.debug(`[CAPTCHA] 2Captcha solved: ${r.text}`);
         return r;
     } catch (err) {
-        stats.openai_fail++;
-        errors.push(`openai: ${err.message}`);
-        logger.debug(`[CAPTCHA] OpenAI fail: ${err.message}, Claude fallback`);
+        stats.twocaptcha_fail++;
+        logger.debug(`[CAPTCHA] 2Captcha fail: ${err.message}`);
+        const wrapped = new Error(`2Captcha failed: ${err.message}`);
+        wrapped.errorType = '2captcha_failed';
+        throw wrapped;
     }
-
-    // 3) Claude Vision
-    try {
-        const r = await solveWithClaude(imageBase64);
-        stats.claude_success++;
-        return r;
-    } catch (err) {
-        stats.claude_fail++;
-        errors.push(`claude: ${err.message}`);
-        logger.debug(`[CAPTCHA] Claude fail: ${err.message}`);
-    }
-
-    const aggregate = new Error(`All AI providers failed: ${errors.join(' | ')}`);
-    aggregate.errorType = 'ai_all_failed';
-    throw aggregate;
 }
 
 /**
@@ -466,17 +518,13 @@ async function solveCaptchaWithSource(imageBase64, apiKey, options = {}) {
         });
         return aiResult;
     } catch (err) {
+        // v1.9.9: AI cascade → 2Captcha. Failure reporting da '2captcha' olarak yansıtılıyor.
         captchaTelemetry.recordCaptcha({
-            method: 'gemini', // cascade ilk provider — fail toplandı
+            method: '2captcha',
             success: false,
             durationMs: Date.now() - aiStart,
             imageHash,
-            failureReason:
-                err.errorType === 'ai_rate_limit'
-                    ? 'timeout'
-                    : err.errorType === 'ai_all_failed'
-                      ? 'unknown'
-                      : 'unknown',
+            failureReason: err.errorType === '2captcha_failed' ? 'unknown' : 'unknown',
             attemptId,
         });
         throw err;
