@@ -93,7 +93,9 @@ async function convert(fileBuffer, mimeType, prompt, apiKey) {
     }
 
     const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
+    // 2026-06-07 incident: gemini-2.0-flash deprecated/404 → gemini-2.5-flash.
+    // captchaSolver.js ile aynı upgrade — Excel dönüştürme de aynı modeli kullanıyordu.
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
 
     let fileContent = '';
     let sheetCount = 1;

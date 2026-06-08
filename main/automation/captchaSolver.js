@@ -168,7 +168,10 @@ async function solveWithGemini(imageBase64, apiKey) {
     // proxy stable olunca bu yol kaldırılır + GEMINI_API_KEY bundle'dan
     // silinir (Phase 2 sunset adımı).
     const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
+    // 2026-06-07 incident: Google gemini-2.0-flash'ı deprecate edip 404 dönmeye
+    // başladı (Sentry MUHASEBE-ASISTANI-29). CAPTCHA fallback tamamen koptu →
+    // GIB login fail oranı patladı. gemini-2.5-flash'a yükseltildi (stabil + güncel).
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
 
     for (let attempt = 1; attempt <= 3; attempt++) {
         try {
