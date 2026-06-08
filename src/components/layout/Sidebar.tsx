@@ -5,143 +5,6 @@ import { useAuth } from '../../context/AuthContext';
 import { getExpiryStatus, getCompactLabel, getSeverityColors } from '../../lib/subscriptionUtils';
 import type { Subscription } from '../../types';
 
-// --- CHANGELOG DATA ---
-type ChangeEntry = { type: '+' | '~' | '-'; text: string };
-type VersionLog = { version: string; date: string; entries: ChangeEntry[] };
-
-const CHANGELOG: VersionLog[] = [
-    {
-        version: '1.3.41',
-        date: '2026-04-14',
-        entries: [
-            {
-                type: '~',
-                text: 'Ke\u015fif a\u011f hatas\u0131 sonras\u0131 Tara/Ke\u015fif butonlar\u0131n\u0131n kaybolma sorunu d\u00fczeltildi',
-            },
-        ],
-    },
-    {
-        version: '1.3.4',
-        date: '2026-04-14',
-        entries: [
-            {
-                type: '~',
-                text: 'Ke\u015fif sonras\u0131 indirme hatas\u0131 (409 Conflict) d\u00fczeltildi',
-            },
-            {
-                type: '~',
-                text: '\u0130lk Ke\u015fif sonras\u0131 Tara butonu g\u00f6r\u00fcnmeme sorunu d\u00fczeltildi',
-            },
-            {
-                type: '~',
-                text: 'T\u00fcm tebligatlar\u0131 atla se\u00e7ene\u011fi art\u0131k m\u00fckellefi ke\u015fif yap\u0131lm\u0131\u015f olarak i\u015faretler',
-            },
-        ],
-    },
-    {
-        version: '1.3.0',
-        date: '2026-04-12',
-        entries: [
-            {
-                type: '+',
-                text: 'Tab tabanl\u0131 sayfa yap\u0131s\u0131 \u2014 Tarama, Sonu\u00e7lar, M\u00fckellefler, Zamanlama',
-            },
-            {
-                type: '+',
-                text: 'Excel Asistan\u0131: t\u00fcm sayfalar\u0131 oku, para format\u0131 koru, g\u00fc\u00e7l\u00fc AI prompt',
-            },
-            {
-                type: '+',
-                text: 'Toast bildirimleri \u2014 tarama, hata, i\u00e7e aktarma bildirimleri',
-            },
-            {
-                type: '~',
-                text: 'G\u00fcvenlik: IPC listener izolasyonu, oturum korumas\u0131, admin yetkilendirme',
-            },
-        ],
-    },
-    {
-        version: '1.2.0',
-        date: '2026-04-10',
-        entries: [
-            {
-                type: '~',
-                text: 'Aray\u00fcz yap\u0131s\u0131 yenilendi \u2014 daha h\u0131zl\u0131 ve s\u00fcrd\u00fcr\u00fclebilir mimari',
-            },
-            {
-                type: '+',
-                text: '\u0130ndirme hatalar\u0131 art\u0131k detayl\u0131 log\u2019da g\u00f6r\u00fcn\u00fcyor',
-            },
-        ],
-    },
-    {
-        version: '1.1.0',
-        date: '2026-04-10',
-        entries: [
-            {
-                type: '+',
-                text: 'Excel \u015fablon indirme + format do\u011frulama ile toplu m\u00fckellef aktar\u0131m\u0131',
-            },
-            {
-                type: '+',
-                text: 'Tarama ge\u00e7mi\u015fi detay\u0131 \u2014 sat\u0131ra t\u0131klay\u0131nca m\u00fckellef sonu\u00e7lar\u0131',
-            },
-            {
-                type: '+',
-                text: '\u0130ndirme tekrar\u0131 engeli \u2014 mevcut belgeler atlan\u0131r',
-            },
-            { type: '~', text: 'Windows T\u00fcrk\u00e7e karakter dosya yolu d\u00fczeltmesi' },
-        ],
-    },
-    {
-        version: '1.0.96',
-        date: '2026-04-08',
-        entries: [
-            {
-                type: '+',
-                text: '\u0130lk Ke\u015fif butonu \u2014 6 farkl\u0131 zaman aral\u0131\u011f\u0131 se\u00e7ene\u011fi',
-            },
-            {
-                type: '+',
-                text: 'Tarama ge\u00e7mi\u015fi tablosu + Ba\u015far\u0131s\u0131zlar\u0131 Tekrar Dene butonu',
-            },
-            { type: '+', text: '\u015eifre test butonu (m\u00fckellef baz\u0131nda)' },
-            { type: '~', text: 'getTebligatlar limiti 200 \u2192 50000' },
-        ],
-    },
-    {
-        version: '1.0.90',
-        date: '2026-04-04',
-        entries: [
-            { type: '+', text: 'Sentry hata takibi entegrasyonu (PII-safe)' },
-            { type: '+', text: 'Rate limit korunmas\u0131 + monotonic clock' },
-            { type: '~', text: 'downloadDocument null yerine Error f\u0131rlat\u0131yor' },
-        ],
-    },
-    {
-        version: '1.0.77',
-        date: '2026-03-28',
-        entries: [
-            {
-                type: '+',
-                text: 'Yeni tebligat paneli \u2014 tarama sonras\u0131 sa\u011fda detayl\u0131 panel a\u00e7\u0131l\u0131r',
-            },
-            {
-                type: '+',
-                text: 'Tarama ge\u00e7mi\u015fi \u2014 her taramada yeni/eski say\u0131lar\u0131 g\u00f6r\u00fcn\u00fcr',
-            },
-            { type: '+', text: "Excel'den toplu m\u00fckellef aktar\u0131m\u0131" },
-            { type: '+', text: 'M\u00fckellef ekleme limiti (200 hak) ve sayac\u0131' },
-            { type: '+', text: 'Uygulama i\u00e7i destek formu' },
-            { type: '~', text: 'Daha b\u00fcy\u00fck pencere boyutu (1440x960)' },
-            { type: '~', text: 'M\u00fckerrer m\u00fckellef ekleme engeli' },
-            { type: '-', text: 'Vekalet sorgu sistemi kald\u0131r\u0131ld\u0131' },
-        ],
-    },
-];
-
-const entryColor = { '+': 'text-emerald-400', '~': 'text-sky-400', '-': 'text-red-400' };
-
 // --- ICONS ---
 const BarChartIcon = () => (
     <svg
@@ -309,7 +172,6 @@ const Sidebar: React.FC = () => {
     // destek talebine ekler. Destek ekibi hata teşhisini ticket üzerinden,
     // ayrıca log isteme adımı olmadan yapabilir.
     const [supportAttachLog, setSupportAttachLog] = useState(true);
-    const [changelogOpen, setChangelogOpen] = useState(false);
 
     useEffect(() => {
         const fetchModules = () => {
@@ -677,12 +539,11 @@ const Sidebar: React.FC = () => {
 
                 {/* Version + User Profile */}
                 <div className="pt-3">
-                    <button
-                        onClick={() => setChangelogOpen(true)}
-                        className="mx-auto mb-3 flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-800 border border-slate-700 text-xs text-slate-400 hover:text-white hover:border-slate-500 transition-colors"
-                    >
-                        <span>v{__APP_VERSION__}</span>
-                    </button>
+                    <div className="mx-auto mb-3 flex items-center justify-center">
+                        <span className="px-3 py-1 rounded-full bg-slate-800 border border-slate-700 text-xs text-slate-400">
+                            v{__APP_VERSION__}
+                        </span>
+                    </div>
                     <div className="p-2 rounded-lg hover:bg-slate-800 transition-colors border-t border-slate-700 pt-3">
                         <div className="flex items-center space-x-3">
                             <div className="w-10 h-10 rounded-full bg-sky-500 flex items-center justify-center font-bold text-white">
@@ -716,57 +577,6 @@ const Sidebar: React.FC = () => {
                     </div>
                 </div>
             </div>
-
-            {/* Changelog Modal */}
-            {changelogOpen && (
-                <div
-                    className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center"
-                    onClick={() => setChangelogOpen(false)}
-                >
-                    <div
-                        className="bg-slate-800 rounded-xl border border-slate-700 w-full max-w-lg mx-4 p-6 max-h-[80vh] overflow-y-auto"
-                        onClick={(e) => e.stopPropagation()}
-                    >
-                        <div className="flex items-center justify-between mb-4">
-                            <h3 className="text-lg font-bold text-white">
-                                De&#287;i&#351;iklik Ge&#231;mi&#351;i
-                            </h3>
-                            <button
-                                onClick={() => setChangelogOpen(false)}
-                                className="text-slate-400 hover:text-white text-sm"
-                            >
-                                Kapat
-                            </button>
-                        </div>
-                        <div className="space-y-5">
-                            {CHANGELOG.map((ver) => (
-                                <div key={ver.version}>
-                                    <div className="flex items-center gap-2 mb-2">
-                                        <span
-                                            className={`text-xs font-bold px-2 py-0.5 rounded-full ${ver.version === __APP_VERSION__ ? 'bg-emerald-600 text-white' : 'bg-slate-700 text-slate-300'}`}
-                                        >
-                                            v{ver.version}
-                                        </span>
-                                        <span className="text-xs text-slate-500">{ver.date}</span>
-                                    </div>
-                                    <div className="space-y-1.5 text-sm text-slate-300 pl-1">
-                                        {ver.entries.map((e, i) => (
-                                            <div key={i} className="flex gap-2">
-                                                <span
-                                                    className={`${entryColor[e.type]} font-bold mt-0.5`}
-                                                >
-                                                    {e.type}
-                                                </span>
-                                                <span>{e.text}</span>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                </div>
-            )}
         </div>
     );
 };
