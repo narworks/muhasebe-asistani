@@ -299,6 +299,8 @@ const createWindow = () => {
 
 // Helper: run scan with status updates
 const runScanWithUpdates = async () => {
+    // v1.9.11: zamanlanmış tarama öncesi license state'i taze tut.
+    await licenseManager.ensureFreshLicense();
     if (!licenseManager.hasModuleAccess('e_tebligat')) {
         logger.debug('[Scheduler] Skipping scan - e_tebligat module not active');
         return;
@@ -777,6 +779,9 @@ ipcMain.handle('get-user-info', async () => {
 
 // Start Scan with options (clientIds filter, prioritizeFailed)
 ipcMain.on('start-scan-with-options', async (event, scanOptions) => {
+    // v1.9.11: scan başlamadan license state'i taze tut (stale state expired
+    // hesapların scan yapabilmesine yol açıyordu — Mehmet Çomak vakası).
+    await licenseManager.ensureFreshLicense();
     if (!licenseManager.hasModuleAccess('e_tebligat')) {
         event.reply('scan-error', 'E-Tebligat modülü aktif değil. Lütfen abone olun.');
         return;
@@ -827,6 +832,9 @@ ipcMain.on('start-scan-with-options', async (event, scanOptions) => {
 
 // Start Scan (fresh)
 ipcMain.on('start-scan', async (event) => {
+    // v1.9.11: scan başlamadan license state'i taze tut (stale state expired
+    // hesapların scan yapabilmesine yol açıyordu — Mehmet Çomak vakası).
+    await licenseManager.ensureFreshLicense();
     if (!licenseManager.hasModuleAccess('e_tebligat')) {
         event.reply('scan-error', 'E-Tebligat modülü aktif değil. Lütfen abone olun.');
         return;
@@ -887,6 +895,9 @@ ipcMain.on('start-scan', async (event) => {
 
 // Resume Scan (continue from where stopped)
 ipcMain.on('resume-scan', async (event) => {
+    // v1.9.11: scan başlamadan license state'i taze tut (stale state expired
+    // hesapların scan yapabilmesine yol açıyordu — Mehmet Çomak vakası).
+    await licenseManager.ensureFreshLicense();
     if (!licenseManager.hasModuleAccess('e_tebligat')) {
         event.reply('scan-error', 'E-Tebligat modülü aktif değil. Lütfen abone olun.');
         return;
@@ -1720,6 +1731,8 @@ ipcMain.handle('convert-statement', async (event, data) => {
     logger.debug('[convert-statement] mimeType:', mimeType);
     validation.validateStatementInput(data);
 
+    // v1.9.11: Excel dönüştürme öncesi license state'i taze tut.
+    await licenseManager.ensureFreshLicense();
     if (!licenseManager.hasModuleAccess('excel_assistant')) {
         throw new Error('Excel Asistanı modülü aktif değil. Lütfen abone olun.');
     }

@@ -12,7 +12,13 @@ const BILLING_URL = process.env.BILLING_URL || 'https://muhasebeasistani.com/bil
 const CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000; // 6 saat
 const TOKEN_REFRESH_INTERVAL_MS = 50 * 60 * 1000; // 50 dk — Supabase JWT 1 saat ömürlü, expiry'den önce yenile
 const EXPIRY_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000; // 6 saat — gün eşiği değişimi yakalanır
-const GRACE_PERIOD_MS = 7 * 24 * 60 * 60 * 1000; // 7 gün
+// v1.9.11: 7 gün → 24 saat. Önceki 7 gün grace, ağ/token hatası nedeniyle
+// silently başarısız olan checkLicense çağrılarında trial bitmiş hesapların
+// uzun süre erişimine yol açıyordu (Mehmet Çomak vakası: 28 gün expired hesap
+// kullanım). 24 saat: legitimate offline kullanıma yeter, abuse penceresi kısa.
+const GRACE_PERIOD_MS = 24 * 60 * 60 * 1000; // 24 saat
+// Scan-öncesi force-refresh eşiği: state'in mutlaka bu kadar taze olmasını isteriz.
+const SCAN_FRESH_THRESHOLD_MS = 60 * 60 * 1000; // 1 saat
 const MAX_OFFLINE_OPERATIONS = 50; // Maksimum offline işlem sayısı
 const EXPIRY_NOTIFICATION_THRESHOLDS = [30, 14, 7, 3, 1, 0]; // Gün eşikleri (0 = bugün sona eriyor)
 
@@ -496,23 +502,72 @@ const hasActiveSubscription = () => {
         return true;
     }
 
-    // Expiry kontrolü
+    // Expiry kontrolü — hem expiresAt hem trial_ends_at'a bak (trial hesaplar
+    // için expires_at güncel olmayabilir, trial_ends_at otoritatiftir).
+    const now = Date.now();
     if (state.expiresAt) {
-        const expiryDate = new Date(state.expiresAt).getTime();
-        if (Date.now() > expiryDate) {
+        if (now > new Date(state.expiresAt).getTime()) {
+            return false;
+        }
+    }
+    if (state.isTrial && state.trialEndsAt) {
+        if (now > new Date(state.trialEndsAt).getTime()) {
             return false;
         }
     }
 
-    // Grace period kontrolü (internet yoksa 7 gün izin ver)
+    // Grace period kontrolü (v1.9.11: 7 gün → 24 saat).
     if (!state.lastCheckAt) {
         return false;
     }
 
     const lastCheck = new Date(state.lastCheckAt).getTime();
-    const gracePeriodRemaining = GRACE_PERIOD_MS - (Date.now() - lastCheck);
+    const gracePeriodRemaining = GRACE_PERIOD_MS - (now - lastCheck);
 
     return gracePeriodRemaining > 0;
+};
+
+/**
+ * Scan-öncesi force-refresh: state SCAN_FRESH_THRESHOLD_MS'den eski ise
+ * checkLicense'ı eşzamanlı çalıştır. Network/token hatası olursa state
+ * dokunulmaz, hasActiveSubscription grace period sayesinde karar verir.
+ *
+ * v1.9.11: Önceki davranışta scan başlamadan önce stale state ile pass alıyordu;
+ * 28 gün expired hesaplar dahi scan yapabiliyordu. Bu fonksiyon her IPC scan
+ * handler'ının başında çağrılır — fresh state veya 24h grace dışı = block.
+ */
+const ensureFreshLicense = async () => {
+    ensureLoaded();
+
+    if (!state.userId || !state.accessToken) {
+        return { fresh: false, reason: 'no_session' };
+    }
+
+    const now = Date.now();
+    const lastCheck = state.lastCheckAt ? new Date(state.lastCheckAt).getTime() : 0;
+    const ageMs = now - lastCheck;
+
+    // Yeterince taze, refresh gerek yok
+    if (ageMs < SCAN_FRESH_THRESHOLD_MS) {
+        return { fresh: true, ageMs };
+    }
+
+    // Refresh in-flight ise bekle
+    if (refreshInProgress) {
+        try {
+            await refreshInProgress;
+        } catch {
+            /* ignore */
+        }
+        return { fresh: true, ageMs: 0 };
+    }
+
+    refreshInProgress = checkLicense().finally(() => {
+        refreshInProgress = null;
+    });
+
+    const result = await refreshInProgress;
+    return { fresh: result.success === true, reason: result.message || null };
 };
 
 /**
@@ -828,6 +883,7 @@ module.exports = {
     init,
     login,
     checkLicense,
+    ensureFreshLicense,
     ensureFreshToken,
     logout,
     hasActiveSubscription,
