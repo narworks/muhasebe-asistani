@@ -2775,8 +2775,42 @@ async function previewScan(onStatusUpdate, apiKey) {
         };
     };
 
+    // Mükellef-seviyesi koruma — ardışık fail'lerde cool-down. Bu farklı
+    // mükellefler arası bir koruma; aynı mükellef içindeki retry timing'i
+    // gibHttpLogin.js'de yönetiliyor.
     const CONCURRENCY = 5;
+    const THROTTLE_BACKOFF_MS = 25000; // 25 sn — ardışık fail sonrası genel mola
+    const FAIL_BURST_THRESHOLD = 3; // 3 farklı mükellef ardışık fail → backoff
     let completedCount = 0;
+    let consecutiveFails = 0;
+    let throttleBackoffUntil = 0;
+
+    const recordAttempt = (success, firmName) => {
+        if (success) {
+            consecutiveFails = 0;
+            return;
+        }
+        consecutiveFails++;
+        if (consecutiveFails >= FAIL_BURST_THRESHOLD && Date.now() >= throttleBackoffUntil) {
+            throttleBackoffUntil = Date.now() + THROTTLE_BACKOFF_MS;
+            logger.warn(
+                `[gib-throttle] ${consecutiveFails} ardışık mükellef fail (${firmName}) — ` +
+                    `worker'lar ${THROTTLE_BACKOFF_MS / 1000}sn bekleyecek (GİB/network korunmas)`
+            );
+            onStatusUpdate({
+                message: `GİB tarafından ardışık hatalar — ${THROTTLE_BACKOFF_MS / 1000}sn bekleniyor`,
+                type: 'info',
+            });
+        }
+    };
+
+    const waitIfBackoff = async () => {
+        const waitMs = throttleBackoffUntil - Date.now();
+        if (waitMs > 0) {
+            await new Promise((r) => setTimeout(r, waitMs));
+            consecutiveFails = 0;
+        }
+    };
 
     const processOneClient = async (client, index) => {
         if (scanCancelled) return;
@@ -2887,6 +2921,11 @@ async function previewScan(onStatusUpdate, apiKey) {
                 }
             }
             completedCount++;
+            // Dinamik throttle — son client sonucunu kaydet, gerekirse cool-down tetikle
+            const lastResult = results[results.length - 1];
+            if (lastResult && lastResult.clientId === client.id) {
+                recordAttempt(lastResult.ok, client.firm_name);
+            }
             const okCount = results.filter((r) => r.ok).length;
             onStatusUpdate(
                 buildPreviewProgress(completedCount, activeClients.length, null, okCount)
@@ -2902,6 +2941,9 @@ async function previewScan(onStatusUpdate, apiKey) {
         for (let w = 0; w < Math.min(CONCURRENCY, queue.length); w++) {
             const workerFn = async () => {
                 while (queue.length > 0 && !scanCancelled) {
+                    // Throttle backoff aktifse bekle (recordAttempt tetiklemiş olabilir)
+                    await waitIfBackoff();
+                    if (scanCancelled) break;
                     const item = queue.shift();
                     if (!item) break;
                     await processOneClient(item.client, item.index);

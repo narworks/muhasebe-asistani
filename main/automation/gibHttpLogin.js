@@ -203,6 +203,22 @@ async function httpLogin(userid, password, apiKey, maxAttempts = 3) {
                 continue;
             }
 
+            // 28 Haz 2026 incident: Elif'in network'ünde anlık DNS/TCP RST
+            // sorunu olunca app 3 attempt'ı 22ms içinde bitiriyordu (delay yok).
+            // Her unclassified hata için exponential backoff: 3s → 6s
+            // (insan-benzeri davranış + Elif'in network'ünün toparlanma şansı).
+            if (
+                (err.errorType === 'unknown' || err.errorType === 'rate_limit') &&
+                attempt < maxAttempts
+            ) {
+                const backoffMs = 3000 * attempt; // 3s, 6s
+                logger.debug(
+                    `[HTTP-Login] ${err.errorType} → ${backoffMs / 1000}s backoff (attempt ${attempt})`
+                );
+                await new Promise((r) => setTimeout(r, backoffMs));
+                continue;
+            }
+
             if (attempt >= maxAttempts) {
                 throw err;
             }
