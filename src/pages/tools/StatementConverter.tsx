@@ -134,6 +134,10 @@ const StatementConverter: React.FC = () => {
     const [parsedResult, setParsedResult] = useState<string[][] | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [userTemplates, setUserTemplates] = useState<UserTemplate[]>([]);
+    // Şablon kaydetme — Electron 35 sandbox modda window.prompt() desteklemiyor,
+    // inline input UI kullanıyoruz (Sentry: MUHASEBE-ASISTANI-2K, Temmuz 2026).
+    const [isSavingTemplate, setIsSavingTemplate] = useState(false);
+    const [templateTitle, setTemplateTitle] = useState('');
     const [creditBalance, setCreditBalance] = useState<{ totalRemaining: number } | null>(null);
     const [subscriptionStatus, setSubscriptionStatus] = useState<{
         isActive: boolean;
@@ -479,13 +483,26 @@ const StatementConverter: React.FC = () => {
     };
 
     const handleSaveTemplate = () => {
-        const title = prompt('Bu şablon için kısa bir başlık girin:', 'Yeni Şablonum');
+        // Inline UI aç — window.prompt() Electron sandbox modda desteklenmiyor
+        setTemplateTitle('Yeni Şablonum');
+        setIsSavingTemplate(true);
+    };
+
+    const confirmSaveTemplate = () => {
+        const title = templateTitle.trim();
         if (title && userPrompt.trim()) {
             const newTemplate: UserTemplate = { id: Date.now(), title, prompt: userPrompt.trim() };
             const updatedTemplates = [...userTemplates, newTemplate];
             setUserTemplates(updatedTemplates);
             localStorage.setItem(USER_TEMPLATES_KEY, JSON.stringify(updatedTemplates));
         }
+        setIsSavingTemplate(false);
+        setTemplateTitle('');
+    };
+
+    const cancelSaveTemplate = () => {
+        setIsSavingTemplate(false);
+        setTemplateTitle('');
     };
 
     const handleDeleteTemplate = (id: number) => {
@@ -737,13 +754,43 @@ const StatementConverter: React.FC = () => {
                         className="w-full h-32 bg-slate-700 border border-slate-600 rounded-md px-3 py-2 text-white placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-sky-500 text-sm"
                     />
                     <div className="mt-2 flex justify-end">
-                        <button
-                            onClick={handleSaveTemplate}
-                            disabled={!userPrompt.trim()}
-                            className="text-xs bg-emerald-500/20 text-emerald-300 font-semibold py-1 px-3 rounded-md hover:bg-emerald-500/40 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                            Şablon Olarak Kaydet
-                        </button>
+                        {isSavingTemplate ? (
+                            <div className="flex items-center gap-2">
+                                <input
+                                    type="text"
+                                    autoFocus
+                                    value={templateTitle}
+                                    onChange={(e) => setTemplateTitle(e.target.value)}
+                                    onKeyDown={(e) => {
+                                        if (e.key === 'Enter') confirmSaveTemplate();
+                                        if (e.key === 'Escape') cancelSaveTemplate();
+                                    }}
+                                    placeholder="Şablon başlığı"
+                                    className="text-xs bg-slate-700 border border-slate-600 rounded-md px-2 py-1 text-white placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-emerald-500 min-w-[180px]"
+                                />
+                                <button
+                                    onClick={confirmSaveTemplate}
+                                    disabled={!templateTitle.trim()}
+                                    className="text-xs bg-emerald-500/20 text-emerald-300 font-semibold py-1 px-3 rounded-md hover:bg-emerald-500/40 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    Kaydet
+                                </button>
+                                <button
+                                    onClick={cancelSaveTemplate}
+                                    className="text-xs text-slate-400 hover:text-white py-1 px-2 rounded-md transition-colors"
+                                >
+                                    İptal
+                                </button>
+                            </div>
+                        ) : (
+                            <button
+                                onClick={handleSaveTemplate}
+                                disabled={!userPrompt.trim()}
+                                className="text-xs bg-emerald-500/20 text-emerald-300 font-semibold py-1 px-3 rounded-md hover:bg-emerald-500/40 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                Şablon Olarak Kaydet
+                            </button>
+                        )}
                     </div>
                 </Card>
 
