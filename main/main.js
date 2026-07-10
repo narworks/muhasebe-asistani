@@ -210,6 +210,24 @@ if (require('electron-squirrel-startup')) {
     app.quit();
 }
 
+// Single-instance koruma — Elif Kargın vakası (Temmuz 2026):
+// Windows'ta 2 uygulama açık kalınca 2 tray icon oluşuyordu, DB ve Supabase
+// session çakışması + iki background daemon aynı GİB'e istek atınca rate-limit.
+// 28 Haz'daki "unknown error" burst pattern'i (3ms fail x3) muhtemel sebep buydu.
+// İkinci instance açılırsa sessizce kapat + ilk pencereyi öne getir.
+const gotSingleInstanceLock = app.requestSingleInstanceLock();
+if (!gotSingleInstanceLock) {
+    app.quit();
+} else {
+    app.on('second-instance', () => {
+        if (mainWindow) {
+            if (mainWindow.isMinimized()) mainWindow.restore();
+            if (!mainWindow.isVisible()) mainWindow.show();
+            mainWindow.focus();
+        }
+    });
+}
+
 let mainWindow;
 let daemonPopupWindow = null;
 let tray = null;
