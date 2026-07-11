@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import { Users } from 'lucide-react';
 import type { Client } from '../../../types';
 
@@ -64,6 +64,20 @@ const ClientManagement: React.FC<ClientManagementProps> = ({
     onClearImportResult,
     onScanNow,
 }) => {
+    // Onboarding: ilk mükellef ekleme senaryosunda Firma Adı input'unu
+    // explicit focus'la. HTML autoFocus attribute'u SPA route değişiminde
+    // sidebar linkinden focus alarak çakışabiliyor — useEffect + ref daha
+    // güvenilir. Sadece clients boş ve edit modda değilken tetiklenir.
+    const firmNameRef = useRef<HTMLInputElement>(null);
+    useEffect(() => {
+        if (clients.length !== 0 || editingClientId || !firmNameRef.current) {
+            return undefined;
+        }
+        // Küçük gecikme — router transition + sidebar re-render tamamlansın
+        const timer = setTimeout(() => firmNameRef.current?.focus(), 100);
+        return () => clearTimeout(timer);
+    }, [clients.length, editingClientId]);
+
     return (
         <div>
             <div className="flex items-center justify-between mb-4">
@@ -128,10 +142,10 @@ const ClientManagement: React.FC<ClientManagementProps> = ({
                         Firma Ad&#305;
                     </label>
                     <input
+                        ref={firmNameRef}
                         type="text"
                         value={clientForm.firm_name}
                         onChange={(e) => onFieldChange('firm_name', e.target.value)}
-                        autoFocus={clients.length === 0}
                         className={`w-full border rounded-md px-3 py-2 text-sm text-gray-900 bg-white ${
                             clientErrors.firm_name ? 'border-red-500' : 'border-gray-300'
                         }`}
