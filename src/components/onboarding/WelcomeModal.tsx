@@ -64,10 +64,13 @@ const WelcomeModal: React.FC<Props> = ({ isTrial, trialDaysLeft, onClose, onStar
                             <h2 className="text-2xl font-bold text-white mb-3">
                                 Muhasebe Asistanı&apos;na Hoşgeldiniz
                             </h2>
-                            <p className="text-slate-400 leading-relaxed">
-                                E-Tebligat kontrolü ve banka ekstresi Excel dönüşümü artık dakikalar
-                                sürüyor.
-                                <br />3 adımda başlayalım.
+                            <p className="text-slate-400 leading-relaxed max-w-[420px] mx-auto">
+                                E-Tebligat kontrolü ve banka ekstresi Excel dönüşümü
+                                <br />
+                                artık dakikalar sürüyor.
+                            </p>
+                            <p className="text-slate-400 leading-relaxed mt-2">
+                                3 adımda başlayalım.
                             </p>
                             {isTrial && trialDaysLeft !== undefined && (
                                 <div className="mt-6 inline-block px-3 py-1.5 bg-emerald-500/20 border border-emerald-500/30 rounded-full text-emerald-300 text-sm">

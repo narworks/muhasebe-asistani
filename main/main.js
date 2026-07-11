@@ -215,17 +215,24 @@ if (require('electron-squirrel-startup')) {
 // session çakışması + iki background daemon aynı GİB'e istek atınca rate-limit.
 // 28 Haz'daki "unknown error" burst pattern'i (3ms fail x3) muhtemel sebep buydu.
 // İkinci instance açılırsa sessizce kapat + ilk pencereyi öne getir.
-const gotSingleInstanceLock = app.requestSingleInstanceLock();
-if (!gotSingleInstanceLock) {
-    app.quit();
-} else {
-    app.on('second-instance', () => {
-        if (mainWindow) {
-            if (mainWindow.isMinimized()) mainWindow.restore();
-            if (!mainWindow.isVisible()) mainWindow.show();
-            mainWindow.focus();
-        }
-    });
+//
+// DEV NOT: Development mode'da bu lock atlanır — yüklü production app açık
+// iken `npm start` ile dev mode başlatabilmek için (aksi halde geliştirici
+// deneyimi kırılır). Bu güvenli çünkü dev mode üretim'e gitmez.
+const isDevMode = !app.isPackaged;
+if (!isDevMode) {
+    const gotSingleInstanceLock = app.requestSingleInstanceLock();
+    if (!gotSingleInstanceLock) {
+        app.quit();
+    } else {
+        app.on('second-instance', () => {
+            if (mainWindow) {
+                if (mainWindow.isMinimized()) mainWindow.restore();
+                if (!mainWindow.isVisible()) mainWindow.show();
+                mainWindow.focus();
+            }
+        });
+    }
 }
 
 let mainWindow;
