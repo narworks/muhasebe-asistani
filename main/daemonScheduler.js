@@ -17,6 +17,7 @@ const systemMonitor = require('./systemMonitor');
 const gibAutomation = require('./automation/gibAutomation');
 const notifications = require('./notifications');
 const unreadCounter = require('./unreadCounter');
+const licenseManager = require('./license');
 let Sentry;
 try {
     Sentry = require('@sentry/electron/main');
@@ -154,6 +155,19 @@ async function tick() {
             return;
         }
 
+        // Kredi düşürme — daemon path'inde de manuel scan (gibAutomation.run) ile
+        // aynı davranış olmalı. Bu commit'ten önce (Temmuz 2026) daemon
+        // kredi düşürmüyordu → complimentary/paid user'lar API maliyeti
+        // yaratıyor ama credits_used=0 kalıyordu. Bkz.
+        // gibAutomation.js:1733 (run) — orada deductCredit callback aynı iş yapıyor.
+        const creditResult = await licenseManager.deductCredits(1, 'e_tebligat_scan');
+        if (!creditResult.success && creditResult.error === 'insufficient_credits') {
+            emit('idle', { reason: 'insufficient_credits' });
+            logger.debug('[Daemon] insufficient credits — skipping scan');
+            scheduleNextTick(ds.intervalMs);
+            return;
+        }
+
         const result = await gibAutomation.scanSingleClient(client.id, apiKey);
         state.lastResult = result;
 
@@ -162,6 +176,10 @@ async function tick() {
         // retry on next tick. Prevents false "3 consecutive failures" Sentry alerts
         // while a user-triggered full scan runs.
         if (!result.success && result.errorType === 'busy') {
+            // Kredi iade — bu bir mutex çakışmasıydı, tarama yapılmadı
+            if (creditResult.success) {
+                await licenseManager.refundCredits(1, 'e_tebligat_scan_refund_busy');
+            }
             emit('skipped', { reason: 'scanner_busy', clientId: client.id });
             scheduleNextTick(ds.intervalMs);
             return;
