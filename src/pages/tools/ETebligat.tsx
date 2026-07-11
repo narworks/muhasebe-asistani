@@ -46,9 +46,13 @@ const ETebligat: React.FC = () => {
         setDefaultTabApplied(true);
     }, [onboardingLoading, onboardingState.firstDiscoveryAt, defaultTabApplied]);
 
-    // DiscoveryPrompt: ilk mükellef eklendi + henüz keşif yapılmadı ise göster
+    // DiscoveryPrompt: welcome tamamlandı + ilk mükellef eklendi + henüz
+    // keşif yapılmadı ise göster. Reset senaryosunda (kullanıcı '?' basıp
+    // onboarding'i sıfırladıysa ve zaten mükellefi varsa) welcome + tekrar
+    // ilk mükellef ekleme adımı gerekir — bu edge case v1.9.15'te ele alınacak.
     const showDiscoveryPrompt =
         !onboardingLoading &&
+        !!onboardingState.seenWelcomeAt &&
         !!onboardingState.firstClientAddedAt &&
         !onboardingState.firstDiscoveryAt;
 
@@ -647,6 +651,9 @@ const ETebligat: React.FC = () => {
 
         setImporting(true);
         setImportResult(null);
+        // Onboarding: import öncesi clients boşsa "ilk mükellef" pattern'ini
+        // burada da yakala (handleSaveClient tek tek form için, bu Excel yolu)
+        const wasEmpty = clients.length === 0;
         try {
             const buffer = await file.arrayBuffer();
             const result = await window.electronAPI.importClientsFromExcel(buffer);
@@ -655,6 +662,10 @@ const ETebligat: React.FC = () => {
                 toast.success(`${result.saved} mükellef eklendi`);
                 await fetchClients();
                 fetchClientLimit();
+                // Onboarding: ilk mükellef eklendiyse DiscoveryPrompt tetiklenecek
+                if (wasEmpty && !onboardingState.firstClientAddedAt) {
+                    await markStep('firstClientAdded');
+                }
             }
             if (result.parseErrors?.length > 0)
                 toast.error(`${result.parseErrors.length} satırda hata`);

@@ -39,6 +39,9 @@ const mockElectronAPI = {
     getDocumentsPath: vi.fn(),
     removeScanListeners: vi.fn(),
     removeCreditsListeners: vi.fn(),
+    // Onboarding (v1.9.14+)
+    getOnboardingState: vi.fn(),
+    markOnboardingStep: vi.fn(),
 };
 
 // @ts-expect-error Mock window.electronAPI
