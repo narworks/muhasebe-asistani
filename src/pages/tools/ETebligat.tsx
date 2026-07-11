@@ -27,10 +27,66 @@ import DaemonStatusPanel from './e-tebligat/DaemonStatusPanel';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../../components/ui/tabs';
 import { toast } from 'sonner';
 import DashboardCards from './e-tebligat/DashboardCards';
+import { useOnboarding } from '../../components/onboarding/useOnboarding';
+import DiscoveryPrompt from '../../components/onboarding/DiscoveryPrompt';
 
 const ETebligat: React.FC = () => {
     const { currentUser } = useAuth();
+    const { state: onboardingState, isLoading: onboardingLoading, markStep } = useOnboarding();
+    // İlk açılışta (henüz keşif yapılmamış) Mükellefler sekmesinden başla
+    // — kullanıcı önce mükellef eklemek zorunda. Onboarding tamamlandıktan
+    // sonra normal davranış: Sonuçlar sekmesi.
     const [activeTab, setActiveTab] = useState('results');
+    const [defaultTabApplied, setDefaultTabApplied] = useState(false);
+    useEffect(() => {
+        if (defaultTabApplied || onboardingLoading) return;
+        if (!onboardingState.firstDiscoveryAt) {
+            setActiveTab('clients');
+        }
+        setDefaultTabApplied(true);
+    }, [onboardingLoading, onboardingState.firstDiscoveryAt, defaultTabApplied]);
+
+    // DiscoveryPrompt: ilk mükellef eklendi + henüz keşif yapılmadı ise göster
+    const showDiscoveryPrompt =
+        !onboardingLoading &&
+        !!onboardingState.firstClientAddedAt &&
+        !onboardingState.firstDiscoveryAt;
+
+    const handleDiscoveryDismiss = async () => {
+        // Kullanıcı "Sonra Yap" — sadece completed işaretle, firstDiscovery kalsın
+        // ki sonradan tekrar prompt istemesin. Onboarding tamamlandı sayılır.
+        await markStep('firstDiscovery');
+        await markStep('completed');
+    };
+
+    const handleDiscoveryStart = async () => {
+        await markStep('firstDiscovery');
+        await markStep('completed');
+        // Preview scan başlat — mevcut previewScan IPC'yi çağır
+        try {
+            addLog('Keşif başlatılıyor (belge indirme yok)...', 'info');
+            const result = await window.electronAPI.previewScan();
+            if (result.ok && result.results) {
+                setPreviewResults(result.results);
+                const defaults: Record<number, PreviewSelectionMode> = {};
+                result.results.forEach((r) => {
+                    if (r.ok && (r.count || 0) > 0) {
+                        defaults[r.clientId] = 'last30';
+                    } else {
+                        defaults[r.clientId] = 'skip';
+                    }
+                });
+                setPreviewSelections(defaults);
+                toast.success(`🎉 Keşif tamamlandı: ${result.results.length} mükellef tarandı`);
+            } else {
+                addLog(`Keşif hatası: ${result.error || 'Bilinmeyen hata'}`, 'error');
+                toast.error('Keşif başlatılamadı');
+            }
+        } catch (err) {
+            addLog(`Keşif hatası: ${(err as Error).message}`, 'error');
+            toast.error('Keşif başlatılamadı');
+        }
+    };
     const [scanning, setScanning] = useState(false);
     const [logs, setLogs] = useState<LogEntry[]>([]);
     const logsEndRef = useRef<HTMLDivElement>(null);
@@ -540,10 +596,15 @@ const ETebligat: React.FC = () => {
             }
 
             setClientForm({ firm_name: '', tax_number: '', gib_user_code: '', gib_password: '' });
+            const wasFirstClient = !editingClientId && clients.length === 0;
             setEditingClientId(null);
             toast.success('Mükellef kaydedildi');
             await fetchClients();
             fetchClientLimit();
+            // Onboarding: ilk mükellef eklendiyse discovery prompt tetiklenecek
+            if (wasFirstClient && !onboardingState.firstClientAddedAt) {
+                await markStep('firstClientAdded');
+            }
         } catch (err: unknown) {
             setClientErrors({
                 _form: err instanceof Error ? err.message : 'Mükellef kaydedilemedi.',
@@ -1225,6 +1286,15 @@ const ETebligat: React.FC = () => {
                         setShowLegalConsent(false);
                     }}
                     onDecline={() => setShowLegalConsent(false)}
+                />
+            )}
+
+            {/* DiscoveryPrompt — ilk mükellef eklendi + keşif henüz yok */}
+            {showDiscoveryPrompt && (
+                <DiscoveryPrompt
+                    firmName={clients[0]?.firm_name}
+                    onDismiss={handleDiscoveryDismiss}
+                    onStart={handleDiscoveryStart}
                 />
             )}
 

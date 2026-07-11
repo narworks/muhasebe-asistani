@@ -96,15 +96,25 @@ const ClientManagement: React.FC<ClientManagementProps> = ({
             </p>
 
             {clients.length === 0 && (
-                <div className="text-center py-8 mb-6 bg-gray-50 rounded-lg border border-dashed border-gray-300">
-                    <Users className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-                    <h3 className="text-lg font-semibold text-gray-600">
-                        Hen&uuml;z m&uuml;kellef eklenmedi
+                <div className="text-center py-10 mb-6 bg-gradient-to-br from-emerald-50 to-sky-50 rounded-xl border-2 border-dashed border-emerald-300">
+                    <div className="text-5xl mb-3">👋</div>
+                    <h3 className="text-xl font-bold text-gray-800 mb-2">
+                        İlk mükellefinizi ekleyelim
                     </h3>
-                    <p className="text-sm text-gray-400 mt-1">
-                        Ba&#351;lamak i&ccedil;in a&#351;a&#287;&#305;daki formu kullan&#305;n veya
-                        Excel&apos;den i&ccedil;e aktar&#305;n
+                    <p className="text-sm text-gray-600 max-w-md mx-auto mb-4">
+                        Aşağıdaki forma firma adı + GİB kullanıcı kodu + şifresini girin.
+                        <br />
+                        <span className="text-xs text-gray-500">
+                            Bilgileri müşteriniz size iletmiş olmalı.
+                        </span>
                     </p>
+                    <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-white/70 rounded-full text-xs text-emerald-700 border border-emerald-200">
+                        <span>💡</span>
+                        <span>
+                            Birden fazla mükellef mi var? Aşağıda{' '}
+                            <strong>Excel&apos;den içe aktar</strong> ile toplu ekleyebilirsiniz.
+                        </span>
+                    </div>
                 </div>
             )}
 
@@ -121,6 +131,7 @@ const ClientManagement: React.FC<ClientManagementProps> = ({
                         type="text"
                         value={clientForm.firm_name}
                         onChange={(e) => onFieldChange('firm_name', e.target.value)}
+                        autoFocus={clients.length === 0}
                         className={`w-full border rounded-md px-3 py-2 text-sm text-gray-900 bg-white ${
                             clientErrors.firm_name ? 'border-red-500' : 'border-gray-300'
                         }`}

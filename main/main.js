@@ -1416,6 +1416,17 @@ ipcMain.handle('save-scan-settings', (event, scanSettings) => {
     return { success: true };
 });
 
+// Onboarding (v1.9.14+) — WelcomeModal + DiscoveryPrompt state tracking
+ipcMain.handle('get-onboarding-state', () => {
+    return settings.getOnboardingState();
+});
+
+ipcMain.handle('mark-onboarding-step', (_event, stepName) => {
+    // stepName: 'seenWelcome' | 'firstClientAdded' | 'firstDiscovery' | 'completed' | 'reset'
+    settings.markOnboardingStep(stepName);
+    return { success: true };
+});
+
 // Credits
 ipcMain.handle('get-credits', () => {
     return licenseManager.getCredits();

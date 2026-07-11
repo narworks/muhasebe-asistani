@@ -34,6 +34,15 @@ const defaultSettings = {
         lastScheduledScanAt: null,
         nextScheduledScanAt: null,
     },
+    // Onboarding first-run tracking (v1.9.14+) — kullanıcının ilk defa gördüğü
+    // adımları işaretler. WelcomeModal + DiscoveryPrompt bu değerlere göre
+    // gösterilir. Sidebar'daki "?" ikonu bu grubu sıfırlar (reset for demo).
+    onboarding: {
+        seenWelcomeAt: null,
+        firstClientAddedAt: null,
+        firstDiscoveryAt: null,
+        completedAt: null,
+    },
     documentsFolder: null,
 };
 
@@ -69,6 +78,10 @@ const readSettings = () => {
             schedule: {
                 ...defaultSettings.schedule,
                 ...(parsed.schedule || {}),
+            },
+            onboarding: {
+                ...defaultSettings.onboarding,
+                ...(parsed.onboarding || {}),
             },
         };
     } catch (error) {
@@ -107,9 +120,49 @@ const updateSettings = (patch) => {
             ...current.schedule,
             ...(patch.schedule || {}),
         },
+        onboarding: {
+            ...current.onboarding,
+            ...(patch.onboarding || {}),
+        },
     };
     writeSettings(updated);
     return updated;
+};
+
+/**
+ * Onboarding adım işaretleme helper'ı.
+ * Renderer IPC üzerinden çağırır — main/main.js 'mark-onboarding-step' handler'ı.
+ *
+ * Adımlar: 'seenWelcome' | 'firstClientAdded' | 'firstDiscovery' | 'completed'
+ * 'reset' özel değeri tüm onboarding state'ini sıfırlar (Sidebar '?' ikonu için).
+ */
+const markOnboardingStep = (stepName) => {
+    const now = new Date().toISOString();
+    if (stepName === 'reset') {
+        return updateSettings({
+            onboarding: {
+                seenWelcomeAt: null,
+                firstClientAddedAt: null,
+                firstDiscoveryAt: null,
+                completedAt: null,
+            },
+        });
+    }
+    const keyMap = {
+        seenWelcome: 'seenWelcomeAt',
+        firstClientAdded: 'firstClientAddedAt',
+        firstDiscovery: 'firstDiscoveryAt',
+        completed: 'completedAt',
+    };
+    const key = keyMap[stepName];
+    if (!key) {
+        throw new Error(`Unknown onboarding step: ${stepName}`);
+    }
+    return updateSettings({ onboarding: { [key]: now } });
+};
+
+const getOnboardingState = () => {
+    return readSettings().onboarding;
 };
 
 const isEncryptionAvailable = () => {
@@ -217,4 +270,7 @@ module.exports = {
     // storage security state before trusting saved passwords.
     isEncryptionAvailable,
     InsecureStorageError,
+    // Onboarding helpers (v1.9.14+)
+    markOnboardingStep,
+    getOnboardingState,
 };

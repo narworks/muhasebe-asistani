@@ -107,6 +107,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getScanSettings: () => ipcRenderer.invoke('get-scan-settings'),
     saveScanSettings: (settings) => ipcRenderer.invoke('save-scan-settings', settings),
 
+    // Onboarding (v1.9.14+)
+    getOnboardingState: () => ipcRenderer.invoke('get-onboarding-state'),
+    markOnboardingStep: (stepName) => ipcRenderer.invoke('mark-onboarding-step', stepName),
+
     // Schedule
 
     // Credits

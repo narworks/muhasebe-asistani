@@ -39,6 +39,14 @@ export type DaemonEvent = {
     state: DaemonState;
 };
 
+// Onboarding state (v1.9.14+) — settings.onboarding şeması, main/settings.js
+export interface OnboardingState {
+    seenWelcomeAt: string | null;
+    firstClientAddedAt: string | null;
+    firstDiscoveryAt: string | null;
+    completedAt: string | null;
+}
+
 export interface IElectronAPI {
     // License & Auth
     login: (credentials: LoginCredentials) => Promise<LoginResult>;
@@ -270,6 +278,12 @@ export interface IElectronAPI {
     // Scan Settings
     getScanSettings: () => Promise<ScanSettings>;
     saveScanSettings: (settings: ScanSettings) => Promise<ApiResponse>;
+
+    // Onboarding (v1.9.14+)
+    getOnboardingState: () => Promise<OnboardingState>;
+    markOnboardingStep: (
+        stepName: 'seenWelcome' | 'firstClientAdded' | 'firstDiscovery' | 'completed' | 'reset'
+    ) => Promise<ApiResponse>;
 
     // Statement Converter
     convertStatement: (data: StatementConvertRequest) => Promise<string>;

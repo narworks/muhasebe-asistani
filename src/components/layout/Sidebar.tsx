@@ -4,6 +4,7 @@ import { toast } from 'sonner';
 import { useAuth } from '../../context/AuthContext';
 import { getExpiryStatus, getCompactLabel, getSeverityColors } from '../../lib/subscriptionUtils';
 import type { Subscription } from '../../types';
+import { useOnboarding } from '../onboarding/useOnboarding';
 
 // --- ICONS ---
 const BarChartIcon = () => (
@@ -206,6 +207,14 @@ const Sidebar: React.FC = () => {
         } catch (error) {
             console.error('Failed to log out', error);
         }
+    };
+
+    // Onboarding — "?" ikonu için reset handler
+    const { resetAll: resetOnboarding } = useOnboarding();
+    const handleRestartOnboarding = async () => {
+        await resetOnboarding();
+        toast.info('Rehber tekrar başlatıldı — sayfa yenileniyor');
+        setTimeout(() => window.location.reload(), 800);
     };
 
     // Manual "refresh license" — force pull fresh subscription state from Supabase.
@@ -539,10 +548,18 @@ const Sidebar: React.FC = () => {
 
                 {/* Version + User Profile */}
                 <div className="pt-3">
-                    <div className="mx-auto mb-3 flex items-center justify-center">
+                    <div className="mx-auto mb-3 flex items-center justify-center gap-2">
                         <span className="px-3 py-1 rounded-full bg-slate-800 border border-slate-700 text-xs text-slate-400">
                             v{__APP_VERSION__}
                         </span>
+                        <button
+                            onClick={handleRestartOnboarding}
+                            title="Rehberi tekrar başlat"
+                            aria-label="Rehberi tekrar başlat"
+                            className="w-6 h-6 rounded-full bg-slate-800 border border-slate-700 hover:bg-sky-500 hover:border-sky-500 hover:text-white text-xs text-slate-400 flex items-center justify-center transition-colors"
+                        >
+                            ?
+                        </button>
                     </div>
                     <div className="p-2 rounded-lg hover:bg-slate-800 transition-colors border-t border-slate-700 pt-3">
                         <div className="flex items-center space-x-3">
