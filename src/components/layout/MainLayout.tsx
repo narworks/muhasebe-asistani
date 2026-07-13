@@ -2,7 +2,6 @@ import React, { useEffect, useState } from 'react';
 import { Outlet, useNavigate } from 'react-router-dom';
 import Sidebar from './Sidebar';
 import Navbar from './Navbar';
-import UpdateBanner from '../UpdateBanner';
 import TrialBanner from '../TrialBanner';
 import WelcomeModal from '../onboarding/WelcomeModal';
 import { useOnboarding } from '../onboarding/useOnboarding';
@@ -59,7 +58,6 @@ const MainLayout: React.FC = () => {
                     <Outlet />
                 </main>
             </div>
-            <UpdateBanner />
             {showWelcome && (
                 <WelcomeModal
                     isTrial={isTrial}

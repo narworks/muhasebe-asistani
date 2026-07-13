@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { Routes, Route, useNavigate } from 'react-router-dom';
+import { Routes, Route, useNavigate, useLocation } from 'react-router-dom';
 import Login from './pages/auth/Login';
 import Register from './pages/auth/Register';
 import DashboardHome from './pages/dashboard/DashboardHome';
@@ -12,10 +12,12 @@ import DaemonPopup from './pages/DaemonPopup';
 import ProtectedRoute from './components/ProtectedRoute';
 import MainLayout from './components/layout/MainLayout';
 import ErrorBoundary from './components/ErrorBoundary';
+import UpdateBanner from './components/UpdateBanner';
 import { Toaster } from 'sonner';
 
 function App() {
     const navigate = useNavigate();
+    const location = useLocation();
 
     // Listen for navigate-to events from main process (notification click, etc.)
     useEffect(() => {
@@ -26,9 +28,17 @@ function App() {
         return unsubscribe;
     }, [navigate]);
 
+    // v1.9.14: UpdateBanner MainLayout'tan çıkarıldı, App root'a taşındı.
+    // Neden: MainLayout sadece login sonrası mount olur. autoUpdater ilk check'i
+    // 5 sn sonra tetiklerken kullanıcı hâlâ Login/Register'da olabilir; MainLayout'ta
+    // olmayan UpdateBanner event'i kaçırıyordu → 5 v1.9.11 kullanıcısı update alamadı.
+    // Standalone daemon-popup penceresinde göstermeyi engelle (küçük popup, layout bozar).
+    const isDaemonPopup = location.pathname === '/daemon-popup';
+
     return (
         <ErrorBoundary>
             <Toaster position="top-right" richColors closeButton duration={4000} />
+            {!isDaemonPopup && <UpdateBanner />}
             <Routes>
                 {/* Daemon Popup (no auth, no layout, standalone) */}
                 <Route path="/daemon-popup" element={<DaemonPopup />} />

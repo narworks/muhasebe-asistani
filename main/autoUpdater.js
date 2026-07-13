@@ -7,6 +7,7 @@ let userInitiatedDownload = false;
 let updateReady = false; // true when update is downloaded and waiting for restart
 let onUpdateReadyCallback = null;
 let installInProgress = false; // re-entrancy guard for quitAndInstall
+let reminderTimeouts = []; // v1.9.14: keep reference to cancel on quit
 
 function setOnUpdateReady(callback) {
     onUpdateReadyCallback = callback;
@@ -72,6 +73,11 @@ function init(win) {
             msg.includes('ENOTFOUND') ||
             msg.includes('ECONNREFUSED') ||
             msg.includes('EAI_AGAIN') ||
+            // v1.9.14: SSL/network downgrade errors (antivirus MITM, expired CA, DNS filters)
+            msg.includes('ERR_SSL_PROTOCOL_ERROR') ||
+            msg.includes('ERR_CERT_') ||
+            msg.includes('ERR_NETWORK_CHANGED') ||
+            msg.includes('ERR_INTERNET_DISCONNECTED') ||
             /: 5\d{2}/.test(msg) || // 5xx HTTP errors
             /: 429/.test(msg); // Rate limit
 
@@ -99,25 +105,25 @@ function init(win) {
         updateReady = true;
         sendStatusToWindow('update-downloaded', info);
 
-        // Show native notification so user notices even if main window is closed (tray-only mode).
-        // bypassSettings: ignore daemon.notifications toggle (updates must reach the user even if
-        // they muted scan notifications). skipOpenWindow: don't flash the main window before quit.
+        // v1.9.14: Tray-mode kullanıcıları için main window'u nazikçe restore et.
+        // Overlay (UpdateBanner) window görünmezse çalışmıyor; kullanıcı fark etmiyor.
+        // Minimize durumundaysa restore + gizliyse show; focus KOYMUYORUZ ki mevcut işi bölmesin.
         try {
-            const notifications = require('./notifications');
-            notifications.show({
-                title: '✨ Güncelleme Hazır',
-                body: `Muhasebe Asistanı v${info.version} indirildi. Yüklemek için tıklayın (uygulama yeniden başlatılacak).`,
-                urgency: 'normal',
-                bypassSettings: true,
-                skipOpenWindow: true,
-                onClick: () => {
-                    logger.info('[AutoUpdater] Update notification clicked by user');
-                    quitAndInstall();
-                },
-            });
+            if (mainWindow && !mainWindow.isDestroyed()) {
+                if (mainWindow.isMinimized()) mainWindow.restore();
+                if (!mainWindow.isVisible()) mainWindow.show();
+            }
         } catch (err) {
-            logger.info(`[AutoUpdater] notification error: ${err.message}`);
+            logger.info(`[AutoUpdater] window restore error: ${err.message}`);
         }
+
+        // İlk bildirimi hemen göster.
+        showUpdateReadyNotification(info);
+
+        // v1.9.14: Kullanıcı ilk bildirimi kaçırırsa diye tekrarlayan hatırlatıcı.
+        // 30 dk → 2 sa → 6 sa → sonra günde 1 kez. updateReady false olursa (install başladıysa)
+        // otomatik durur.
+        scheduleUpdateReminders(info);
 
         // Notify main.js so it can update tray menu
         if (onUpdateReadyCallback) {
@@ -148,6 +154,72 @@ function init(win) {
         },
         1 * 60 * 60 * 1000
     );
+}
+
+/**
+ * v1.9.14: Native "Güncelleme Hazır" bildirimini gösterir.
+ * Hem ilk gösterim hem tekrarlayan hatırlatıcılar aynı fonksiyonu kullanır.
+ * bypassSettings: kullanıcı scan notification'larını kapatmış olsa bile update bildirimi gitmeli.
+ */
+function showUpdateReadyNotification(info) {
+    try {
+        const notifications = require('./notifications');
+        notifications.show({
+            title: '✨ Güncelleme Hazır',
+            body: `Muhasebe Asistanı v${info.version} indirildi. Yüklemek için tıklayın (uygulama yeniden başlatılacak).`,
+            urgency: 'normal',
+            bypassSettings: true,
+            skipOpenWindow: true,
+            onClick: () => {
+                logger.info('[AutoUpdater] Update notification clicked by user');
+                quitAndInstall();
+            },
+        });
+    } catch (err) {
+        logger.info(`[AutoUpdater] notification error: ${err.message}`);
+    }
+}
+
+/**
+ * v1.9.14: Update indirildikten sonra tekrarlayan hatırlatıcılar planlar.
+ * Kullanıcı ilk bildirimi kaçırırsa (tray'de app açık, notification geçici görüldü),
+ * 30 dk / 2 sa / 6 sa sonra tekrar, sonra günde 1 kez hatırlatır.
+ * updateReady false olursa (kullanıcı install'a başladı) otomatik durur.
+ */
+function scheduleUpdateReminders(info) {
+    // Önceki reminder'ları temizle (edge case: aynı session'da 2 update)
+    reminderTimeouts.forEach((t) => clearTimeout(t));
+    reminderTimeouts = [];
+
+    const schedule = [
+        30 * 60_000, // 30 dk
+        2 * 60 * 60_000, // 2 saat
+        6 * 60 * 60_000, // 6 saat
+    ];
+
+    schedule.forEach((delay) => {
+        const t = setTimeout(() => {
+            if (updateReady && !installInProgress) {
+                logger.info(`[AutoUpdater] Reminding user about pending update (delay=${delay}ms)`);
+                showUpdateReadyNotification(info);
+            }
+        }, delay);
+        reminderTimeouts.push(t);
+    });
+
+    // Uzun vadeli: günde 1 kez hatırlat (setInterval, updateReady false olursa clear)
+    const dailyReminder = setInterval(
+        () => {
+            if (updateReady && !installInProgress) {
+                logger.info('[AutoUpdater] Daily reminder for pending update');
+                showUpdateReadyNotification(info);
+            } else {
+                clearInterval(dailyReminder);
+            }
+        },
+        24 * 60 * 60_000
+    );
+    reminderTimeouts.push(dailyReminder);
 }
 
 /**
