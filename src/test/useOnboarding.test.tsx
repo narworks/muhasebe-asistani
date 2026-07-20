@@ -80,6 +80,7 @@ describe('useOnboarding', () => {
             firstClientAddedAt: null,
             firstDiscoveryAt: null,
             completedAt: null,
+            ahaPromptShownAt: null,
         });
         expect(window.electronAPI.markOnboardingStep).toHaveBeenCalledWith('reset');
     });
@@ -98,6 +99,7 @@ describe('useOnboarding', () => {
             firstClientAddedAt: null,
             firstDiscoveryAt: null,
             completedAt: null,
+            ahaPromptShownAt: null,
         });
     });
 

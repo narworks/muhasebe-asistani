@@ -77,3 +77,4 @@ scripts/convert-to-ddddocr-format.js
 
 # 2Captcha calibration test result (local only)
 2captcha-calibration-result.json
+.superpowers/
