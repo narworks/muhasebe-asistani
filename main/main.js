@@ -1434,6 +1434,26 @@ ipcMain.handle('mark-onboarding-step', (_event, stepName) => {
     return { success: true };
 });
 
+// Upgrade CTA (v1.9.15+) — trial → paid conversion boost modal state tracking
+ipcMain.handle('get-upgrade-cta-state', () => {
+    return settings.getUpgradeCTAState();
+});
+
+ipcMain.handle('mark-upgrade-modal-shown', () => {
+    settings.markUpgradeModalShown();
+    return { success: true };
+});
+
+ipcMain.handle('mark-winback-shown', () => {
+    settings.markWinbackShown();
+    return { success: true };
+});
+
+ipcMain.handle('mark-aha-prompt-shown', () => {
+    settings.markAhaPromptShown();
+    return { success: true };
+});
+
 // Credits
 ipcMain.handle('get-credits', () => {
     return licenseManager.getCredits();

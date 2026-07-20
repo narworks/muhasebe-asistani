@@ -42,6 +42,16 @@ const defaultSettings = {
         firstClientAddedAt: null,
         firstDiscoveryAt: null,
         completedAt: null,
+        ahaPromptShownAt: null, // Katman 2: aha moment bir kez göster
+    },
+    // Upgrade CTA state (v1.9.15+) — trial → paid conversion boost modal'ları
+    // için gösterim işaretleri. Her modal bir kez tetiklendiğinde işaretlenir,
+    // gereksiz tekrar gösterimi engeller.
+    upgradeModal: {
+        lastShownAt: null, // Katman 1: 24h cooldown için
+    },
+    winback: {
+        shownAt: null, // Katman 3: bir kez göster
     },
     documentsFolder: null,
 };
@@ -82,6 +92,14 @@ const readSettings = () => {
             onboarding: {
                 ...defaultSettings.onboarding,
                 ...(parsed.onboarding || {}),
+            },
+            upgradeModal: {
+                ...defaultSettings.upgradeModal,
+                ...(parsed.upgradeModal || {}),
+            },
+            winback: {
+                ...defaultSettings.winback,
+                ...(parsed.winback || {}),
             },
         };
     } catch (error) {
@@ -124,6 +142,14 @@ const updateSettings = (patch) => {
             ...current.onboarding,
             ...(patch.onboarding || {}),
         },
+        upgradeModal: {
+            ...current.upgradeModal,
+            ...(patch.upgradeModal || {}),
+        },
+        winback: {
+            ...current.winback,
+            ...(patch.winback || {}),
+        },
     };
     writeSettings(updated);
     return updated;
@@ -163,6 +189,50 @@ const markOnboardingStep = (stepName) => {
 
 const getOnboardingState = () => {
     return readSettings().onboarding;
+};
+
+/**
+ * Katman 1 modal gösterildiğinde işaretle. 24h cooldown için timestamp tutar.
+ */
+const markUpgradeModalShown = () => {
+    return updateSettings({ upgradeModal: { lastShownAt: new Date().toISOString() } });
+};
+
+/**
+ * Katman 3 winback modal gösterildiğinde işaretle. Bir kez gösterilir.
+ */
+const markWinbackShown = () => {
+    return updateSettings({ winback: { shownAt: new Date().toISOString() } });
+};
+
+/**
+ * Katman 2 aha moment prompt gösterildiğinde işaretle. Bir kez gösterilir.
+ */
+const markAhaPromptShown = () => {
+    return updateSettings({ onboarding: { ahaPromptShownAt: new Date().toISOString() } });
+};
+
+/**
+ * Upgrade CTA state — tüm 3 katman için tek okuma noktası.
+ */
+const getUpgradeCTAState = () => {
+    const settings = readSettings();
+    return {
+        upgradeModal: settings.upgradeModal,
+        winback: settings.winback,
+        onboarding: settings.onboarding,
+    };
+};
+
+/**
+ * Dev/test amaçlı — tüm upgrade CTA state'i sıfırla.
+ */
+const resetUpgradeCTAState = () => {
+    return updateSettings({
+        upgradeModal: { lastShownAt: null },
+        winback: { shownAt: null },
+        onboarding: { ahaPromptShownAt: null },
+    });
 };
 
 const isEncryptionAvailable = () => {
@@ -273,4 +343,10 @@ module.exports = {
     // Onboarding helpers (v1.9.14+)
     markOnboardingStep,
     getOnboardingState,
+    // Upgrade CTA helpers (v1.9.15+)
+    markUpgradeModalShown,
+    markWinbackShown,
+    markAhaPromptShown,
+    getUpgradeCTAState,
+    resetUpgradeCTAState,
 };

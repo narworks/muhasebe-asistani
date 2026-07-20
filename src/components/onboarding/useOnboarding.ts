@@ -18,6 +18,7 @@ export function useOnboarding() {
         firstClientAddedAt: null,
         firstDiscoveryAt: null,
         completedAt: null,
+        ahaPromptShownAt: null,
     });
     const [isLoading, setIsLoading] = useState(true);
 
@@ -74,6 +75,7 @@ export function useOnboarding() {
             firstClientAddedAt: null,
             firstDiscoveryAt: null,
             completedAt: null,
+            ahaPromptShownAt: null,
         });
         try {
             await window.electronAPI.markOnboardingStep('reset');

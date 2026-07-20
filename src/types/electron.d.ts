@@ -45,6 +45,23 @@ export interface OnboardingState {
     firstClientAddedAt: string | null;
     firstDiscoveryAt: string | null;
     completedAt: string | null;
+    ahaPromptShownAt: string | null; // v1.9.15+
+}
+
+// Upgrade CTA state (v1.9.15+) — settings.upgradeModal / settings.winback şeması,
+// main/settings.js. Trial → paid conversion boost modal gösterim işaretleri.
+export interface UpgradeModalState {
+    lastShownAt: string | null;
+}
+
+export interface WinbackState {
+    shownAt: string | null;
+}
+
+export interface UpgradeCTAState {
+    upgradeModal: UpgradeModalState;
+    winback: WinbackState;
+    onboarding: OnboardingState;
 }
 
 export interface IElectronAPI {
@@ -284,6 +301,12 @@ export interface IElectronAPI {
     markOnboardingStep: (
         stepName: 'seenWelcome' | 'firstClientAdded' | 'firstDiscovery' | 'completed' | 'reset'
     ) => Promise<ApiResponse>;
+
+    // Upgrade CTA (v1.9.15+)
+    getUpgradeCTAState: () => Promise<UpgradeCTAState>;
+    markUpgradeModalShown: () => Promise<{ success: boolean }>;
+    markWinbackShown: () => Promise<{ success: boolean }>;
+    markAhaPromptShown: () => Promise<{ success: boolean }>;
 
     // Statement Converter
     convertStatement: (data: StatementConvertRequest) => Promise<string>;

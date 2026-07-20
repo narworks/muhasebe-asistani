@@ -111,6 +111,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getOnboardingState: () => ipcRenderer.invoke('get-onboarding-state'),
     markOnboardingStep: (stepName) => ipcRenderer.invoke('mark-onboarding-step', stepName),
 
+    // Upgrade CTA (v1.9.15+)
+    getUpgradeCTAState: () => ipcRenderer.invoke('get-upgrade-cta-state'),
+    markUpgradeModalShown: () => ipcRenderer.invoke('mark-upgrade-modal-shown'),
+    markWinbackShown: () => ipcRenderer.invoke('mark-winback-shown'),
+    markAhaPromptShown: () => ipcRenderer.invoke('mark-aha-prompt-shown'),
+
     // Schedule
 
     // Credits
