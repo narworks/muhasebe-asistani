@@ -42,6 +42,11 @@ const mockElectronAPI = {
     // Onboarding (v1.9.14+)
     getOnboardingState: vi.fn(),
     markOnboardingStep: vi.fn(),
+    // Upgrade CTA (v1.9.15+)
+    getUpgradeCTAState: vi.fn(),
+    markUpgradeModalShown: vi.fn(),
+    markWinbackShown: vi.fn(),
+    markAhaPromptShown: vi.fn(),
 };
 
 // @ts-expect-error Mock window.electronAPI
