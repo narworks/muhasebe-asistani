@@ -13,6 +13,7 @@ import ProtectedRoute from './components/ProtectedRoute';
 import MainLayout from './components/layout/MainLayout';
 import ErrorBoundary from './components/ErrorBoundary';
 import UpdateBanner from './components/UpdateBanner';
+import TrialCountdownModal from './components/upgrade/TrialCountdownModal';
 import { Toaster } from 'sonner';
 
 function App() {
@@ -38,7 +39,12 @@ function App() {
     return (
         <ErrorBoundary>
             <Toaster position="top-right" richColors closeButton duration={4000} />
-            {!isDaemonPopup && <UpdateBanner />}
+            {!isDaemonPopup && (
+                <>
+                    <UpdateBanner />
+                    <TrialCountdownModal />
+                </>
+            )}
             <Routes>
                 {/* Daemon Popup (no auth, no layout, standalone) */}
                 <Route path="/daemon-popup" element={<DaemonPopup />} />
