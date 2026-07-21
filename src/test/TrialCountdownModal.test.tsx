@@ -71,7 +71,7 @@ describe('TrialCountdownModal', () => {
             upgradeModal: { lastShownAt: oneHourAgo },
             winback: { shownAt: null },
             onboarding: {
-                seenWelcomeAt: null,
+                seenWelcomeAt: '2026-07-11T10:00:00Z',
                 firstClientAddedAt: null,
                 firstDiscoveryAt: null,
                 completedAt: null,
@@ -90,7 +90,7 @@ describe('TrialCountdownModal', () => {
             upgradeModal: { lastShownAt: twoDaysAgo },
             winback: { shownAt: null },
             onboarding: {
-                seenWelcomeAt: null,
+                seenWelcomeAt: '2026-07-11T10:00:00Z',
                 firstClientAddedAt: null,
                 firstDiscoveryAt: null,
                 completedAt: null,
@@ -113,6 +113,24 @@ describe('TrialCountdownModal', () => {
             expect(screen.queryByText(/Deneme sürenizin bitmesine/)).not.toBeInTheDocument();
             expect(window.electronAPI.markUpgradeModalShown).toHaveBeenCalledTimes(1);
         });
+    });
+
+    it('seenWelcomeAt null (WelcomeModal henüz görülmemiş) → modal görünmez', async () => {
+        // @ts-expect-error mock
+        window.electronAPI.getUpgradeCTAState.mockResolvedValue({
+            upgradeModal: { lastShownAt: null },
+            winback: { shownAt: null },
+            onboarding: {
+                seenWelcomeAt: null,
+                firstClientAddedAt: null,
+                firstDiscoveryAt: null,
+                completedAt: null,
+                ahaPromptShownAt: null,
+            },
+        });
+        render(<TrialCountdownModal />);
+        await waitFor(() => expect(window.electronAPI.getUpgradeCTAState).toHaveBeenCalled());
+        expect(screen.queryByText(/Deneme sürenizin bitmesine/)).not.toBeInTheDocument();
     });
 
     it('İndirim/kupon dili YOK — metin içinde "%20", "indirim", "kupon" geçmemeli', async () => {

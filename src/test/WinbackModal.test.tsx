@@ -88,6 +88,15 @@ describe('WinbackModal', () => {
         expect(screen.queryByText(/Deneme süreniz doldu/)).not.toBeInTheDocument();
     });
 
+    it('0 tarama → "0 tarama" gösterilir ama "saat tasarruf" satırı gizlenir', async () => {
+        // @ts-expect-error mock
+        window.electronAPI.getScanHistory.mockResolvedValue([]);
+        render(<WinbackModal />);
+        await waitFor(() => expect(screen.getByText(/Deneme süreniz doldu/)).toBeInTheDocument());
+        expect(screen.getByText(/0 tarama/)).toBeInTheDocument();
+        expect(screen.queryByText(/saat tasarruf/)).not.toBeInTheDocument();
+    });
+
     it('"Şimdi Değil" butonuna basınca markWinbackShown çağrılır', async () => {
         render(<WinbackModal />);
         await waitFor(() => expect(screen.getByText(/Deneme süreniz doldu/)).toBeInTheDocument());

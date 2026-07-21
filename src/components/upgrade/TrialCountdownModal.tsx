@@ -38,6 +38,8 @@ const TrialCountdownModal: React.FC = () => {
     }, []);
 
     if (isLoading || subLoading || dismissed) return null;
+    // WelcomeModal ile aynı anda görünmesini engelle — önce hoşgeldin akışı bitsin
+    if (!state.onboarding.seenWelcomeAt) return null;
     if (!subscription?.isTrial || !subscription.isActive || !subscription.trialEndsAt) return null;
 
     const trialEnd = new Date(subscription.trialEndsAt).getTime();

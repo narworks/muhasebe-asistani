@@ -78,13 +78,15 @@ const WinbackModal: React.FC = () => {
                             </span>{' '}
                             yaptınız
                         </li>
-                        <li>
-                            • Tahmini{' '}
-                            <span className="text-emerald-400 font-semibold">
-                                {hoursSaved} saat
-                            </span>{' '}
-                            tasarruf ettiniz
-                        </li>
+                        {scanCount > 0 && (
+                            <li>
+                                • Tahmini{' '}
+                                <span className="text-emerald-400 font-semibold">
+                                    {hoursSaved} saat
+                                </span>{' '}
+                                tasarruf ettiniz
+                            </li>
+                        )}
                         <li>
                             •{' '}
                             <span className="text-emerald-400 font-semibold">
