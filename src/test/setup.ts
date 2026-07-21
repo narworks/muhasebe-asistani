@@ -10,6 +10,7 @@ const mockElectronAPI = {
     getUserInfo: vi.fn(),
     openBillingPortal: vi.fn(),
     getClients: vi.fn(),
+    getScanHistory: vi.fn(),
     saveClient: vi.fn(),
     updateClient: vi.fn(),
     updateClientStatus: vi.fn(),

@@ -14,6 +14,7 @@ import MainLayout from './components/layout/MainLayout';
 import ErrorBoundary from './components/ErrorBoundary';
 import UpdateBanner from './components/UpdateBanner';
 import TrialCountdownModal from './components/upgrade/TrialCountdownModal';
+import WinbackModal from './components/upgrade/WinbackModal';
 import { Toaster } from 'sonner';
 
 function App() {
@@ -43,6 +44,7 @@ function App() {
                 <>
                     <UpdateBanner />
                     <TrialCountdownModal />
+                    <WinbackModal />
                 </>
             )}
             <Routes>
