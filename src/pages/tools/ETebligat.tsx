@@ -29,6 +29,7 @@ import { toast } from 'sonner';
 import DashboardCards from './e-tebligat/DashboardCards';
 import { useOnboarding } from '../../components/onboarding/useOnboarding';
 import DiscoveryPrompt from '../../components/onboarding/DiscoveryPrompt';
+import AhaMomentPrompt from '../../components/upgrade/AhaMomentPrompt';
 
 const ETebligat: React.FC = () => {
     const { currentUser } = useAuth();
@@ -1308,6 +1309,10 @@ const ETebligat: React.FC = () => {
                     onStart={handleDiscoveryStart}
                 />
             )}
+
+            {/* AhaMomentPrompt — Katman 2 (v1.9.15+): ilk keşif taramasından
+                5sn sonra Trial→Paid differential göster (sadece trial'da, bir kez) */}
+            {onboardingState.firstDiscoveryAt && <AhaMomentPrompt />}
 
             {/* TebligatDetailModal */}
             {selectedTebligat && (
