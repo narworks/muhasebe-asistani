@@ -11,12 +11,13 @@ describe('WinbackModal', () => {
             isTrial: true,
             isActive: false,
             status: 'expired',
+            trialEndsAt: new Date(Date.now() - 86_400_000).toISOString(),
             trialEndReason: 'expired',
         });
         // @ts-expect-error mock
         window.electronAPI.getUpgradeCTAState.mockResolvedValue({
             upgradeModal: { lastShownAt: null },
-            winback: { shownAt: null },
+            winback: { shownAt: null, count: 0 },
             onboarding: {
                 seenWelcomeAt: '2026-07-01T10:00:00Z',
                 firstClientAddedAt: '2026-07-01T10:05:00Z',
@@ -45,11 +46,58 @@ describe('WinbackModal', () => {
         expect(screen.getByText(/3 mükellef/)).toBeInTheDocument();
     });
 
-    it('winback.shownAt SET → modal görünmez (bir kez göster)', async () => {
+    it('client-side expiry (status expired değil ama trialEndsAt geçmiş) → modal görünür', async () => {
+        // @ts-expect-error mock
+        window.electronAPI.getSubscriptionStatus.mockResolvedValue({
+            isTrial: true,
+            isActive: false,
+            status: 'active', // cron henüz expired yapmadı
+            trialEndsAt: new Date(Date.now() - 86_400_000).toISOString(), // dün doldu
+        });
+        render(<WinbackModal />);
+        await waitFor(() => expect(screen.getByText(/Deneme süreniz doldu/)).toBeInTheDocument());
+    });
+
+    it('son 7 gün içinde gösterildi → modal görünmez (cooldown)', async () => {
         // @ts-expect-error mock
         window.electronAPI.getUpgradeCTAState.mockResolvedValue({
             upgradeModal: { lastShownAt: null },
-            winback: { shownAt: '2026-07-15T10:00:00Z' },
+            winback: { shownAt: new Date(Date.now() - 2 * 86_400_000).toISOString(), count: 1 },
+            onboarding: {
+                seenWelcomeAt: null,
+                firstClientAddedAt: null,
+                firstDiscoveryAt: null,
+                completedAt: null,
+                ahaPromptShownAt: null,
+            },
+        });
+        render(<WinbackModal />);
+        await waitFor(() => expect(window.electronAPI.getUpgradeCTAState).toHaveBeenCalled());
+        expect(screen.queryByText(/Deneme süreniz doldu/)).not.toBeInTheDocument();
+    });
+
+    it('7 günden eski + count<3 → modal tekrar görünür', async () => {
+        // @ts-expect-error mock
+        window.electronAPI.getUpgradeCTAState.mockResolvedValue({
+            upgradeModal: { lastShownAt: null },
+            winback: { shownAt: new Date(Date.now() - 8 * 86_400_000).toISOString(), count: 1 },
+            onboarding: {
+                seenWelcomeAt: null,
+                firstClientAddedAt: null,
+                firstDiscoveryAt: null,
+                completedAt: null,
+                ahaPromptShownAt: null,
+            },
+        });
+        render(<WinbackModal />);
+        await waitFor(() => expect(screen.getByText(/Deneme süreniz doldu/)).toBeInTheDocument());
+    });
+
+    it('count >= 3 → modal görünmez (max 3 gösterim)', async () => {
+        // @ts-expect-error mock
+        window.electronAPI.getUpgradeCTAState.mockResolvedValue({
+            upgradeModal: { lastShownAt: null },
+            winback: { shownAt: new Date(Date.now() - 30 * 86_400_000).toISOString(), count: 3 },
             onboarding: {
                 seenWelcomeAt: null,
                 firstClientAddedAt: null,

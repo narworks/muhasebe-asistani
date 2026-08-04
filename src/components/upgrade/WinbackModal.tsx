@@ -3,16 +3,17 @@ import { useUpgradeCTA } from './useUpgradeCTA';
 import type { Subscription } from '../../types';
 
 /**
- * Katman 3 — Trial Expired Winback Modal (v1.9.15+).
+ * Katman 3 — Trial Expired Winback Modal (v1.9.15+, v1.9.16 P2 revizyonu).
  *
- * Trial süresi dolan kullanıcıya app açılışında bir kez gösterilir.
- * Kişisel istatistik özeti (X tarama, Y saat, Z mükellef) ile trial'da
- * yaşadığı değeri hatırlatır. İndirim / kupon YOK — gerçek kayıp bilinci.
+ * Trial süresi dolan kullanıcıya app açılışında gösterilir. Kişisel istatistik
+ * özeti (X tarama, Y saat, Z mükellef) ile trial'da yaşadığı değeri hatırlatır.
+ * İndirim / kupon YOK — gerçek kayıp bilinci.
  *
  * Trigger:
  *   - subscription.isTrial = true (trial'dan expired'a geçmiş)
- *   - subscription.status = 'expired' (cron çalışmış)
- *   - winback.shownAt = null
+ *   - subscription.status = 'expired' (cron) VEYA trialEndsAt geçmişte (client-side,
+ *     cron'u beklemeden trial biter bitmez tetiklenir)
+ *   - Kadans: 7 günde bir, en fazla 3 kez (settings.winback.shownAt / count)
  */
 const WinbackModal: React.FC = () => {
     const { state, isLoading, markWinbackShown } = useUpgradeCTA();
@@ -48,8 +49,21 @@ const WinbackModal: React.FC = () => {
 
     if (isLoading || subLoading || dismissed) return null;
     if (!subscription?.isTrial) return null;
-    if (subscription.status !== 'expired') return null;
-    if (state.winback.shownAt) return null;
+
+    // Client-side expiry: server cron status='expired' VEYA trialEndsAt geçmişte.
+    // Cron gecikse bile trial biter bitmez tetiklenir.
+    const trialExpired =
+        subscription.status === 'expired' ||
+        (subscription.trialEndsAt != null &&
+            new Date(subscription.trialEndsAt).getTime() < Date.now());
+    if (!trialExpired) return null;
+
+    // Kadans: 7 günde bir, en fazla 3 kez.
+    const WINBACK_COOLDOWN_MS = 7 * 24 * 60 * 60 * 1000;
+    const winbackCount = state.winback.count ?? 0;
+    if (winbackCount >= 3) return null;
+    const lastShownMs = state.winback.shownAt ? new Date(state.winback.shownAt).getTime() : 0;
+    if (lastShownMs && Date.now() - lastShownMs < WINBACK_COOLDOWN_MS) return null;
 
     const hoursSaved = Math.max(1, Math.round((scanCount * 3) / 60));
 

@@ -56,6 +56,7 @@ export interface UpgradeModalState {
 
 export interface WinbackState {
     shownAt: string | null;
+    count: number;
 }
 
 export interface UpgradeCTAState {

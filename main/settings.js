@@ -51,7 +51,8 @@ const defaultSettings = {
         lastShownAt: null, // Katman 1: 24h cooldown için
     },
     winback: {
-        shownAt: null, // Katman 3: bir kez göster
+        shownAt: null, // Katman 3: son gösterim zamanı
+        count: 0, // Katman 3: toplam gösterim sayısı (max 3)
     },
     documentsFolder: null,
 };
@@ -199,10 +200,16 @@ const markUpgradeModalShown = () => {
 };
 
 /**
- * Katman 3 winback modal gösterildiğinde işaretle. Bir kez gösterilir.
+ * Katman 3 winback modal gösterildiğinde işaretle. 7 günde bir, en fazla 3 kez gösterilir.
  */
 const markWinbackShown = () => {
-    return updateSettings({ winback: { shownAt: new Date().toISOString() } });
+    const current = readSettings().winback || {};
+    return updateSettings({
+        winback: {
+            shownAt: new Date().toISOString(),
+            count: (current.count || 0) + 1,
+        },
+    });
 };
 
 /**
@@ -230,7 +237,7 @@ const getUpgradeCTAState = () => {
 const resetUpgradeCTAState = () => {
     return updateSettings({
         upgradeModal: { lastShownAt: null },
-        winback: { shownAt: null },
+        winback: { shownAt: null, count: 0 },
         onboarding: { ahaPromptShownAt: null },
     });
 };

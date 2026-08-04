@@ -3,7 +3,7 @@ import type { UpgradeCTAState } from '../../types/electron';
 
 const defaultState: UpgradeCTAState = {
     upgradeModal: { lastShownAt: null },
-    winback: { shownAt: null },
+    winback: { shownAt: null, count: 0 },
     onboarding: {
         seenWelcomeAt: null,
         firstClientAddedAt: null,
@@ -56,7 +56,10 @@ export function useUpgradeCTA() {
 
     const markWinbackShown = useCallback(async () => {
         const timestamp = new Date().toISOString();
-        setState((prev) => ({ ...prev, winback: { shownAt: timestamp } }));
+        setState((prev) => ({
+            ...prev,
+            winback: { shownAt: timestamp, count: (prev.winback.count ?? 0) + 1 },
+        }));
         try {
             await window.electronAPI.markWinbackShown();
         } catch (err) {
