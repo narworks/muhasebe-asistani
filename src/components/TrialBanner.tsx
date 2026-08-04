@@ -33,14 +33,35 @@ const TrialBanner: React.FC = () => {
         };
     }, []);
 
-    if (!subscription?.isTrial || !subscription.isActive) return null;
+    if (!subscription?.isTrial) return null;
 
+    // Trial dolmuş (isActive false) → kalıcı kırmızı "abone ol" şeridi.
+    // Conversion baskısının en yüksek olduğu an; banner burada kaybolmamalı.
+    if (!subscription.isActive) {
+        return (
+            <div className="border-b px-4 py-2 text-sm flex items-center justify-between gap-3 bg-red-600/15 border-red-600/50 text-red-200">
+                <div className="flex items-center gap-2 min-w-0">
+                    <span className="text-base">⏰</span>
+                    <span className="truncate">
+                        <strong>Deneme süreniz doldu</strong> — devam etmek için abone olun
+                    </span>
+                </div>
+                <Link
+                    to="/subscription"
+                    className="shrink-0 bg-white/10 hover:bg-white/20 px-3 py-1 rounded text-xs font-semibold transition-colors"
+                >
+                    Abone Ol
+                </Link>
+            </div>
+        );
+    }
+
+    // Aktif trial → geri sayım şeridi (renk skalası).
     const trialEnd = subscription.trialEndsAt ? new Date(subscription.trialEndsAt) : null;
     const daysLeft = trialEnd
         ? Math.max(0, Math.ceil((trialEnd.getTime() - Date.now()) / 86_400_000))
         : 0;
 
-    // Color scale by urgency
     const urgency =
         daysLeft <= 2
             ? 'bg-red-500/10 border-red-500/30 text-red-300'
