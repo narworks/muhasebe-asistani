@@ -103,6 +103,26 @@ Beş bağımsız düzeltme, hepsi mevcut bileşenlerde yerinde. Sıra bağımsı
 
 ---
 
+## P5 — Updater: geçici hata filtresini sağlamlaştır (kullanıcıya ham 5xx gösterme)
+
+**Dosyalar:** `main/autoUpdater.js` (satır 66-89, `error` handler), yeni `main/updateErrorFilter.js`
+
+**Sorun:** Kod geçici ağ/5xx hatalarını kullanıcıya göstermemeye çalışıyor ([autoUpdater.js:66-87](main/autoUpdater.js)) ama filtre `/: 5\d{2}/` (yani `": 504"`) arıyor. electron-updater'ın hata mesajı `504 "method: GET url: .../releases.atom ...` diye **başta** status koduyla gelince eşleşme olmuyor → `isTransient=false` → geçici GitHub 504'ü kocaman kırmızı şeritle (ham HTML gövdesiyle) kullanıcıya gösteriyor. v1.9.11 updater geçmişiyle birleşince müşteri ürküten bir görünüm.
+
+**Değişiklik:**
+
+1. Filtre mantığını saf `isTransientUpdateError(err)` fonksiyonuna çıkar — yeni `main/updateErrorFilter.js` (electron bağımlılığı YOK → vitest ile test edilebilir). Sağlamlaştır:
+    - `err.statusCode` (electron-updater HttpError'da güvenilir) `>= 500 || === 429` → geçici.
+    - `err.name === 'HttpError'` → geçici.
+    - Mevcut string kontrolleri (ECONNRESET/ETIMEDOUT/SSL/…) korunur.
+    - 5xx/429 regex'ini başta gelen kodu da yakalayacak şekilde genişlet: `/\b5\d{2}\b/`, `/\b429\b/`.
+2. `autoUpdater.js` inline `isTransient` bloğunu `require('./updateErrorFilter')` ile değiştir.
+3. Defansif: `update-error` gönderilirken mesajı 140 karaktere kırp (ham HTML gövdesi UI'ı taşırmasın).
+
+**Kabul:** electron-updater `504 "method: GET url: ..."` hatası (arka plan kontrol) kullanıcıya gösterilmez; kalıcı hatalar (imza/checksum, 4xx) gösterilmeye devam eder.
+
+---
+
 ## Test
 
 Framework: Vitest + @testing-library/react (mevcut).
@@ -112,6 +132,7 @@ Framework: Vitest + @testing-library/react (mevcut).
 - **P2:** WinbackModal gate mantığı — client-side expiry (trialEndsAt geçmiş) tetikliyor; `count>=3` veya `shownAt < 7g` gösterimi engelliyor. settings.js `winback.count` merge/increment.
 - **P3:** Sidebar trial rozeti (isTrial + trialEndsAt → doğru etiket/renk).
 - **P4:** main-process — manuel doğrulama (URL'de `source=desktop`).
+- **P5:** `isTransientUpdateError` saf fonksiyon — vitest (`src/test/updateErrorFilter.test.ts`): başta gelen "504", `statusCode>=500`, 429, ECONNRESET → true; sha512 checksum / 404 → false.
 
 ## Kapsam Dışı (bilerek)
 
@@ -123,5 +144,5 @@ Framework: Vitest + @testing-library/react (mevcut).
 ## Rollout
 
 - Sürüm: 1.9.15 → **1.9.16** (minor: feature).
-- Küçük bağımsız commit'ler (P0…P4 + testler).
+- Küçük bağımsız commit'ler (P0…P5 + testler).
 - Tüm commit'ler sonrası tag + build.

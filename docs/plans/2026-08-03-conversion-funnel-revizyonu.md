@@ -37,6 +37,9 @@
 | `src/components/layout/Navbar.tsx`        | inactive "Abone Ol" çipi belirginleştirme               | T4    |
 | `src/pages/dashboard/Subscription.tsx`    | kart içi "Satın Al" butonu + forma scroll               | T5    |
 | `src/test/Subscription.test.tsx`          | yeni test dosyası                                       | T5    |
+| `main/updateErrorFilter.js`               | saf `isTransientUpdateError(err)` (yeni)                | T6    |
+| `main/autoUpdater.js`                     | filtreyi modüle taşı + mesaj kırpma                     | T6    |
+| `src/test/updateErrorFilter.test.ts`      | yeni test dosyası                                       | T6    |
 
 ---
 
@@ -890,6 +893,184 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 
 ---
 
+## Task 6: P5 — Updater geçici hata filtresini sağlamlaştır
+
+electron-updater'ın `504 "method: ..."` gibi başta-status-kodlu geçici hataları filtre kaçırıyor → kullanıcıya ham kırmızı şerit gösteriliyor. Filtre mantığını saf, test edilebilir bir fonksiyona çıkar ve genişlet.
+
+**Files:**
+
+- Create: `main/updateErrorFilter.js`
+- Modify: `main/autoUpdater.js` (üst import + satır 66-89 `error` handler)
+- Test: `src/test/updateErrorFilter.test.ts` (yeni)
+
+**Interfaces:**
+
+- Produces: `isTransientUpdateError(err: { message?, statusCode?, name? }): boolean` (CommonJS `module.exports`).
+- Consumes: `autoUpdater.js` bu fonksiyonu `require('./updateErrorFilter')` ile kullanır.
+
+Not: `main/updateErrorFilter.js` saf (electron import'u YOK) → `src/test/` altından relative import ile vitest test edilebilir.
+
+- [ ] **Step 1: Testi yaz (kırmızı)**
+
+`src/test/updateErrorFilter.test.ts` (yeni):
+
+```ts
+import { describe, it, expect } from 'vitest';
+import { isTransientUpdateError } from '../../main/updateErrorFilter';
+
+describe('isTransientUpdateError', () => {
+    it('electron-updater 504 (mesaj başında status) → transient', () => {
+        expect(
+            isTransientUpdateError({
+                message:
+                    '504 "method: GET url: https://github.com/x/y/releases.atom\\n\\n<!DOCTYPE html>"',
+            })
+        ).toBe(true);
+    });
+
+    it('statusCode 503 → transient', () => {
+        expect(isTransientUpdateError({ statusCode: 503, message: 'boom' })).toBe(true);
+    });
+
+    it('statusCode 429 (rate limit) → transient', () => {
+        expect(isTransientUpdateError({ statusCode: 429 })).toBe(true);
+    });
+
+    it("name 'HttpError' → transient", () => {
+        expect(isTransientUpdateError({ name: 'HttpError', message: 'x' })).toBe(true);
+    });
+
+    it('ECONNRESET → transient', () => {
+        expect(isTransientUpdateError({ message: 'read ECONNRESET' })).toBe(true);
+    });
+
+    it('": 500" formatı (mevcut davranış korunur) → transient', () => {
+        expect(isTransientUpdateError({ message: 'HttpError: 500 Internal' })).toBe(true);
+    });
+
+    it('sha512 checksum hatası (kalıcı) → transient DEĞİL', () => {
+        expect(
+            isTransientUpdateError({ message: 'sha512 checksum mismatch, update rejected' })
+        ).toBe(false);
+    });
+
+    it('404 (429 hariç 4xx) → transient DEĞİL', () => {
+        expect(isTransientUpdateError({ statusCode: 404, message: 'Not Found' })).toBe(false);
+    });
+
+    it('null / undefined → false', () => {
+        expect(isTransientUpdateError(null)).toBe(false);
+        expect(isTransientUpdateError(undefined)).toBe(false);
+    });
+});
+```
+
+- [ ] **Step 2: Testi çalıştır (kırmızı)**
+
+Run: `npx vitest run src/test/updateErrorFilter.test.ts`
+Expected: FAIL — `main/updateErrorFilter.js` yok.
+
+- [ ] **Step 3: updateErrorFilter.js modülünü oluştur**
+
+`main/updateErrorFilter.js` (yeni):
+
+```js
+'use strict';
+
+/**
+ * electron-updater 'error' event'i için geçici (recoverable) hata sınıflandırıcısı.
+ * Geçici hatalar (ağ kopması, GitHub 5xx/429, SSL/DNS) kullanıcıya gösterilmez —
+ * bir sonraki kontrolde kendiliğinden düzelir. Kalıcı hatalar (imza/checksum, 4xx)
+ * gösterilir. Saf fonksiyon (electron bağımlılığı yok) → vitest ile test edilebilir.
+ *
+ * @param {{ message?: string, statusCode?: number, name?: string, response?: { statusCode?: number } }} err
+ * @returns {boolean}
+ */
+function isTransientUpdateError(err) {
+    if (!err) return false;
+    const msg = typeof err.message === 'string' ? err.message : '';
+    const statusCode =
+        typeof err.statusCode === 'number'
+            ? err.statusCode
+            : err.response && typeof err.response.statusCode === 'number'
+              ? err.response.statusCode
+              : null;
+
+    // HTTP durum kodu — en güvenilir sinyal (electron-updater HttpError.statusCode)
+    if (statusCode !== null && (statusCode >= 500 || statusCode === 429)) {
+        return true;
+    }
+    if (err.name === 'HttpError') return true;
+
+    return (
+        msg.includes('HttpError') ||
+        msg.includes('ECONNRESET') ||
+        msg.includes('ETIMEDOUT') ||
+        msg.includes('ENOTFOUND') ||
+        msg.includes('ECONNREFUSED') ||
+        msg.includes('EAI_AGAIN') ||
+        msg.includes('ERR_SSL_PROTOCOL_ERROR') ||
+        msg.includes('ERR_CERT_') ||
+        msg.includes('ERR_NETWORK_CHANGED') ||
+        msg.includes('ERR_INTERNET_DISCONNECTED') ||
+        // 5xx / 429 mesajın herhangi yerinde — electron-updater "504 \"method: ...\""
+        // formatı başta da olabilir; \b sınırı base64/sha512 gibi kelime-içi sayıları eler.
+        /\b5\d{2}\b/.test(msg) ||
+        /\b429\b/.test(msg)
+    );
+}
+
+module.exports = { isTransientUpdateError };
+```
+
+- [ ] **Step 4: Testi çalıştır (yeşil)**
+
+Run: `npx vitest run src/test/updateErrorFilter.test.ts`
+Expected: 9 test PASS.
+
+- [ ] **Step 5: autoUpdater.js'i modülü kullanacak şekilde güncelle**
+
+`main/autoUpdater.js` — dosya başındaki `require`'ların yanına ekle:
+
+```js
+const { isTransientUpdateError } = require('./updateErrorFilter');
+```
+
+`error` handler'ında (satır 66-89) inline `isTransient` bloğunu şununla değiştir:
+
+```js
+// Geçici ağ/5xx hataları kullanıcıya gösterilmez (recoverable). Yalnız
+// kullanıcı-başlatımlı indirmede yüzeye çıkar.
+const isTransient = isTransientUpdateError(err);
+
+if (isTransient && !userInitiatedDownload) {
+    logger.debug('[AutoUpdater] Transient error, not shown to user');
+    return;
+}
+
+// Ham HTML gövdesi UI'ı taşırmasın diye mesajı kırp.
+const shortMessage = (err.message || 'Bilinmeyen hata').slice(0, 140);
+sendStatusToWindow('update-error', { message: shortMessage });
+```
+
+- [ ] **Step 6: Doğrula + commit**
+
+Run: `npx eslint main/autoUpdater.js main/updateErrorFilter.js && npx vitest run src/test/updateErrorFilter.test.ts`
+Expected: lint temiz, testler PASS.
+
+```bash
+git add main/updateErrorFilter.js main/autoUpdater.js src/test/updateErrorFilter.test.ts
+git commit -m "fix(updater): geçici 5xx/HttpError'ı kullanıcıya gösterme (P5)
+
+electron-updater 'NNN \"method...\"' başta-status formatını filtre kaçırıyordu
+→ geçici GitHub 504 kırmızı şeritle gösteriliyordu. isTransientUpdateError saf
+fonksiyonuna çıkarıldı + statusCode/name/genişletilmiş regex; mesaj 140'a kırpıldı.
+
+Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
+```
+
+---
+
 ## Self-Review
 
 **1. Spec coverage:**
@@ -899,6 +1080,7 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 - P2 → Task 2 ✓ (7g/3x kadans + client-side expiry + count)
 - P3 → Task 4 ✓ (getTrialBadge + Sidebar + Navbar)
 - P4 → Task 1 ✓ (source=desktop)
+- P5 → Task 6 ✓ (updater geçici hata filtresi + mesaj kırpma)
 - Test bölümü → her task'ta TDD adımları ✓
 - Kapsam dışı maddeler → dokunulmadı ✓
 
@@ -915,5 +1097,5 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 ## Rollout
 
 - Sürüm: 1.9.15 → **1.9.16** (minor).
-- Sıra: T1 → T2 → T3 → T4 → T5 (bağımsız; bu sıra küçükten büyüğe).
+- Sıra: T1 → T2 → T3 → T4 → T5 → T6 (bağımsız; T6 updater fix, funnel'dan ayrı ama aynı release).
 - Tüm task'lar + final review sonrası: `package.json` version bump → tag → build.
