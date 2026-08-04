@@ -1840,6 +1840,7 @@ ipcMain.handle('open-checkout', async (event, params) => {
     const urlParams = new URLSearchParams();
     urlParams.set('plan', plan);
     urlParams.set('period', period);
+    urlParams.set('source', 'desktop');
     urlParams.set('email', email);
     urlParams.set('name', name);
     if (phone) urlParams.set('phone', phone);
