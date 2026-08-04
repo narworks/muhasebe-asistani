@@ -52,4 +52,17 @@ describe('Subscription — Satın Al akışı', () => {
             expect(screen.getByRole('button', { name: /Kredi Kartı ile Öde/ })).toBeInTheDocument()
         );
     });
+
+    it('paid kullanıcı (her iki modül sahibi) → "Satın Al" yok, AKTİF görünür', async () => {
+        // @ts-expect-error mock
+        window.electronAPI.getSubscriptionStatus.mockResolvedValue({
+            isTrial: false,
+            isActive: true,
+            status: 'active',
+            modules: ['excel_assistant', 'e_tebligat'],
+        });
+        render(<Subscription />);
+        await waitFor(() => expect(screen.getAllByText('AKTİF').length).toBeGreaterThanOrEqual(1));
+        expect(screen.queryAllByRole('button', { name: /Satın Al/ })).toHaveLength(0);
+    });
 });
