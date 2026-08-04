@@ -1,6 +1,7 @@
 const { autoUpdater } = require('electron-updater');
 const { app } = require('electron');
 const logger = require('./logger');
+const { isTransientUpdateError } = require('./updateErrorFilter');
 
 let mainWindow = null;
 let userInitiatedDownload = false;
@@ -63,30 +64,18 @@ function init(win) {
             app.getVersion()
         );
 
-        // Filter transient network errors — don't show in UI, they're recoverable.
-        // Only surface errors that occurred during user-initiated download.
-        const msg = err.message || '';
-        const isTransient =
-            msg.includes('HttpError') ||
-            msg.includes('ECONNRESET') ||
-            msg.includes('ETIMEDOUT') ||
-            msg.includes('ENOTFOUND') ||
-            msg.includes('ECONNREFUSED') ||
-            msg.includes('EAI_AGAIN') ||
-            // v1.9.14: SSL/network downgrade errors (antivirus MITM, expired CA, DNS filters)
-            msg.includes('ERR_SSL_PROTOCOL_ERROR') ||
-            msg.includes('ERR_CERT_') ||
-            msg.includes('ERR_NETWORK_CHANGED') ||
-            msg.includes('ERR_INTERNET_DISCONNECTED') ||
-            /: 5\d{2}/.test(msg) || // 5xx HTTP errors
-            /: 429/.test(msg); // Rate limit
+        // Geçici ağ/5xx hataları kullanıcıya gösterilmez (recoverable). Yalnız
+        // kullanıcı-başlatımlı indirmede yüzeye çıkar.
+        const isTransient = isTransientUpdateError(err);
 
         if (isTransient && !userInitiatedDownload) {
             logger.debug('[AutoUpdater] Transient error, not shown to user');
             return;
         }
 
-        sendStatusToWindow('update-error', { message: err.message });
+        // Ham HTML gövdesi UI'ı taşırmasın diye mesajı kırp.
+        const shortMessage = (err.message || 'Bilinmeyen hata').slice(0, 140);
+        sendStatusToWindow('update-error', { message: shortMessage });
     });
 
     autoUpdater.on('download-progress', (progressObj) => {
