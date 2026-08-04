@@ -2,7 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { useAuth } from '../../context/AuthContext';
-import { getExpiryStatus, getCompactLabel, getSeverityColors } from '../../lib/subscriptionUtils';
+import {
+    getExpiryStatus,
+    getCompactLabel,
+    getSeverityColors,
+    getTrialBadge,
+} from '../../lib/subscriptionUtils';
 import type { Subscription } from '../../types';
 import { useOnboarding } from '../onboarding/useOnboarding';
 
@@ -323,6 +328,16 @@ const Sidebar: React.FC = () => {
                             <div className="flex-1 flex items-center justify-between">
                                 <span>Abonelik</span>
                                 {(() => {
+                                    const trialBadge = getTrialBadge(subscription);
+                                    if (trialBadge) {
+                                        return (
+                                            <span
+                                                className={`text-[10px] px-1.5 py-0.5 rounded ${trialBadge.classes} font-medium`}
+                                            >
+                                                {trialBadge.label}
+                                            </span>
+                                        );
+                                    }
                                     const status = getExpiryStatus(subscription);
                                     if (!status.shouldShowBanner) return null;
                                     const colors = getSeverityColors(status.severity);

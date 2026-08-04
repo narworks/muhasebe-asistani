@@ -133,3 +133,29 @@ export function getCompactLabel(status: ExpiryStatus): string {
     if (status.daysRemaining === 1) return 'Yarın sona eriyor';
     return `${status.daysRemaining} gün kaldı`;
 }
+
+/**
+ * Trial kullanıcıları için Sidebar rozeti. getExpiryStatus `expiresAt`'e dayalı
+ * ve trial'da null döner; bu yardımcı `trialEndsAt`/`isActive`'ten hesaplar.
+ * Ücretli/complimentary (isTrial=false) için null → mevcut getExpiryStatus rozeti kullanılır.
+ */
+export function getTrialBadge(
+    subscription: Subscription | null
+): { label: string; classes: string } | null {
+    if (!subscription?.isTrial) return null;
+    if (!subscription.isActive) {
+        return { label: 'Süresi doldu', classes: 'bg-red-600/15 text-red-200' };
+    }
+    if (!subscription.trialEndsAt) return null;
+    const daysLeft = Math.max(
+        0,
+        Math.ceil((new Date(subscription.trialEndsAt).getTime() - Date.now()) / 86_400_000)
+    );
+    const classes =
+        daysLeft <= 2
+            ? 'bg-red-500/10 text-red-300'
+            : daysLeft <= 5
+              ? 'bg-amber-500/10 text-amber-300'
+              : 'bg-sky-500/10 text-sky-300';
+    return { label: `${daysLeft} gün`, classes };
+}

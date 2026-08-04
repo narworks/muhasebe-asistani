@@ -55,7 +55,7 @@ const Navbar: React.FC = () => {
                             ? isLowCredits
                                 ? 'bg-amber-500/10 text-amber-400 hover:bg-amber-500/20'
                                 : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
-                            : 'bg-sky-500/10 text-sky-400 hover:bg-sky-500/20'
+                            : 'bg-sky-500 text-white hover:bg-sky-600 shadow-sm'
                     }`}
                 >
                     {subscription.isActive ? (
