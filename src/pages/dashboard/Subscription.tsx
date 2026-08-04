@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import type { Subscription as SubType, Credits } from '../../types';
 
@@ -54,6 +54,18 @@ const Subscription: React.FC = () => {
     const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(
         null
     );
+    const formRef = useRef<HTMLDivElement>(null);
+
+    const selectPlan = (plan: SelectedPlan) => {
+        setSelectedPlan(plan);
+    };
+
+    // Plan seçilince ödeme formuna yumuşak kaydır (form DOM'a girdikten sonra).
+    useEffect(() => {
+        if (selectedPlan) {
+            formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+    }, [selectedPlan]);
 
     const fetchData = async () => {
         try {
@@ -253,13 +265,7 @@ const Subscription: React.FC = () => {
                 <h2 className="text-sm font-semibold text-white mb-3">Modüller</h2>
 
                 {/* Tam Paket */}
-                <button
-                    type="button"
-                    onClick={() => {
-                        if (!hasModule('excel_assistant') || !hasModule('e_tebligat')) {
-                            setSelectedPlan(selectedPlan === 'bundle' ? null : 'bundle');
-                        }
-                    }}
+                <div
                     className={`w-full text-left rounded-xl p-5 border-2 mb-3 transition-all ${
                         hasModule('excel_assistant') &&
                         hasModule('e_tebligat') &&
@@ -267,7 +273,7 @@ const Subscription: React.FC = () => {
                             ? 'border-emerald-500/30 bg-emerald-500/5'
                             : selectedPlan === 'bundle'
                               ? 'border-emerald-500 bg-emerald-500/10'
-                              : 'border-slate-700 bg-slate-800/50 hover:border-slate-600'
+                              : 'border-slate-700 bg-slate-800/50'
                     }`}
                 >
                     <div className="flex items-center justify-between">
@@ -291,24 +297,33 @@ const Subscription: React.FC = () => {
                     </div>
                     <p className="text-sm font-semibold text-white mt-2">Tam Paket</p>
                     <p className="text-xs text-emerald-400">1.500₺ tasarruf • 5.000 aylık kredi</p>
-                </button>
+                    {!(
+                        hasModule('excel_assistant') &&
+                        hasModule('e_tebligat') &&
+                        !subscription?.isTrial
+                    ) && (
+                        <button
+                            type="button"
+                            onClick={() => selectPlan('bundle')}
+                            className="mt-3 w-full py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-medium text-sm transition-colors"
+                        >
+                            Satın Al →
+                        </button>
+                    )}
+                </div>
 
                 <div className="grid grid-cols-2 gap-3">
                     {Object.entries(MODULES).map(([id, mod]) => {
                         const isActive = hasModule(id) && !subscription?.isTrial;
                         return (
-                            <button
+                            <div
                                 key={id}
-                                type="button"
-                                onClick={() => {
-                                    if (!isActive) setSelectedPlan(selectedPlan === id ? null : id);
-                                }}
                                 className={`text-left rounded-xl p-4 border-2 transition-all ${
                                     isActive
                                         ? `border-${mod.color}-500/30 bg-${mod.color}-500/5`
                                         : selectedPlan === id
                                           ? `border-${mod.color}-500 bg-${mod.color}-500/10`
-                                          : 'border-slate-700 bg-slate-800/50 hover:border-slate-600'
+                                          : 'border-slate-700 bg-slate-800/50'
                                 }`}
                             >
                                 <div className="flex items-center justify-between mb-2">
@@ -348,7 +363,16 @@ const Subscription: React.FC = () => {
                                         </li>
                                     ))}
                                 </ul>
-                            </button>
+                                {!isActive && (
+                                    <button
+                                        type="button"
+                                        onClick={() => selectPlan(id)}
+                                        className="mt-3 w-full py-2 bg-sky-600 hover:bg-sky-700 text-white rounded-lg font-medium text-sm transition-colors"
+                                    >
+                                        Satın Al →
+                                    </button>
+                                )}
+                            </div>
                         );
                     })}
                 </div>
@@ -356,7 +380,10 @@ const Subscription: React.FC = () => {
 
             {/* Ödeme Formu — seçim yapıldığında görünür */}
             {selectedPlan && (
-                <div className="bg-slate-800 border border-slate-700 rounded-xl p-5 space-y-4">
+                <div
+                    ref={formRef}
+                    className="bg-slate-800 border border-slate-700 rounded-xl p-5 space-y-4"
+                >
                     <div className="flex items-center justify-between">
                         <h3 className="text-sm font-semibold text-white">
                             {getPlanLabel(selectedPlan)} —{' '}

@@ -32,6 +32,7 @@ const mockElectronAPI = {
     syncCredits: vi.fn(),
     purchaseCredits: vi.fn(),
     onCreditsUpdated: vi.fn(),
+    openCheckout: vi.fn(),
     exportCsv: vi.fn(),
     exportExcel: vi.fn(),
     openDocument: vi.fn(),
