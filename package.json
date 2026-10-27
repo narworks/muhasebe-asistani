@@ -1,7 +1,7 @@
 {
     "name": "muhasebeci-arac-kutusu",
     "private": true,
-    "version": "1.9.17",
+    "version": "1.9.18",
     "main": "main/main.js",
     "author": {
         "name": "NarWorks",
@@ -87,7 +87,7 @@
         "concurrently": "^9.2.1",
         "cross-env": "^10.1.0",
         "electron": "^35.7.5",
-        "electron-builder": "^26.0.12",
+        "electron-builder": "26.17.0",
         "eslint": "^8.57.0",
         "eslint-config-prettier": "^9.1.0",
         "eslint-plugin-react": "^7.34.0",
