@@ -16,15 +16,32 @@
  *      koruması).
  *   5. App quit'te flush() çağrılır.
  *
- * Auth: settings.getEncryptedValue('accessToken') — aiProxy ile aynı pattern.
+ * Auth: license.getValidAccessToken() — süresi dolmak üzereyse önce refresh
+ * edilir; oturum yoksa gönderim ertelenir (buffer korunur). 401 alınırsa bir
+ * kez refresh + tekrar denenir; yine olmazsa buffer korunur.
  * Settings opt-out: telemetry === false → buffer doldurulmaz, network'e gitmez.
  *
  * NOT: Endpoint URL `BILLING_URL` origin'inden türetilir (aiProxy ile aynı
  * cluster). Build-time embed edilen .env değişkeni.
  */
 
-const settings = require('./settings');
-const logger = require('./logger');
+// Bağımlılıklar tembel yüklenir (electron'a bağlı modüller) ve testte
+// __setDepsForTest ile değiştirilebilir.
+let deps = null;
+function getDeps() {
+    if (!deps) {
+        deps = {
+            settings: require('./settings'),
+            logger: require('./logger'),
+            license: require('./license'),
+            fetch: (...args) => fetch(...args),
+        };
+    }
+    return deps;
+}
+const logger = {
+    debug: (...args) => getDeps().logger.debug(...args),
+};
 
 const FLUSH_INTERVAL_MS = 5 * 60 * 1000; // 5 dakika
 const MAX_BUFFER_SIZE = 1_000; // toplam entry (captcha + login)
@@ -50,7 +67,7 @@ function getEndpointUrl() {
 
 function isEnabled() {
     try {
-        const s = settings.readSettings();
+        const s = getDeps().settings.readSettings();
         if (s && s.telemetry === false) return false;
     } catch {
         // settings okunamazsa default açık
@@ -58,11 +75,42 @@ function isEnabled() {
     return true;
 }
 
-function getAccessToken() {
+async function getAccessToken() {
     try {
-        return settings.getEncryptedValue('accessToken');
-    } catch {
+        return await getDeps().license.getValidAccessToken();
+    } catch (err) {
+        logger.debug(`[CaptchaTelemetry] token alınamadı: ${err.message}`);
         return null;
+    }
+}
+
+/** 401 sonrası: refresh zorla, yeni token'ı döndür (yoksa null). */
+async function forceRefreshAccessToken() {
+    try {
+        const ok = await getDeps().license.ensureFreshToken();
+        if (!ok) return null;
+        return await getDeps().license.getValidAccessToken();
+    } catch (err) {
+        logger.debug(`[CaptchaTelemetry] refresh hatası: ${err.message}`);
+        return null;
+    }
+}
+
+async function postBatch(url, token, payload) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), POST_TIMEOUT_MS);
+    try {
+        return await getDeps().fetch(url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${token}`,
+            },
+            body: payload,
+            signal: controller.signal,
+        });
+    } finally {
+        clearTimeout(timeoutId);
     }
 }
 
@@ -140,35 +188,34 @@ async function flush() {
         logger.debug('[CaptchaTelemetry] BILLING_URL yok, flush atlandı');
         return;
     }
-    const token = getAccessToken();
-    if (!token) {
-        logger.debug('[CaptchaTelemetry] accessToken yok, flush ertelendi');
-        return;
-    }
 
     flushInFlight = true;
-
-    // Snapshot al → POST sırasında yeni entry buffer'a eklenebilir, kaybolmazlar
-    const captchaSnapshot = captchaBuffer.slice();
-    const loginSnapshot = loginBuffer.slice();
-    const captchaCount = captchaSnapshot.length;
-    const loginCount = loginSnapshot.length;
-
     try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), POST_TIMEOUT_MS);
+        let token = await getAccessToken();
+        if (!token) {
+            // Oturum yok ya da token yenilenemedi → gönderme, buffer korunuyor
+            logger.debug('[CaptchaTelemetry] geçerli accessToken yok, flush ertelendi');
+            return;
+        }
 
-        const res = await fetch(url, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                Authorization: `Bearer ${token}`,
-            },
-            body: JSON.stringify({ captcha: captchaSnapshot, gib_login: loginSnapshot }),
-            signal: controller.signal,
-        });
+        // Snapshot al → POST sırasında yeni entry buffer'a eklenebilir, kaybolmazlar
+        const captchaSnapshot = captchaBuffer.slice();
+        const loginSnapshot = loginBuffer.slice();
+        const captchaCount = captchaSnapshot.length;
+        const loginCount = loginSnapshot.length;
+        const payload = JSON.stringify({ captcha: captchaSnapshot, gib_login: loginSnapshot });
 
-        clearTimeout(timeoutId);
+        let res = await postBatch(url, token, payload);
+
+        if (res.status === 401) {
+            // Token sunucuda reddedildi (süre/rotasyon) → bir kez refresh + retry
+            const newToken = await forceRefreshAccessToken();
+            if (newToken && newToken !== token) {
+                logger.debug('[CaptchaTelemetry] 401 sonrası token yenilendi, tekrar deneniyor');
+                token = newToken;
+                res = await postBatch(url, token, payload);
+            }
+        }
 
         if (!res.ok) {
             const errBody = await res.text().catch(() => '');
@@ -216,4 +263,16 @@ module.exports = {
     recordCaptcha,
     recordGibLogin,
     isEnabled,
+    // Yalnızca test için
+    __setDepsForTest(overrides) {
+        deps = overrides;
+    },
+    __getBufferSizesForTest() {
+        return { captcha: captchaBuffer.length, login: loginBuffer.length };
+    },
+    __resetForTest() {
+        captchaBuffer.length = 0;
+        loginBuffer.length = 0;
+        flushInFlight = false;
+    },
 };

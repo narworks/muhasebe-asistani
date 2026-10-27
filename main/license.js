@@ -7,6 +7,7 @@ const { app } = require('electron');
 const crypto = require('crypto');
 const settings = require('./settings');
 const supabase = require('./supabase');
+const { isJwtFresh, isJwtExpired } = require('./jwtUtil');
 
 const BILLING_URL = process.env.BILLING_URL || 'https://muhasebeasistani.com/billing';
 const CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000; // 6 saat
@@ -27,6 +28,7 @@ let checkIntervalId = null;
 let tokenRefreshIntervalId = null;
 let expiryCheckIntervalId = null;
 let refreshInProgress = null; // Concurrent refresh dedupe
+let authSyncSubscription = null; // Supabase onAuthStateChange aboneliği
 
 const defaultState = {
     userId: null,
@@ -321,6 +323,57 @@ const ensureFreshToken = async () => {
 };
 
 /**
+ * Gönderimden önce kullanılacak geçerli access_token'ı döndürür. Token yoksa
+ * ya da `minValidityMs` içinde dolacaksa önce refresh dener. Süresi dolmuş
+ * token asla döndürülmez (sunucu 401 verir); oturum yoksa null.
+ *
+ * @param {number} [minValidityMs=60000]
+ * @returns {Promise<string|null>}
+ */
+const getValidAccessToken = async (minValidityMs = 60_000) => {
+    ensureLoaded();
+    if (!state.accessToken && !state.refreshToken) return null; // oturum yok
+
+    if (state.accessToken && isJwtFresh(state.accessToken, minValidityMs)) {
+        return state.accessToken;
+    }
+
+    await ensureFreshToken();
+
+    const token = state.accessToken;
+    if (!token || isJwtExpired(token)) return null;
+    return token;
+};
+
+/**
+ * Supabase client'ın kendi yaptığı token yenilemelerini (autoRefresh ticker,
+ * rpc çağrısındaki getSession) license state'ine ve kalıcı depoya yazar.
+ * Aksi halde client refresh_token'ı rotate eder, bizim saklı refresh_token
+ * "already used" olur, saklı access_token süresi dolmuş kalır → 401.
+ */
+const attachAuthSync = () => {
+    if (authSyncSubscription) return;
+    try {
+        authSyncSubscription = supabase.onAuthStateChange((event, session) => {
+            if (event !== 'TOKEN_REFRESHED' && event !== 'SIGNED_IN') return;
+            if (!session?.access_token || !state || !state.userId) return;
+            if (session.user?.id && session.user.id !== state.userId) return;
+            if (
+                session.access_token === state.accessToken &&
+                (!session.refresh_token || session.refresh_token === state.refreshToken)
+            ) {
+                return;
+            }
+            state.accessToken = session.access_token;
+            if (session.refresh_token) state.refreshToken = session.refresh_token;
+            persistState();
+        });
+    } catch (err) {
+        console.warn(`[License] auth sync attach error: ${err.message}`);
+    }
+};
+
+/**
  * Subscription bitimine yaklaşma durumunda native notification fire eder.
  * Eşikler: 30/14/7/3/1/0 gün — her eşikte 1 kez fire (lastNotifiedThreshold
  * persist). Complimentary user'lar atlanır (bitiş yok).
@@ -471,6 +524,7 @@ const startScheduler = () => {
  */
 const init = () => {
     ensureLoaded();
+    attachAuthSync();
     startScheduler();
     // App start'ta token taze değilse şimdi yenile — proxy'nin ilk çağrısı
     // 401 yiyip fallback'e düşmesin. Best-effort, fail olursa sessiz geç.
@@ -885,6 +939,7 @@ module.exports = {
     checkLicense,
     ensureFreshLicense,
     ensureFreshToken,
+    getValidAccessToken,
     logout,
     hasActiveSubscription,
     hasModuleAccess,

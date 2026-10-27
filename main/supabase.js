@@ -109,6 +109,24 @@ const refreshSession = async (refreshToken) => {
 };
 
 /**
+ * Supabase auth olaylarına abone olur (SIGNED_IN, TOKEN_REFRESHED, SIGNED_OUT…).
+ *
+ * Main process'teki client `autoRefreshToken: true` ve bellek içi storage ile
+ * çalışıyor: client kendi ticker'ı (ve rpc çağrılarındaki getSession) ile
+ * token'ı yenileyip refresh_token'ı ROTATE edebilir. Bu olaylar license
+ * state'ine yazılmazsa saklı refresh_token "already used" olur ve saklı
+ * access_token süresi dolmuş halde kalır (telemetri/proxy 401).
+ *
+ * @param {(event: string, session: object|null) => void} callback
+ * @returns {{ unsubscribe: Function }|null}
+ */
+const onAuthStateChange = (callback) => {
+    const client = getClient();
+    const { data } = client.auth.onAuthStateChange(callback);
+    return data?.subscription || null;
+};
+
+/**
  * Mevcut session'dan kullanıcı bilgisini getirir
  * @param {string} accessToken - JWT access token
  * @returns {Promise<{user, error}>}
@@ -422,6 +440,7 @@ module.exports = {
     signInWithEmail,
     signUpWithEmail,
     refreshSession,
+    onAuthStateChange,
     getUserFromToken,
     getSubscription,
     updateSubscription,
