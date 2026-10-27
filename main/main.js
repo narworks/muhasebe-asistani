@@ -1921,17 +1921,31 @@ ipcMain.handle('open-forgot-password', async () => {
         ''
     );
     const forgotPasswordUrl = `${siteBase}/forgot-password`;
+    // modal: true macOS'ta başlık çubuğu ve kapatma düğmesi olmayan bir "sheet" açıyordu;
+    // kullanıcı pencereyi kapatamayıp uygulamayı zorla kapatmak zorunda kalıyordu.
+    // Normal (kapatılabilir) alt pencere + Esc ile kapatma; sayfadaki Kapat düğmesi
+    // window.close() çağırır.
     const forgotWindow = new BrowserWindow({
         width: 480,
-        height: 420,
+        height: 460,
         parent: mainWindow,
-        modal: true,
+        modal: false,
         resizable: false,
+        minimizable: false,
+        maximizable: false,
+        closable: true,
         title: 'Şifremi Unuttum',
         webPreferences: {
             nodeIntegration: false,
             contextIsolation: true,
         },
+    });
+    forgotWindow.setMenuBarVisibility(false);
+    forgotWindow.webContents.on('before-input-event', (event, input) => {
+        if (input.type === 'keyDown' && input.key === 'Escape') {
+            event.preventDefault();
+            forgotWindow.close();
+        }
     });
     forgotWindow.loadURL(forgotPasswordUrl);
     return { success: true };
